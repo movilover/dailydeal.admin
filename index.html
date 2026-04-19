@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Deal - Super Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        .daraz-orange { background-color: #f57224; }
+        .text-daraz { color: #f57224; }
+        .admin-card { background: white; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); border: 1px solid #eee; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .btn-3d { transition: all 0.1s; box-shadow: 0 4px 0 #c45a1d; }
+        .btn-3d:active { transform: translateY(2px); box-shadow: 0 1px 0 #c45a1d; }
+    </style>
+</head>
+<body class="bg-[#f8fafc] min-h-screen pb-20" x-data="superAdmin()" x-init="initAdmin()">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50 px-4 py-4 flex items-center justify-between border-b-2 border-orange-500">
+        <div>
+            <h1 class="text-lg font-black text-gray-800 italic uppercase leading-none">Daily Deal</h1>
+            <span class="text-[9px] font-bold text-daraz tracking-[3px] uppercase">Super Admin</span>
+        </div>
+        <button @click="logout()" class="text-red-500 bg-red-50 px-4 py-2 rounded-xl text-[10px] font-bold uppercase border border-red-100">Logout</button>
+    </header>
+
+    <main class="max-w-xl mx-auto p-4 space-y-6">
+
+        <div class="grid grid-cols-2 gap-3">
+            <div class="admin-card p-4 bg-white border-l-4 border-l-blue-500">
+                <p class="text-[9px] font-bold text-gray-400 uppercase">মোট অর্ডার</p>
+                <p class="text-xl font-black text-gray-800" x-text="stats.total"></p>
+            </div>
+            <div class="admin-card p-4 bg-white border-l-4 border-l-green-500">
+                <p class="text-[9px] font-bold text-green-600 uppercase">ডেলিভারি সম্পন্ন</p>
+                <p class="text-xl font-black text-green-700" x-text="stats.delivered"></p>
+            </div>
+            <div class="admin-card p-4 bg-white border-l-4 border-l-orange-500">
+                <p class="text-[9px] font-bold text-orange-600 uppercase">পেন্ডিং অর্ডার</p>
+                <p class="text-xl font-black text-orange-700" x-text="stats.pending"></p>
+            </div>
+            <div class="admin-card p-4 bg-white border-l-4 border-l-red-500">
+                <p class="text-[9px] font-bold text-red-600 uppercase">ক্যান্সেল অর্ডার</p>
+                <p class="text-xl font-black text-red-700" x-text="stats.cancelled"></p>
+            </div>
+        </div>
+
+        <div class="flex gap-2 overflow-x-auto no-scrollbar py-2">
+            <button @click="tab = 'upload'" :class="tab === 'upload' ? 'daraz-orange text-white shadow-md' : 'bg-white text-gray-500 border'" class="px-5 py-2.5 rounded-xl text-[10px] font-bold whitespace-nowrap uppercase">নতুন প্রোডাক্ট</button>
+            <button @click="tab = 'orders'" :class="tab === 'orders' ? 'daraz-orange text-white shadow-md' : 'bg-white text-gray-500 border'" class="px-5 py-2.5 rounded-xl text-[10px] font-bold whitespace-nowrap uppercase">অর্ডার লিস্ট</button>
+            <button @click="tab = 'category'" :class="tab === 'category' ? 'daraz-orange text-white shadow-md' : 'bg-white text-gray-500 border'" class="px-5 py-2.5 rounded-xl text-[10px] font-bold whitespace-nowrap uppercase">ক্যাটাগরি</button>
+            <button @click="tab = 'products'" :class="tab === 'products' ? 'daraz-orange text-white shadow-md' : 'bg-white text-gray-500 border'" class="px-5 py-2.5 rounded-xl text-[10px] font-bold whitespace-nowrap uppercase">ইনভেন্টরি</button>
+            <button @click="tab = 'settings'" :class="tab === 'settings' ? 'daraz-orange text-white shadow-md' : 'bg-white text-gray-500 border'" class="px-5 py-2.5 rounded-xl text-[10px] font-bold whitespace-nowrap uppercase">সেটিংস</button>
+        </div>
+
+        <div x-show="tab === 'upload'" class="admin-card p-6 space-y-4" x-transition x-cloak>
+            <h3 class="font-bold text-xs uppercase italic border-b pb-2">নতুন পণ্য যোগ করুন (সর্বোচ্চ ১৫ ইমেজ)</h3>
+            
+            <div class="grid grid-cols-5 gap-2">
+                <template x-for="(img, idx) in newPhotos" :key="idx">
+                    <div class="relative h-12 rounded-lg border overflow-hidden shadow-sm">
+                        <img :src="img" class="w-full h-full object-cover">
+                        <button @click="newPhotos.splice(idx, 1)" class="absolute top-0 right-0 bg-red-600 text-white text-[8px] px-1">X</button>
+                    </div>
+                </template>
+                <label x-show="newPhotos.length < 15" class="h-12 border-2 border-dashed border-orange-200 flex flex-col items-center justify-center rounded-lg cursor-pointer bg-orange-50">
+                    <i class="fa-solid fa-camera text-orange-300"></i>
+                    <input type="file" @change="uploadPhoto" class="hidden" accept="image/*">
+                </label>
+            </div>
+
+            <input type="text" x-model="pName" placeholder="পণ্যের নাম" class="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold outline-none">
+            
+            <div class="grid grid-cols-2 gap-2">
+                <input type="number" x-model="pPrice" placeholder="দাম" class="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold outline-none">
+                <select x-model="pCat" class="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold outline-none uppercase">
+                    <template x-for="cat in categories"><option :value="cat" x-text="cat"></option></template>
+                </select>
+            </div>
+
+            <textarea x-model="pDesc" placeholder="পণ্যের ডেসক্রিপশন..." class="w-full p-4 bg-gray-50 border rounded-2xl text-xs font-bold outline-none h-24"></textarea>
+
+            <div class="bg-gray-50 p-4 rounded-2xl border">
+                <p class="text-[9px] font-black text-gray-400 uppercase mb-2">সাইজ নির্বাচন:</p>
+                <div class="flex flex-wrap gap-2 mb-3">
+                    <template x-for="s in ['S','M','L','XL','XXL']">
+                        <button @click="toggleSize(s)" :class="selectedSizes.includes(s) ? 'daraz-orange text-white' : 'bg-white text-gray-400 border'" class="px-3 py-1 rounded-lg text-[10px] font-bold" x-text="s"></button>
+                    </template>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <template x-for="s in ['50','52','54','56','58']">
+                        <button @click="toggleSize(s + ' Inch')" :class="selectedSizes.includes(s + ' Inch') ? 'daraz-orange text-white' : 'bg-white text-gray-400 border'" class="px-3 py-1 rounded-lg text-[10px] font-bold" x-text="s"></button>
+                    </template>
+                </div>
+            </div>
+
+            <button @click="saveProduct()" class="w-full daraz-orange text-white py-4 rounded-2xl font-black uppercase shadow-lg btn-3d">আপলোড সম্পন্ন করুন</button>
+        </div>
+
+        <div x-show="tab === 'products'" class="space-y-4" x-transition x-cloak>
+            <h3 class="font-bold text-xs uppercase italic border-b pb-2">ইনভেন্টরি (Stock)</h3>
+            <template x-for="(p, index) in products" :key="p.id || index">
+                <div class="admin-card p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <img :src="p.images[0]" class="w-12 h-12 rounded-lg object-cover bg-gray-100">
+                        <div>
+                            <p class="text-[11px] font-bold text-gray-800" x-text="p.name"></p>
+                            <p class="text-[9px] text-daraz font-black" x-text="'৳ ' + p.price"></p>
+                        </div>
+                    </div>
+                    <button @click="deleteProduct(index)" class="text-red-500 bg-red-50 p-3 rounded-xl border border-red-100"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+            </template>
+            <div x-show="products.length === 0" class="text-center py-10 text-gray-400 text-xs font-bold uppercase italic">কোনো প্রোডাক্ট পাওয়া যায়নি!</div>
+        </div>
+
+        <div x-show="tab === 'category'" class="admin-card p-6 space-y-4" x-transition x-cloak>
+            <h3 class="font-bold text-xs uppercase italic border-b pb-2 text-daraz">ক্যাটাগরি কন্ট্রোল</h3>
+            <div class="flex gap-2">
+                <input type="text" x-model="newCatName" placeholder="নতুন ক্যাটাগরি..." class="flex-1 p-4 bg-gray-50 border rounded-2xl text-xs font-bold outline-none">
+                <button @click="addCategory()" class="daraz-orange text-white px-6 rounded-2xl text-[10px] font-black uppercase shadow-md">Add</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-4">
+                <template x-for="(cat, index) in categories" :key="index">
+                    <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border">
+                        <span class="text-[10px] font-black text-gray-700 uppercase" x-text="cat"></span>
+                        <button @click="removeCategory(index)" x-show="cat !== 'সব'" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-circle-xmark"></i></button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div x-show="tab === 'orders'" class="space-y-4" x-transition x-cloak>
+            <template x-for="(order, index) in allOrders" :key="index">
+                <div class="admin-card p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-[10px] font-bold text-gray-400 italic" x-text="'ORDER ID: #' + (order.id || index)"></span>
+                        <select @change="updateOrderStatus(index, $event.target.value)" :class="statusColor(order.status)" class="text-[9px] font-bold px-3 py-1 rounded-full border outline-none">
+                            <option value="পেন্ডিং">পেন্ডিং</option>
+                            <option value="কনফার্ম">কনফার্ম</option>
+                            <option value="ডেলিভারি">ডেলিভারি</option>
+                            <option value="ক্যান্সেল">ক্যান্সেল</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-3 bg-gray-50 p-2 rounded-2xl">
+                        <img :src="order.image" class="w-12 h-12 rounded-lg object-cover">
+                        <div class="text-[10px]">
+                            <p class="font-black text-gray-800 uppercase" x-text="order.name"></p>
+                            <p class="text-daraz font-bold" x-text="order.phone"></p>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div x-show="tab === 'settings'" class="space-y-4" x-transition x-cloak>
+            <div class="admin-card p-6">
+                <h3 class="font-bold text-[10px] uppercase mb-4 italic border-b pb-1 text-daraz text-center tracking-widest">ইউজার ব্যালেন্স এডিট</h3>
+                <div class="flex gap-2">
+                    <input type="text" x-model="searchPhone" placeholder="মোবাইল নম্বর..." class="flex-1 p-3 bg-gray-50 border rounded-xl text-xs outline-none">
+                    <input type="number" x-model="newBalance" placeholder="টাকা" class="w-24 p-3 bg-gray-50 border rounded-xl text-xs outline-none font-bold">
+                    <button @click="updateBalance()" class="daraz-orange text-white px-5 rounded-xl text-[10px] font-bold">SET</button>
+                </div>
+            </div>
+            <div class="admin-card p-6">
+                <h3 class="font-bold text-[10px] uppercase mb-4 italic border-b pb-1 text-daraz text-center tracking-widest">ব্যানার ও হোয়াটসঅ্যাপ</h3>
+                <div class="w-full h-32 bg-gray-100 rounded-2xl overflow-hidden mb-4 border-2 border-dashed border-orange-200">
+                    <img :src="bannerImg" class="w-full h-full object-cover" x-show="bannerImg">
+                </div>
+                <label class="w-full bg-gray-900 text-white py-4 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 cursor-pointer shadow-lg mb-3">
+                    <i class="fa-solid fa-image"></i> মেইন ব্যানার পরিবর্তন
+                    <input type="file" @change="updateBanner" class="hidden" accept="image/*">
+                </label>
+                <div class="pt-2">
+                    <input type="text" x-model="waNumber" placeholder="88017XXXXXXXX" class="w-full p-4 bg-gray-50 border rounded-xl text-xs font-bold outline-none mb-3">
+                    <button @click="saveWA()" class="w-full daraz-orange text-white py-4 rounded-xl text-[10px] font-black uppercase shadow-lg">Save Config</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        function superAdmin() {
+            return {
+                tab: 'upload', products: [], allOrders: [], newPhotos: [], selectedSizes: [],
+                categories: ['সব', 'বোরকা', 'ইলেকট্রনিক্স', 'গ্যাজেট'],
+                pName: '', pPrice: '', pCat: 'সব', pDesc: '', waNumber: '', searchPhone: '', newBalance: '',
+                bannerImg: '', newCatName: '',
+                
+                initAdmin() {
+                    this.loadData();
+                },
+
+                loadData() {
+                    this.products = JSON.parse(localStorage.getItem('my_products') || '[]');
+                    this.allOrders = JSON.parse(localStorage.getItem('user_orders') || '[]');
+                    this.waNumber = localStorage.getItem('my_tg') || '';
+                    this.bannerImg = localStorage.getItem('my_banner') || '';
+                    const savedCats = localStorage.getItem('my_categories');
+                    if(savedCats) this.categories = JSON.parse(savedCats);
+                },
+
+                get stats() {
+                    return {
+                        total: this.allOrders.length,
+                        delivered: this.allOrders.filter(o => o.status === 'ডেলিভারি').length,
+                        pending: this.allOrders.filter(o => o.status === 'পেন্ডিং').length,
+                        cancelled: this.allOrders.filter(o => o.status === 'ক্যান্সেল').length
+                    }
+                },
+
+                uploadPhoto(e) {
+                    const file = e.target.files[0];
+                    if (file && this.newPhotos.length < 15) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => this.newPhotos.push(ev.target.result);
+                        reader.readAsDataURL(file);
+                    }
+                },
+
+                saveProduct() {
+                    if(!this.pName || !this.pPrice || this.newPhotos.length === 0) return alert("দয়া করে নাম, দাম এবং কমপক্ষে একটি ছবি দিন!");
+                    
+                    try {
+                        const newP = {
+                            id: Date.now(),
+                            name: this.pName,
+                            price: parseInt(this.pPrice),
+                            category: this.pCat,
+                            images: [...this.newPhotos],
+                            description: this.pDesc,
+                            sizes: [...this.selectedSizes]
+                        };
+
+                        this.products.unshift(newP);
+                        localStorage.setItem('my_products', JSON.stringify(this.products));
+                        
+                        alert("পণ্যটি সফলভাবে যোগ হয়েছে!");
+                        this.resetForm();
+                        this.tab = 'products';
+                    } catch (e) {
+                        alert("মেমোরি ফুল! বড় ছবি না দিয়ে ছোট সাইজের ছবি ব্যবহার করুন।");
+                    }
+                },
+
+                deleteProduct(index) {
+                    if(confirm("পণ্যটি ইনভেন্টরি থেকে মুছে ফেলবেন?")) {
+                        this.products.splice(index, 1);
+                        localStorage.setItem('my_products', JSON.stringify(this.products));
+                    }
+                },
+
+                addCategory() {
+                    if(this.newCatName && !this.categories.includes(this.newCatName)) {
+                        this.categories.push(this.newCatName);
+                        localStorage.setItem('my_categories', JSON.stringify(this.categories));
+                        this.newCatName = '';
+                        alert("নতুন ক্যাটাগরি যুক্ত হয়েছে!");
+                    }
+                },
+
+                removeCategory(index) {
+                    if(confirm("ডিলিট করবেন?")) {
+                        this.categories.splice(index, 1);
+                        localStorage.setItem('my_categories', JSON.stringify(this.categories));
+                    }
+                },
+
+                updateBanner(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            this.bannerImg = ev.target.result;
+                            localStorage.setItem('my_banner', this.bannerImg);
+                            alert("ব্যানার আপডেট হয়েছে!");
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                },
+
+                updateBalance() {
+                    let user = JSON.parse(localStorage.getItem('user_profile') || '{}');
+                    if(user.phone === this.searchPhone) {
+                        user.balance = this.newBalance;
+                        localStorage.setItem('user_profile', JSON.stringify(user));
+                        alert("ব্যালেন্স আপডেট হয়েছে!");
+                    } else alert("ইউজার পাওয়া যায়নি!");
+                },
+
+                saveWA() {
+                    localStorage.setItem('my_tg', this.waNumber);
+                    alert("কনফিগ সেভ হয়েছে!");
+                },
+
+                toggleSize(s) {
+                    if(this.selectedSizes.includes(s)) this.selectedSizes = this.selectedSizes.filter(i => i !== s);
+                    else this.selectedSizes.push(s);
+                },
+
+                resetForm() {
+                    this.pName = ''; this.pPrice = ''; this.pDesc = ''; 
+                    this.newPhotos = []; this.selectedSizes = []; this.pCat = 'সব';
+                },
+
+                updateOrderStatus(i, s) {
+                    this.allOrders[i].status = s;
+                    localStorage.setItem('user_orders', JSON.stringify(this.allOrders));
+                },
+
+                statusColor(s) {
+                    if(s === 'পেন্ডিং') return 'bg-orange-50 text-orange-600 border-orange-200';
+                    if(s === 'ডেলিভারি') return 'bg-green-50 text-green-600 border-green-200';
+                    if(s === 'ক্যান্সেল') return 'bg-red-50 text-red-600 border-red-200';
+                    return 'bg-blue-50 text-blue-600 border-blue-200';
+                },
+
+                logout() { location.reload(); }
+            }
+        }
+    </script>
+</body>
+</html>
