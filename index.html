@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="bn" x-data="Admin()" x-init="boot()" :class="'theme-'+activeTheme">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Daily Deal — অ্যাডমিন প্যানেল</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={
+  darkMode:'class',
+  theme:{extend:{
+    fontFamily:{
+      display:['"Playfair Display"','Georgia','serif'],
+      ui:['"Hind Siliguri"','sans-serif'],
+      mono:['"JetBrains Mono"','monospace'],
+    },
+    keyframes:{
+      slideUp:{from:{opacity:0,transform:'translateY(20px)'},to:{opacity:1,transform:'translateY(0)'}},
+      fadeIn:{from:{opacity:0},to:{opacity:1}},
+      shimmer:{'0%':{backgroundPosition:'-200% 0'},'100%':{backgroundPosition:'200% 0'}},
+      spin3d:{'0%':{transform:'rotate(0deg)'},'100%':{transform:'rotate(360deg)'}},
+    },
+    animation:{
+      'slide-up':'slideUp .4s cubic-bezier(.22,.68,0,1.2) both',
+      'fade-in':'fadeIn .3s ease both',
+      'shimmer':'shimmer 1.8s linear infinite',
+    }
+  }}
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+<!-- Firebase -->
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getDatabase,ref,push,set,onValue,update,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+const cfg={
+  apiKey:"AIzaSyCQVlbjApQYtyc86ZTVPsBjOZ3J-RHv_vI",
+  authDomain:"daily-deal-online-shopping.firebaseapp.com",
+  projectId:"daily-deal-online-shopping",
+  storageBucket:"daily-deal-online-shopping.firebasestorage.app",
+  messagingSenderId:"373309508928",
+  appId:"1:373309508928:web:93afabc9aff316cc427ea5",
+  measurementId:"G-P5JMGP9NMT",
+  databaseURL:"https://daily-deal-online-shopping-default-rtdb.firebaseio.com"
+};
+const app=initializeApp(cfg);
+const db=getDatabase(app);
+const storage=getStorage(app);
+
+window.$db={
+  saveProduct:async(data,id)=>{const r=id?ref(db,'products/'+id):push(ref(db,'products'));await set(r,data);return r.key||id},
+  deleteProduct:async(id)=>remove(ref(db,'products/'+id)),
+  updateOrder:async(id,data)=>update(ref(db,'orders/'+id),data),
+  deleteOrder:async(id)=>remove(ref(db,'orders/'+id)),
+  saveSettings:async(data)=>set(ref(db,'settings'),data),
+  listenProducts:(cb)=>onValue(ref(db,'products'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  listenOrders:(cb)=>onValue(ref(db,'orders'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  listenSettings:(cb)=>onValue(ref(db,'settings'),s=>cb(s.val()||{}),{onlyOnce:false}),
+  uploadImage:async(file,path,onProgress)=>{
+    const storageRef=sRef(storage,path);
+    const task=uploadBytesResumable(storageRef,file);
+    return new Promise((res,rej)=>{
+      task.on('state_changed',snap=>{
+        if(onProgress)onProgress(Math.round(snap.bytesTransferred/snap.totalBytes*100));
+      },rej,async()=>{res(await getDownloadURL(task.snapshot.ref))});
+    });
+  }
+};
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<style>
+[x-cloak]{display:none!important}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--fg);min-height:100vh}
+
+/* THEMES */
+body.theme-light{--bg:#F0EDE8;--bg2:#E8E2D8;--bg3:#DDD5C8;--fg:#0F0D0A;--fg2:#3D3830;--fg3:#7A7168;--card:#FFFFFF;--border:rgba(15,13,10,.09);--header:#0F0D0A;--accent:#E8320A;--accent2:#FF6B45;--accentL:#FFF1EE;--shadow:rgba(15,13,10,.12);--sidebar:#161412}
+body.theme-dark{--bg:#09090E;--bg2:#111118;--bg3:#18181F;--fg:#EEEEFF;--fg2:#9090AA;--fg3:#505070;--card:#14141C;--border:rgba(238,238,255,.07);--header:#060609;--accent:#7C3AED;--accent2:#A78BFA;--accentL:#1A1040;--shadow:rgba(0,0,0,.5);--sidebar:#08080C}
+body.theme-blue{--bg:#EFF6FF;--bg2:#DBEAFE;--bg3:#BFDBFE;--fg:#0A1628;--fg2:#1E3A5F;--fg3:#4A6FA5;--card:#FFFFFF;--border:rgba(10,22,40,.08);--header:#0A1628;--accent:#1D4ED8;--accent2:#60A5FA;--accentL:#EFF6FF;--shadow:rgba(29,78,216,.18);--sidebar:#070F1C}
+body.theme-gold{--bg:#FDFAF3;--bg2:#F5EDD6;--bg3:#EAD9A8;--fg:#1A1200;--fg2:#4A3A00;--fg3:#8A7040;--card:#FFFFFF;--border:rgba(26,18,0,.09);--header:#1A1200;--accent:#B8860B;--accent2:#DAA520;--accentL:#FFFBEB;--shadow:rgba(184,134,11,.2);--sidebar:#100D00}
+body.theme-rose{--bg:#FFF5F7;--bg2:#FFE4EA;--bg3:#FFCCD7;--fg:#1A0510;--fg2:#5A1530;--fg3:#A04060;--card:#FFFFFF;--border:rgba(26,5,16,.08);--header:#1A0510;--accent:#E8196A;--accent2:#FF6EAD;--accentL:#FFF0F5;--shadow:rgba(232,25,106,.18);--sidebar:#100008}
+body.theme-green{--bg:#F0FDF4;--bg2:#DCFCE7;--bg3:#BBF7D0;--fg:#032010;--fg2:#065030;--fg3:#26804A;--card:#FFFFFF;--border:rgba(3,32,16,.08);--header:#032010;--accent:#16A34A;--accent2:#4ADE80;--accentL:#F0FDF4;--shadow:rgba(22,163,74,.18);--sidebar:#010E06}
+
+/* LAYOUT */
+.admin-layout{display:flex;min-height:100vh}
+.sidebar{width:220px;flex-shrink:0;background:var(--sidebar);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;z-index:50;padding:24px 0;display:flex;flex-direction:column}
+.main-area{margin-left:220px;flex:1;min-height:100vh;padding:24px}
+@media(max-width:768px){
+  .sidebar{transform:translateX(-100%);transition:transform .3s ease}
+  .sidebar.open{transform:translateX(0)}
+  .main-area{margin-left:0}
+  .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:49;backdrop-filter:blur(4px)}
+}
+
+/* CARDS */
+.dd-card{background:var(--card);border:1px solid var(--border);border-radius:20px;box-shadow:0 2px 16px var(--shadow)}
+.dd-card-sm{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 8px var(--shadow)}
+
+/* INPUTS */
+.dd-input{width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:13px;font-family:'Hind Siliguri',sans-serif;color:var(--fg);outline:none;background:var(--bg2);transition:border-color .2s,box-shadow .2s}
+.dd-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 15%,transparent)}
+.dd-label{display:block;font-size:10px;font-weight:700;color:var(--fg3);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
+
+/* BUTTONS */
+.btn-primary{padding:10px 20px;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;border:none;cursor:pointer;font-family:'Hind Siliguri',sans-serif;transition:all .2s;box-shadow:0 4px 16px color-mix(in srgb,var(--accent) 30%,transparent)}
+.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+.btn-primary:active{transform:scale(.97)}
+.btn-danger{padding:8px 14px;border-radius:10px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;font-weight:700;font-size:12px;cursor:pointer;font-family:'Hind Siliguri',sans-serif;transition:all .2s}
+.btn-danger:hover{background:#FEE2E2}
+.btn-ghost{padding:8px 14px;border-radius:10px;background:var(--bg2);color:var(--fg2);border:1px solid var(--border);font-weight:600;font-size:12px;cursor:pointer;font-family:'Hind Siliguri',sans-serif;transition:all .2s}
+.btn-ghost:hover{background:var(--bg3)}
+
+/* STATUS */
+.chip-pending{background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA}
+.chip-processing{background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE}
+.chip-delivered{background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0}
+.chip-cancelled{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+
+/* NAV */
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;border-radius:0 14px 14px 0;margin:2px 12px 2px 0;cursor:pointer;transition:all .2s;color:rgba(255,255,255,.45);font-size:13px;font-weight:600;border:none;background:transparent;width:calc(100% - 12px)}
+.nav-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.8)}
+.nav-item.active{background:var(--accent);color:#fff;box-shadow:0 4px 16px color-mix(in srgb,var(--accent) 40%,transparent)}
+
+/* SHIMMER */
+.shimmer{background:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.6s linear infinite}
+
+/* IMAGE UPLOAD */
+.img-drop{border:2px dashed var(--border);border-radius:16px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2)}
+.img-drop:hover,.img-drop.drag{border-color:var(--accent);background:var(--accentL)}
+.img-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:12px}
+.img-preview-item{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:1}
+.img-preview-item img{width:100%;height:100%;object-fit:cover}
+.img-preview-item .del-btn{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:6px;background:rgba(220,38,38,.9);color:#fff;border:none;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center}
+
+/* STAT CARD */
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;opacity:.1;background:var(--accent)}
+
+/* PROGRESS BAR */
+.prog-bar{height:6px;border-radius:4px;background:var(--bg3);overflow:hidden}
+.prog-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .3s}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* TOAST */
+.toast-wrap{position:fixed;top:16px;right:16px;z-index:999}
+
+/* PILL SCROLL */
+.pill-scroll{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.pill-scroll::-webkit-scrollbar{display:none}
+
+/* TABLE */
+.dd-table{width:100%;border-collapse:collapse}
+.dd-table th{text-align:left;padding:10px 12px;font-size:10px;font-weight:700;color:var(--fg3);text-transform:uppercase;letter-spacing:1px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.dd-table td{padding:12px;font-size:13px;color:var(--fg2);border-bottom:1px solid var(--border);vertical-align:middle}
+.dd-table tr:last-child td{border-bottom:none}
+.dd-table tr:hover td{background:var(--bg2)}
+
+/* THEME SWATCH */
+.theme-swatch{width:36px;height:36px;border-radius:12px;cursor:pointer;border:3px solid transparent;transition:all .2s}
+.theme-swatch.active{border-color:var(--accent);transform:scale(1.15)}
+</style>
+</head>
+
+<body :class="'theme-'+activeTheme" class="theme-light">
+
+<!-- MOBILE OVERLAY -->
+<div x-show="sidebarOpen" x-cloak class="sidebar-overlay md:hidden" @click="sidebarOpen=false"></div>
+
+<div class="admin-layout">
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<aside class="sidebar" :class="sidebarOpen?'open':''">
+  <!-- Logo -->
+  <div class="px-5 mb-6">
+    <p class="font-display text-xl text-white">Daily<span style="color:var(--accent)">Deal</span></p>
+    <p class="text-xs mt-0.5" style="color:rgba(255,255,255,.3)">অ্যাডমিন প্যানেল</p>
+  </div>
+
+  <!-- Status Dot -->
+  <div class="mx-4 mb-5 px-3 py-2 rounded-xl flex items-center gap-2" style="background:rgba(22,163,74,.15)">
+    <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+    <span class="text-xs font-bold" style="color:#4ADE80">Firebase সংযুক্ত</span>
+  </div>
+
+  <!-- Nav Items -->
+  <nav class="flex-1 space-y-0.5 px-0">
+    <template x-for="n in navItems" :key="n.id">
+      <button @click="activeTab=n.id;sidebarOpen=false" class="nav-item" :class="activeTab===n.id?'active':''">
+        <i :class="n.icon" class="w-4 text-center text-sm"></i>
+        <span x-text="n.label"></span>
+        <span x-show="n.id==='orders'&&pendingCount>0" x-text="pendingCount"
+          class="ml-auto text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" style="background:var(--accent);color:#fff;font-size:9px"></span>
+      </button>
+    </template>
+  </nav>
+
+  <!-- Bottom -->
+  <div class="px-4 mt-6 pt-4" style="border-top:1px solid rgba(255,255,255,.07)">
+    <p class="text-xs" style="color:rgba(255,255,255,.2)">Daily Deal v2.0</p>
+    <p class="text-xs mt-0.5" style="color:rgba(255,255,255,.15)">Firebase Connected</p>
+  </div>
+</aside>
+
+<!-- ═══════════════ MAIN AREA ═══════════════ -->
+<main class="main-area">
+
+  <!-- Top Bar -->
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <button @click="sidebarOpen=!sidebarOpen" class="md:hidden w-9 h-9 rounded-xl flex items-center justify-center btn-ghost">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <div>
+        <h1 class="font-display text-2xl" style="color:var(--fg)" x-text="navItems.find(n=>n.id===activeTab)?.label||'ড্যাশবোর্ড'"></h1>
+        <p class="text-xs" style="color:var(--fg3)" x-text="new Date().toLocaleDateString('bn-BD',{weekday:'long',year:'numeric',month:'long',day:'numeric'})"></p>
+      </div>
+    </div>
+    <!-- Theme Quick Pick -->
+    <div class="flex items-center gap-2">
+      <template x-for="(th,key) in themes" :key="key">
+        <button @click="setTheme(key)" class="theme-swatch" :class="activeTheme===key?'active':''"
+          :style="'background:'+th.accent" :title="th.label"></button>
+      </template>
+    </div>
+  </div>
+
+  <!-- ──────────── DASHBOARD ──────────── -->
+  <div x-show="activeTab==='dashboard'" class="animate-fade-in">
+    <!-- Stats -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট পণ্য</p>
+        <p class="font-display text-4xl" style="color:var(--fg)" x-text="fbProducts.length"></p>
+        <p class="text-xs mt-1" style="color:var(--fg3)">Firebase-এ সক্রিয়</p>
+        <i class="fa-solid fa-box absolute bottom-4 right-4 text-3xl opacity-10" style="color:var(--accent)"></i>
+      </div>
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট অর্ডার</p>
+        <p class="font-display text-4xl" style="color:var(--fg)" x-text="fbOrders.length"></p>
+        <p class="text-xs mt-1" style="color:var(--fg3)">সব মিলিয়ে</p>
+        <i class="fa-solid fa-receipt absolute bottom-4 right-4 text-3xl opacity-10" style="color:var(--accent)"></i>
+      </div>
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">পেন্ডিং</p>
+        <p class="font-display text-4xl" style="color:var(--accent)" x-text="pendingCount"></p>
+        <p class="text-xs mt-1" style="color:var(--fg3)">এক্সন দরকার</p>
+        <i class="fa-solid fa-clock absolute bottom-4 right-4 text-3xl opacity-10" style="color:var(--accent)"></i>
+      </div>
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট রাজস্ব</p>
+        <p class="font-display text-3xl" style="color:var(--accent)" x-text="'৳'+totalRevenue.toLocaleString()"></p>
+        <p class="text-xs mt-1" style="color:var(--fg3)">ডেলিভার্ড অর্ডার</p>
+        <i class="fa-solid fa-bangladeshi-taka-sign absolute bottom-4 right-4 text-3xl opacity-10" style="color:var(--accent)"></i>
+      </div>
+    </div>
+
+    <!-- Order Status Breakdown -->
+    <div class="dd-card p-5 mb-6">
+      <p class="font-bold text-sm mb-4" style="color:var(--fg)">অর্ডার স্ট্যাটাস ব্রেকডাউন</p>
+      <div class="space-y-3">
+        <template x-for="s in orderStats" :key="s.label">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-semibold" style="color:var(--fg2)" x-text="s.label"></span>
+              <span class="font-mono font-bold" style="color:var(--fg)" x-text="s.count+'টি'"></span>
+            </div>
+            <div class="prog-bar">
+              <div class="prog-bar-fill" :style="'width:'+s.pct+'%;background:'+s.color"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Recent Orders -->
+    <div class="dd-card overflow-hidden">
+      <div class="px-5 py-4 flex items-center justify-between" style="border-bottom:1px solid var(--border)">
+        <p class="font-bold text-sm" style="color:var(--fg)">সাম্প্রতিক অর্ডার</p>
+        <button @click="activeTab='orders'" class="text-xs font-bold" style="color:var(--accent);background:none;border:none;cursor:pointer">সব দেখুন →</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr>
+            <th>অর্ডার</th><th>গ্রাহক</th><th>মোট</th><th>স্ট্যাটাস</th><th>এক্সন</th>
+          </tr></thead>
+          <tbody>
+            <template x-for="o in fbOrders.slice(0,5)" :key="o.fbKey">
+              <tr>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span></td>
+                <td>
+                  <p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p>
+                  <p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p>
+                </td>
+                <td><span class="font-mono font-bold text-xs" style="color:var(--accent)" x-text="'৳'+o.total.toLocaleString()"></span></td>
+                <td>
+                  <span class="text-xs font-bold px-2.5 py-1 rounded-full"
+                    :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}"
+                    x-text="o.status"></span>
+                </td>
+                <td>
+                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status"
+                    class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-semibold" style="border-color:var(--border);background:var(--bg2);color:var(--fg)">
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                  </select>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────── PRODUCTS ──────────── -->
+  <div x-show="activeTab==='products'" class="animate-fade-in">
+    <div class="grid lg:grid-cols-2 gap-6">
+      <!-- ADD/EDIT FORM -->
+      <div class="dd-card p-5">
+        <p class="font-bold text-base mb-4 flex items-center gap-2" style="color:var(--fg)">
+          <i class="fa-solid fa-plus-circle" style="color:var(--accent)"></i>
+          <span x-text="editingProd?'পণ্য সম্পাদনা':'নতুন পণ্য যোগ করুন'"></span>
+        </p>
+        <div class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="dd-label">পণ্যের নাম *</label>
+              <input class="dd-input" x-model="pForm.name" placeholder="পণ্যের নাম লিখুন"/>
+            </div>
+            <div>
+              <label class="dd-label">মূল্য (৳) *</label>
+              <input class="dd-input" type="number" x-model.number="pForm.price" placeholder="০"/>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="dd-label">ক্যাটাগরি</label>
+              <div class="relative">
+                <select class="dd-input pr-8" x-model="pForm.cat">
+                  <option value="">বেছে নিন</option>
+                  <template x-for="c in categories" :key="c"><option :value="c" x-text="c"></option></template>
+                </select>
+                <i class="fa-solid fa-chevron-down absolute right-3 top-1/2 -translate-y-1/2 text-xs pointer-events-none" style="color:var(--fg3)"></i>
+              </div>
+            </div>
+            <div>
+              <label class="dd-label">ব্যাজ (ঐচ্ছিক)</label>
+              <input class="dd-input" x-model="pForm.badge" placeholder="নতুন / হট / ৩০% ছাড়"/>
+            </div>
+          </div>
+          <div>
+            <label class="dd-label">সাইজ (কমা দিয়ে আলাদা করুন)</label>
+            <input class="dd-input" x-model="pForm.sizesRaw" placeholder="S, M, L, XL, XXL অথবা 40, 42, 44"/>
+          </div>
+          <div>
+            <label class="dd-label">বিবরণ</label>
+            <textarea class="dd-input resize-none" rows="3" x-model="pForm.desc" placeholder="পণ্যের বিস্তারিত বিবরণ..."></textarea>
+          </div>
+
+          <!-- IMAGE UPLOAD SECTION -->
+          <div>
+            <label class="dd-label">পণ্যের ছবি</label>
+            <!-- Tab: Upload or URL -->
+            <div class="flex gap-2 mb-3">
+              <button @click="imgMode='upload'" class="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                :style="imgMode==='upload'?'background:var(--accent);color:#fff':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'">
+                <i class="fa-solid fa-upload mr-1"></i> গ্যালারি থেকে
+              </button>
+              <button @click="imgMode='url'" class="text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                :style="imgMode==='url'?'background:var(--accent);color:#fff':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'">
+                <i class="fa-solid fa-link mr-1"></i> URL দিন
+              </button>
+            </div>
+
+            <!-- Upload Mode -->
+            <div x-show="imgMode==='upload'">
+              <label class="img-drop block" @dragover.prevent="$el.classList.add('drag')" @dragleave="$el.classList.remove('drag')" @drop.prevent="handleDrop($event)">
+                <input type="file" accept="image/*" multiple class="hidden" @change="handleFiles($event)"/>
+                <i class="fa-solid fa-cloud-arrow-up text-3xl mb-2" style="color:var(--fg3)"></i>
+                <p class="text-sm font-semibold" style="color:var(--fg2)">ক্লিক করুন বা ছবি টেনে আনুন</p>
+                <p class="text-xs mt-1" style="color:var(--fg3)">JPG, PNG, WebP — একাধিক ছবি সিলেক্ট করতে পারবেন</p>
+              </label>
+              <!-- Upload Progress -->
+              <template x-if="uploadProgress.length>0">
+                <div class="mt-3 space-y-2">
+                  <template x-for="(p,i) in uploadProgress" :key="i">
+                    <div>
+                      <div class="flex justify-between text-xs mb-1">
+                        <span style="color:var(--fg2)" x-text="'ছবি '+(i+1)"></span>
+                        <span class="font-mono font-bold" style="color:var(--accent)" x-text="p+'%'"></span>
+                      </div>
+                      <div class="prog-bar"><div class="prog-bar-fill" :style="'width:'+p+'%'"></div></div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+
+            <!-- URL Mode -->
+            <div x-show="imgMode==='url'" class="space-y-2">
+              <template x-for="(url,i) in pForm.imageUrls" :key="i">
+                <div class="flex gap-2">
+                  <input class="dd-input flex-1" x-model="pForm.imageUrls[i]" :placeholder="'ছবির URL '+(i+1)"/>
+                  <button @click="pForm.imageUrls.splice(i,1)" class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                  </button>
+                </div>
+              </template>
+              <button @click="pForm.imageUrls.push('')" class="text-xs font-bold px-3 py-2 rounded-xl" style="background:var(--bg2);color:var(--accent);border:1px dashed var(--accent);cursor:pointer;width:100%">
+                <i class="fa-solid fa-plus mr-1"></i> আরো URL যোগ করুন
+              </button>
+            </div>
+
+            <!-- Image Previews -->
+            <div x-show="pForm.images.length>0" class="img-preview-grid mt-3">
+              <template x-for="(img,i) in pForm.images" :key="i">
+                <div class="img-preview-item">
+                  <img :src="img" onerror="this.src='https://placehold.co/80x80/eee/aaa?text=IMG'"/>
+                  <button @click="pForm.images.splice(i,1)" class="del-btn"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Save Buttons -->
+          <div class="flex gap-2 pt-2">
+            <button @click="saveProd()" :disabled="saving" class="btn-primary flex-1">
+              <span x-show="saving"><i class="fa-solid fa-spinner fa-spin mr-1"></i> সেভ হচ্ছে...</span>
+              <span x-show="!saving"><i class="fa-solid fa-save mr-1"></i> পণ্য সেভ করুন</span>
+            </button>
+            <button x-show="editingProd" @click="cancelEdit()" class="btn-ghost">বাতিল</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PRODUCT LIST -->
+      <div>
+        <!-- Search -->
+        <div class="relative mb-4">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
+          <input x-model="prodSearch" class="dd-input pl-9" placeholder="পণ্য খুঁজুন..."/>
+        </div>
+        <div class="space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
+          <template x-for="p in filteredProds" :key="p.fbKey">
+            <div class="dd-card-sm p-3 flex items-center gap-3">
+              <img :src="p.images?.[0]||p.img||''" class="w-12 h-12 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)"
+                   onerror="this.src='https://placehold.co/48x48/eee/aaa?text=IMG'"/>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold truncate" style="color:var(--fg)" x-text="p.name"></p>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <p class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+p.price.toLocaleString()"></p>
+                  <span x-show="p.cat" class="text-xs px-1.5 py-0.5 rounded-md" style="background:var(--bg2);color:var(--fg3)" x-text="p.cat"></span>
+                  <span x-show="p.badge" class="text-xs px-1.5 py-0.5 rounded-md" style="background:var(--accentL);color:var(--accent)" x-text="p.badge"></span>
+                </div>
+              </div>
+              <div class="flex gap-1.5 flex-shrink-0">
+                <button @click="startEdit(p)" class="w-8 h-8 rounded-xl flex items-center justify-center text-xs" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer">
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+                <button @click="deleteProd(p.fbKey)" class="w-8 h-8 rounded-xl flex items-center justify-center text-xs" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+          <div x-show="fbProducts.length===0" class="text-center py-12" style="color:var(--fg3)">
+            <i class="fa-solid fa-box-open text-4xl mb-3 opacity-30"></i>
+            <p class="text-sm">কোনো পণ্য নেই</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────── ORDERS ──────────── -->
+  <div x-show="activeTab==='orders'" class="animate-fade-in">
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <div class="pill-scroll flex-1">
+        <template x-for="s in ['সব','পেন্ডিং','প্রসেসিং','ডেলিভার্ড','বাতিল']" :key="s">
+          <button @click="oFilt=s"
+            :style="oFilt===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'"
+            class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s">
+          </button>
+        </template>
+      </div>
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
+        <input x-model="orderSearch" class="dd-input pl-8 py-2 text-xs" style="width:180px" placeholder="নাম / ফোন / আইডি..."/>
+      </div>
+    </div>
+
+    <div class="dd-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr>
+            <th>আইডি</th><th>গ্রাহক</th><th>জেলা</th><th>পণ্য</th><th>মোট</th><th>পেমেন্ট</th><th>স্ট্যাটাস</th><th>এক্সন</th>
+          </tr></thead>
+          <tbody>
+            <template x-for="o in filteredOrders" :key="o.fbKey">
+              <tr>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span></td>
+                <td>
+                  <p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p>
+                  <p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p>
+                </td>
+                <td class="text-xs" style="color:var(--fg2)" x-text="o.district||''"></td>
+                <td>
+                  <p class="text-xs" style="color:var(--fg2)" x-text="(o.items||[]).length+'টি পণ্য'"></p>
+                  <p class="text-xs" style="color:var(--fg3)" x-text="(o.items||[]).map(i=>i.name).join(', ').substring(0,30)+(((o.items||[]).map(i=>i.name).join(', ').length>30)?'...':'')"></p>
+                </td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+o.total.toLocaleString()"></span></td>
+                <td class="text-xs" style="color:var(--fg2)" x-text="o.payMethod||''"></td>
+                <td>
+                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status"
+                    class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-bold"
+                    :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}"
+                    style="border:none">
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                  </select>
+                </td>
+                <td>
+                  <div class="flex gap-1.5">
+                    <button @click="viewOrder=o;orderDetailOpen=true" class="text-xs px-2 py-1.5 rounded-lg font-bold" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer">
+                      <i class="fa-solid fa-eye"></i>
+                    </button>
+                    <button @click="deleteOrder(o.fbKey)" class="text-xs px-2 py-1.5 rounded-lg font-bold" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="filteredOrders.length===0" class="text-center py-12" style="color:var(--fg3)">
+        <i class="fa-solid fa-receipt text-4xl mb-3 opacity-30"></i>
+        <p class="text-sm">কোনো অর্ডার নেই</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────── BANNERS ──────────── -->
+  <div x-show="activeTab==='banners'" class="animate-fade-in">
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <template x-for="(b,i) in adminBanners" :key="i">
+        <div class="dd-card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="dd-label">ব্যানার <span x-text="i+1"></span></p>
+            <div class="w-6 h-6 rounded-lg flex items-center justify-center" style="background:var(--accentL)">
+              <i class="fa-solid fa-image text-xs" style="color:var(--accent)"></i>
+            </div>
+          </div>
+          <div>
+            <label class="dd-label">শিরোনাম</label>
+            <input class="dd-input" x-model="adminBanners[i].title" placeholder="ব্যানার শিরোনাম"/>
+          </div>
+          <div>
+            <label class="dd-label">সাবটাইটেল</label>
+            <input class="dd-input" x-model="adminBanners[i].sub" placeholder="সংক্ষিপ্ত বিবরণ"/>
+          </div>
+          <div>
+            <label class="dd-label">ব্যাকগ্রাউন্ড ইমেজ URL</label>
+            <input class="dd-input" x-model="adminBanners[i].img" placeholder="https://..."/>
+          </div>
+          <!-- Preview -->
+          <div class="rounded-xl overflow-hidden" style="height:80px;background:linear-gradient(135deg,#0F0D0B,#2D1A10);position:relative">
+            <div x-show="adminBanners[i].img" class="absolute inset-0 bg-cover bg-center opacity-20" :style="'background-image:url('+adminBanners[i].img+')'"></div>
+            <div class="absolute inset-0 flex items-center px-3 z-10">
+              <div>
+                <p class="font-bold text-xs text-white" x-text="adminBanners[i].title||'শিরোনাম'"></p>
+                <p class="text-white opacity-50 text-xs mt-0.5" x-text="adminBanners[i].sub||'সাবটাইটেল'"></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <div class="dd-card p-4 flex items-center justify-center cursor-pointer hover:border-accent" style="border:2px dashed var(--border);min-height:200px" @click="adminBanners.push({title:'',sub:'',img:''})">
+        <div class="text-center" style="color:var(--fg3)">
+          <i class="fa-solid fa-plus text-2xl mb-2"></i>
+          <p class="text-xs font-bold">নতুন ব্যানার</p>
+        </div>
+      </div>
+    </div>
+    <button @click="saveBanners()" class="btn-primary mt-5">
+      <i class="fa-solid fa-save mr-2"></i> সব ব্যানার সেভ করুন
+    </button>
+  </div>
+
+  <!-- ──────────── THEME ──────────── -->
+  <div x-show="activeTab==='theme'" class="animate-fade-in">
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+      <template x-for="(th,key) in themes" :key="key">
+        <button @click="setTheme(key)"
+          class="dd-card p-5 text-left cursor-pointer transition-all hover:scale-105 active:scale-100 relative overflow-hidden"
+          :style="activeTheme===key?'border-color:var(--accent);border-width:2px':''"
+          style="border:none;background:var(--card)">
+          <div class="w-10 h-10 rounded-2xl mb-3 flex items-center justify-center" :style="'background:'+th.accent">
+            <i class="fa-solid fa-palette text-white text-sm"></i>
+          </div>
+          <p class="font-bold text-sm mb-1" style="color:var(--fg)" x-text="th.label"></p>
+          <div class="flex gap-1.5">
+            <div class="w-5 h-5 rounded-md" :style="'background:'+th.preview"></div>
+            <div class="w-5 h-5 rounded-md" :style="'background:'+th.accent"></div>
+            <div class="w-5 h-5 rounded-md" :style="'background:'+th.fg"></div>
+          </div>
+          <div x-show="activeTheme===key" class="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold" :style="'background:'+th.accent">✓</div>
+        </button>
+      </template>
+    </div>
+    <p class="text-xs" style="color:var(--fg3)">থিম পরিবর্তন Firebase-এ সেভ হবে এবং User Website-এ তাৎক্ষণিক প্রভাব পড়বে।</p>
+  </div>
+
+  <!-- ──────────── SETTINGS ──────────── -->
+  <div x-show="activeTab==='settings'" class="animate-fade-in">
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Site Info -->
+      <div class="dd-card p-5 space-y-4">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)">
+          <i class="fa-solid fa-gear" style="color:var(--accent)"></i> সাইটের তথ্য
+        </p>
+        <div><label class="dd-label">সাইটের নাম</label><input class="dd-input" x-model="settings.siteName" placeholder="Daily Deal"/></div>
+        <div><label class="dd-label">Facebook পেজ লিংক</label><input class="dd-input" x-model="settings.fbLink" placeholder="https://facebook.com/..."/></div>
+        <div><label class="dd-label">রিসেলার লিংক (Telegram/WhatsApp)</label><input class="dd-input" x-model="settings.resellerLink" placeholder="https://t.me/..."/></div>
+      </div>
+      <!-- Payment Info -->
+      <div class="dd-card p-5 space-y-4">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)">
+          <i class="fa-solid fa-credit-card" style="color:var(--accent)"></i> পেমেন্ট তথ্য
+        </p>
+        <div><label class="dd-label">bKash নম্বর</label><input class="dd-input" x-model="settings.bkash" placeholder="01XXXXXXXXX"/></div>
+        <div><label class="dd-label">Nagad নম্বর</label><input class="dd-input" x-model="settings.nagad" placeholder="01XXXXXXXXX"/></div>
+        <div><label class="dd-label">WhatsApp নম্বর (country code সহ)</label><input class="dd-input" x-model="settings.wa" placeholder="880XXXXXXXXX"/></div>
+      </div>
+    </div>
+    <div class="mt-4 flex gap-3">
+      <button @click="saveSettings()" class="btn-primary">
+        <i class="fa-solid fa-save mr-2"></i> সেটিংস সেভ করুন
+      </button>
+      <div class="dd-card-sm px-4 py-3 flex items-center gap-2" style="background:var(--accentL)">
+        <i class="fa-solid fa-circle-check text-xs" style="color:var(--accent)"></i>
+        <span class="text-xs font-bold" style="color:var(--accent)">Firebase-এ তাৎক্ষণিক সিঙ্ক</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- ORDER DETAIL MODAL -->
+<div x-show="orderDetailOpen" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center p-4" style="background:rgba(0,0,0,.7);backdrop-filter:blur(6px)">
+  <div class="dd-card p-6 w-full max-w-md animate-zoom-in max-h-[90vh] overflow-y-auto" x-show="viewOrder">
+    <div class="flex items-center justify-between mb-4">
+      <p class="font-display text-xl" style="color:var(--fg)">অর্ডার বিবরণ</p>
+      <button @click="orderDetailOpen=false" class="btn-ghost w-8 h-8 p-0 flex items-center justify-center rounded-xl">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <template x-if="viewOrder">
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="dd-card-sm p-3">
+            <p class="dd-label">অর্ডার আইডি</p>
+            <p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p>
+          </div>
+          <div class="dd-card-sm p-3">
+            <p class="dd-label">স্ট্যাটাস</p>
+            <span class="text-xs font-bold px-2 py-1 rounded-full"
+              :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}"
+              x-text="viewOrder.status"></span>
+          </div>
+          <div class="dd-card-sm p-3">
+            <p class="dd-label">গ্রাহক</p>
+            <p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.customerName"></p>
+            <p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.phone"></p>
+          </div>
+          <div class="dd-card-sm p-3">
+            <p class="dd-label">ঠিকানা</p>
+            <p class="text-xs font-semibold" style="color:var(--fg)" x-text="(viewOrder.district||'')+(viewOrder.division?', '+viewOrder.division:'')"></p>
+            <p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.address||''"></p>
+          </div>
+        </div>
+        <div class="dd-card-sm p-3">
+          <p class="dd-label mb-2">পণ্য তালিকা</p>
+          <template x-for="it in viewOrder.items||[]" :key="it.id">
+            <div class="flex items-center gap-2 py-2" style="border-bottom:1px dashed var(--border)">
+              <img :src="it.images?.[0]||it.img||''" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)"/>
+              <div class="flex-1">
+                <p class="text-xs font-semibold" style="color:var(--fg)" x-text="it.name"></p>
+                <p class="text-xs" style="color:var(--fg3)" x-text="'×'+it.qty+(it.size?' · '+it.size:'')"></p>
+              </div>
+              <p class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(it.price*it.qty).toLocaleString()"></p>
+            </div>
+          </template>
+          <div class="flex justify-between pt-2 font-bold text-sm">
+            <span style="color:var(--fg)">মোট</span>
+            <span style="color:var(--accent)" x-text="'৳'+(viewOrder.total||0).toLocaleString()"></span>
+          </div>
+        </div>
+        <div class="dd-card-sm p-3">
+          <p class="dd-label">পেমেন্ট</p>
+          <p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.payMethod||''"></p>
+          <p x-show="viewOrder.trxId" class="text-xs mt-0.5 font-mono" style="color:var(--fg3)" x-text="'TrxID: '+(viewOrder.trxId||'')"></p>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<!-- ═══════════ TOAST ═══════════ -->
+<div class="toast-wrap" x-show="toast.show" x-cloak>
+  <div class="text-white text-sm font-bold px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-slide-up"
+    :style="toast.type==='success'?'background:#059669':toast.type==='error'?'background:#DC2626':'background:#374151'">
+    <i :class="toast.type==='success'?'fa-solid fa-circle-check':'fa-solid fa-circle-xmark'" class="text-base"></i>
+    <span x-text="toast.msg"></span>
+  </div>
+</div>
+
+<style>
+@keyframes zoomIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+.animate-zoom-in{animation:zoomIn .3s cubic-bezier(.22,.68,0,1.2) both}
+</style>
+
+<!-- ═══════════ ALPINE JS ═══════════ -->
+<script>
+function Admin(){return{
+  // STATE
+  activeTab:'dashboard',activeTheme:'light',
+  sidebarOpen:false,saving:false,
+  fbProducts:[],fbOrders:[],
+  editingProd:null,prodSearch:'',orderSearch:'',oFilt:'সব',
+  orderDetailOpen:false,viewOrder:null,
+  imgMode:'upload',uploadProgress:[],
+  settings:{siteName:'Daily Deal',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:''},
+  banners:[{title:'আজকের সেরা অফার',sub:'সীমিত সময়ের বিশেষ ছাড়',img:''},{title:'নতুন কালেকশন এসেছে',sub:'সেরা ব্র্যান্ডের পণ্য',img:''},{title:'ফ্রি ডেলিভারি অফার',sub:'ঢাকায় মাত্র ৳৮০',img:''}],
+  adminBanners:[],
+  pForm:{name:'',price:0,cat:'',sizesRaw:'',desc:'',badge:'',images:[],imageUrls:['']},
+  toast:{show:false,msg:'',type:'success'},
+
+  // STATIC
+  categories:['বোরকা','ইলেকট্রনিক্স','গ্যাজেট','কসমেটিক্স','ফ্যাশন','অফার'],
+  navItems:[
+    {id:'dashboard',icon:'fa-solid fa-chart-line',label:'ড্যাশবোর্ড'},
+    {id:'products',icon:'fa-solid fa-box',label:'পণ্য ব্যবস্থাপনা'},
+    {id:'orders',icon:'fa-solid fa-receipt',label:'অর্ডার'},
+    {id:'banners',icon:'fa-solid fa-images',label:'ব্যানার'},
+    {id:'theme',icon:'fa-solid fa-palette',label:'থিম কন্ট্রোল'},
+    {id:'settings',icon:'fa-solid fa-gear',label:'সেটিংস'},
+  ],
+  themes:{
+    light:{label:'লাইট মোড',preview:'#F8F5F0',accent:'#E8320A',fg:'#0F0D0A'},
+    dark:{label:'ডার্ক মোড',preview:'#09090E',accent:'#7C3AED',fg:'#EEEEFF'},
+    blue:{label:'ব্লু থিম',preview:'#EFF6FF',accent:'#1D4ED8',fg:'#0A1628'},
+    gold:{label:'গোল্ড থিম',preview:'#FDFAF3',accent:'#B8860B',fg:'#1A1200'},
+    rose:{label:'রোজ থিম',preview:'#FFF5F7',accent:'#E8196A',fg:'#1A0510'},
+    green:{label:'গ্রিন থিম',preview:'#F0FDF4',accent:'#16A34A',fg:'#032010'},
+  },
+
+  // COMPUTED
+  get filteredProds(){return this.fbProducts.filter(p=>p.name?.toLowerCase().includes(this.prodSearch.toLowerCase()))},
+  get filteredOrders(){
+    return this.fbOrders
+      .filter(o=>this.oFilt==='সব'||o.status===this.oFilt)
+      .filter(o=>!this.orderSearch||
+        o.customerName?.includes(this.orderSearch)||
+        o.phone?.includes(this.orderSearch)||
+        String(o.id).includes(this.orderSearch)
+      );
+  },
+  get pendingCount(){return this.fbOrders.filter(o=>o.status==='পেন্ডিং').length},
+  get totalRevenue(){return this.fbOrders.filter(o=>o.status==='ডেলিভার্ড').reduce((s,o)=>s+o.total,0)},
+  get orderStats(){
+    const total=this.fbOrders.length||1;
+    return[
+      {label:'পেন্ডিং',count:this.fbOrders.filter(o=>o.status==='পেন্ডিং').length,color:'#EA580C'},
+      {label:'প্রসেসিং',count:this.fbOrders.filter(o=>o.status==='প্রসেসিং').length,color:'#2563EB'},
+      {label:'ডেলিভার্ড',count:this.fbOrders.filter(o=>o.status==='ডেলিভার্ড').length,color:'#16A34A'},
+      {label:'বাতিল',count:this.fbOrders.filter(o=>o.status==='বাতিল').length,color:'#DC2626'},
+    ].map(s=>({...s,pct:Math.round(s.count/total*100)}));
+  },
+
+  // BOOT
+  boot(){
+    const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
+    this.adminBanners=JSON.parse(JSON.stringify(this.banners));
+    window.addEventListener('firebase-ready',()=>{
+      window.$db.listenProducts(prods=>this.fbProducts=prods);
+      window.$db.listenOrders(orders=>this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)));
+      window.$db.listenSettings(s=>{
+        if(s.settings)Object.assign(this.settings,s.settings);
+        if(s.banners&&s.banners.length){this.banners=s.banners;this.adminBanners=JSON.parse(JSON.stringify(s.banners));}
+        if(s.theme){this.activeTheme=s.theme;localStorage.setItem('dd_admin_theme',s.theme)}
+      });
+    },{once:true});
+  },
+
+  // IMAGE HANDLING
+  handleFiles(e){Array.from(e.target.files).forEach(f=>this.uploadFile(f))},
+  handleDrop(e){Array.from(e.dataTransfer.files).filter(f=>f.type.startsWith('image/')).forEach(f=>this.uploadFile(f))},
+  async uploadFile(file){
+    const idx=this.uploadProgress.length;
+    this.uploadProgress.push(0);
+    try{
+      const path=`products/${Date.now()}_${file.name}`;
+      const url=await window.$db.uploadImage(file,path,(p)=>this.uploadProgress[idx]=p);
+      this.pForm.images.push(url);
+      this.uploadProgress.splice(idx,1);
+      this.showToast('ছবি আপলোড সফল!','success');
+    }catch(e){
+      this.uploadProgress.splice(idx,1);
+      // Fallback: use FileReader for local preview
+      const r=new FileReader();
+      r.onload=ev=>{this.pForm.images.push(ev.target.result)};
+      r.readAsDataURL(file);
+      this.showToast('Firebase Storage ব্যর্থ, লোকাল প্রিভিউ ব্যবহার করা হচ্ছে','error');
+    }
+  },
+
+  // PRODUCT ACTIONS
+  startEdit(p){
+    this.editingProd=p;
+    this.pForm={
+      name:p.name,price:p.price,cat:p.cat||'',sizesRaw:(p.sizes||[]).join(', '),
+      desc:p.desc||'',badge:p.badge||'',images:[...(p.images||[p.img||''].filter(Boolean))],imageUrls:['']
+    };
+    this.activeTab='products';
+    window.scrollTo(0,0);
+  },
+  cancelEdit(){
+    this.editingProd=null;
+    this.pForm={name:'',price:0,cat:'',sizesRaw:'',desc:'',badge:'',images:[],imageUrls:['']};
+    this.uploadProgress=[];
+  },
+  async saveProd(){
+    if(!this.pForm.name||!this.pForm.price)return this.showToast('নাম ও মূল্য দিন!','error');
+    this.saving=true;
+    // Merge URL images
+    const urlImages=this.pForm.imageUrls.filter(u=>u.trim());
+    const allImages=[...this.pForm.images,...urlImages];
+    const data={
+      name:this.pForm.name,price:Number(this.pForm.price),cat:this.pForm.cat,
+      images:allImages,img:allImages[0]||'',
+      sizes:this.pForm.sizesRaw.split(',').map(s=>s.trim()).filter(Boolean),
+      desc:this.pForm.desc,badge:this.pForm.badge,
+      updatedAt:new Date().toISOString(),
+    };
+    try{
+      await window.$db.saveProduct(data,this.editingProd?.fbKey||null);
+      this.showToast('পণ্য সেভ হয়েছে!','success');
+      this.cancelEdit();
+    }catch{this.showToast('সেভ ব্যর্থ!','error')}
+    this.saving=false;
+  },
+  async deleteProd(key){
+    if(!confirm('পণ্য মুছবেন?'))return;
+    try{await window.$db.deleteProduct(key);this.showToast('পণ্য মুছা হয়েছে!','success')}
+    catch{this.showToast('মুছতে ব্যর্থ!','error')}
+  },
+
+  // ORDER ACTIONS
+  async updateOrderStatus(key,status){
+    try{await window.$db.updateOrder(key,{status});this.showToast('স্ট্যাটাস আপডেট হয়েছে!','success')}
+    catch{this.showToast('আপডেট ব্যর্থ!','error')}
+  },
+  async deleteOrder(key){
+    if(!confirm('এই অর্ডার মুছবেন?'))return;
+    try{await window.$db.deleteOrder(key);this.showToast('অর্ডার মুছা হয়েছে!','success')}
+    catch{this.showToast('মুছতে ব্যর্থ!','error')}
+  },
+
+  // BANNERS
+  saveBanners(){
+    this.banners=JSON.parse(JSON.stringify(this.adminBanners));
+    if(window.$db)window.$db.saveSettings({theme:this.activeTheme,settings:this.settings,banners:this.banners});
+    this.showToast('ব্যানার সেভ হয়েছে!','success');
+  },
+
+  // THEME
+  setTheme(k){
+    this.activeTheme=k;
+    localStorage.setItem('dd_admin_theme',k);
+    if(window.$db)window.$db.saveSettings({theme:k,settings:this.settings,banners:this.banners});
+    this.showToast('থিম পরিবর্তন হয়েছে! User Website-এও পরিবর্তন হবে।','success');
+  },
+
+  // SETTINGS
+  async saveSettings(){
+    try{
+      await window.$db.saveSettings({theme:this.activeTheme,settings:this.settings,banners:this.banners});
+      this.showToast('সেটিংস সেভ হয়েছে!','success');
+    }catch{this.showToast('সেভ ব্যর্থ!','error')}
+  },
+
+  showToast(msg,type='success'){
+    this.toast={show:true,msg,type};
+    setTimeout(()=>this.toast.show=false,3500);
+  },
+}}
+</script>
+</body>
+</html>
