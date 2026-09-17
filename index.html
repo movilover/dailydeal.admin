@@ -78,6 +78,16 @@ window.$db={
   listenSettings:(cb)=>onValue(ref(db,'settings'),s=>cb(s.val()||{}),{onlyOnce:false}),
   // Users (count only)
   listenUsers:(cb)=>onValue(ref(db,'users'),s=>{const v=s.val();cb(v?Object.keys(v).length:0)},{onlyOnce:false}),
+  // Resellers (NEW — MLM/Reselling system, keyed by phone number)
+  saveReseller:async(data,phone)=>{await update(ref(db,'resellers/'+phone),data);return phone},
+  deleteReseller:async(phone)=>remove(ref(db,'resellers/'+phone)),
+  listenResellers:(cb)=>onValue(ref(db,'resellers'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  // Withdrawal requests (NEW)
+  saveWithdrawal:async(data,id)=>{if(id){await update(ref(db,'withdrawals/'+id),data);return id;}const r=push(ref(db,'withdrawals'));await set(r,data);return r.key},
+  listenWithdrawals:(cb)=>onValue(ref(db,'withdrawals'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  // Wallet transaction ledger (NEW — bonus/commission/profit/withdrawal history)
+  pushWalletTx:async(data)=>{const r=push(ref(db,'walletTx'));await set(r,data);return r.key},
+  listenWalletTx:(cb)=>onValue(ref(db,'walletTx'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Notifications
   saveNotification:async(data,id)=>{if(id){await update(ref(db,'notifications/'+id),data);return id;}const r=push(ref(db,'notifications'));await set(r,data);return r.key},
   deleteNotification:async(id)=>remove(ref(db,'notifications/'+id)),
@@ -569,6 +579,16 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
       <span x-show="pendingCount>0" x-text="pendingCount" class="ml-auto text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" style="background:var(--accent);color:#fff;font-size:9px"></span>
     </button>
 
+    <p class="nav-group-label">রিসেলিং সিস্টেম</p>
+    <button @click="activeTab='resellers';sidebarOpen=false" class="nav-item" :class="activeTab==='resellers'?'active':''">
+      <i class="fa-solid fa-store w-4 text-center text-sm"></i><span>রিসেলার ম্যানেজমেন্ট</span>
+      <span x-show="pendingResellers.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingResellers.length"></span>
+    </button>
+    <button @click="activeTab='withdrawals';sidebarOpen=false" class="nav-item" :class="activeTab==='withdrawals'?'active':''">
+      <i class="fa-solid fa-money-bill-transfer w-4 text-center text-sm"></i><span>উইথড্র রিকোয়েস্ট</span>
+      <span x-show="pendingWithdrawals.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingWithdrawals.length"></span>
+    </button>
+
     <p class="nav-group-label">কনটেন্ট</p>
     <button @click="activeTab='notifications';sidebarOpen=false" class="nav-item" :class="activeTab==='notifications'?'active':''"><i class="fa-solid fa-bell w-4 text-center text-sm"></i><span>নোটিফিকেশন</span></button>
     <button @click="activeTab='buttons';sidebarOpen=false" class="nav-item" :class="activeTab==='buttons'?'active':''"><i class="fa-solid fa-hand-pointer w-4 text-center text-sm"></i><span>কাস্টম বাটন</span></button>
@@ -883,6 +903,31 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
               <div><label class="dd-label">প্রোমো কোড</label><input class="dd-input" x-model="up.promoCode" placeholder="SAVE10"/></div>
               <div><label class="dd-label">প্রোমো বিবরণ</label><input class="dd-input" x-model="up.promoDesc" placeholder="১০% ছাড় পান"/></div>
             </div>
+          </div>
+
+          <div class="rounded-xl p-3.5" style="background:#FFFBEB;border:1px dashed #B8860B">
+            <label class="flex items-center gap-3 cursor-pointer mb-3">
+              <span class="tog"><input type="checkbox" x-model="up.resellEnabled"/><span class="tog-sl"></span></span>
+              <span>
+                <p class="text-sm font-bold" style="color:#8A6D00"><i class="fa-solid fa-store mr-1.5"></i>রিসেলিং এর জন্য উন্মুক্ত করুন</p>
+                <p class="text-xs" style="color:var(--fg3)">চালু করলে রিসেলাররা এই পণ্যটি কম দামে (রিসেলার প্রাইস) দেখতে ও বিক্রি করতে পারবে</p>
+              </span>
+            </label>
+            <template x-if="up.resellEnabled">
+              <div class="space-y-3">
+                <div>
+                  <label class="dd-label">রিসেলার প্রাইস (৳) — রিসেলার এই দামে কিনবে</label>
+                  <input class="dd-input" type="number" x-model.number="up.resellerPrice" placeholder="0" min="0"/>
+                </div>
+                <p class="dd-label !mb-1 !mt-1">MLM কমিশন (প্রতি সেলে, জেনারেশন অনুযায়ী ৳)</p>
+                <div class="grid grid-cols-3 gap-2">
+                  <div><label class="dd-label">১ম জেনারেশন</label><input class="dd-input" type="number" step="0.01" x-model.number="up.genCommission1" placeholder="1.00" min="0"/></div>
+                  <div><label class="dd-label">২য় জেনারেশন</label><input class="dd-input" type="number" step="0.01" x-model.number="up.genCommission2" placeholder="1.50" min="0"/></div>
+                  <div><label class="dd-label">৩য় জেনারেশন</label><input class="dd-input" type="number" step="0.01" x-model.number="up.genCommission3" placeholder="3.00" min="0"/></div>
+                </div>
+                <p class="text-xs" style="color:var(--fg3)">যে রিসেলার সরাসরি বিক্রি করবে তার উপরে থাকা ১ম/২য়/৩য় লেভেলের আপলাইন রেফারারকে এই টাকা কমিশন হিসেবে দেওয়া হবে (অর্ডার ডেলিভার্ড হলে)।</p>
+              </div>
+            </template>
           </div>
 
           <div class="rounded-xl p-3.5 space-y-3" style="background:var(--bg2);border:1px solid var(--border)">
@@ -1296,6 +1341,109 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     </div>
   </div>
 
+  <!-- ══ RESELLER MANAGEMENT (NEW) ══ -->
+  <div x-show="activeTab==='resellers'" x-cloak class="animate-fade-in">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট রিসেলার</p><p class="font-display text-3xl" style="color:var(--fg)" x-text="approvedResellers.length"></p><i class="fa-solid fa-store absolute bottom-4 right-4 text-2xl opacity-10" style="color:var(--accent)"></i></div>
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">পেন্ডিং আবেদন</p><p class="font-display text-3xl" style="color:#EA580C" x-text="pendingResellers.length"></p><i class="fa-solid fa-hourglass-half absolute bottom-4 right-4 text-2xl opacity-10" style="color:#EA580C"></i></div>
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট ওয়ালেট ব্যালেন্স</p><p class="font-display text-2xl" style="color:var(--fg)" x-text="'৳'+totalResellerWallet.toLocaleString()"></p><i class="fa-solid fa-wallet absolute bottom-4 right-4 text-2xl opacity-10" style="color:var(--accent)"></i></div>
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">সাইনআপ বোনাস (৳)</p>
+        <div class="flex gap-1.5 items-center">
+          <input type="number" x-model.number="settings.resellSignupBonus" class="dd-input py-1.5 text-sm" style="padding:6px 8px"/>
+          <button @click="saveSettings()" class="text-xs px-2.5 py-2 rounded-lg font-bold text-white flex-shrink-0" style="background:var(--accent);border:none;cursor:pointer"><i class="fa-solid fa-check"></i></button>
+        </div>
+        <p class="text-xs mt-1.5" style="color:var(--fg3)">প্রমো কোড দিয়ে রেজিস্ট্রেশন করলে অ্যাপ্রুভের সময় এই বোনাস পাবে</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <div class="pill-scroll flex-1">
+        <template x-for="s in ['সব','pending','approved','blocked','rejected']" :key="s">
+          <button @click="resellerStatusF=s" :style="resellerStatusF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s==='সব'?'সব':s==='pending'?'পেন্ডিং':s==='approved'?'অ্যাপ্রুভড':s==='blocked'?'ব্লকড':'বাতিল'"></button>
+        </template>
+      </div>
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
+        <input x-model="resellerSearch" class="dd-input pl-8 py-2 text-xs" style="width:200px" placeholder="নাম / ফোন / কোড..."/>
+      </div>
+    </div>
+
+    <div class="dd-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>নাম / ফোন</th><th>শপের নাম</th><th>রেফার করেছে</th><th>নিজস্ব কোড</th><th>ওয়ালেট</th><th>স্ট্যাটাস</th><th>এক্সন</th></tr></thead>
+          <tbody>
+            <template x-for="r in filteredResellers" :key="r.fbKey">
+              <tr>
+                <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="r.name||'—'"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="r.fbKey"></p></td>
+                <td class="text-xs font-semibold" style="color:var(--fg)" x-text="r.shopName||'—'"></td>
+                <td class="text-xs" style="color:var(--fg2)" x-text="r.referredBy?getResellerName(r.referredBy):'— (ডিরেক্ট)'"></td>
+                <td><span class="font-mono text-xs font-bold px-2 py-1 rounded-lg" style="background:var(--accentL);color:var(--accent)" x-text="r.myReferralCode||'—'"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span></td>
+                <td>
+                  <span class="text-xs font-bold px-2 py-1 rounded-full" :style="r.status==='pending'?'background:#FFF7ED;color:#C2410C':r.status==='approved'?'background:#F0FDF4;color:#15803D':r.status==='blocked'?'background:#FEF2F2;color:#B91C1C':'background:#F3F4F6;color:#6B7280'" x-text="r.status==='pending'?'পেন্ডিং':r.status==='approved'?'অ্যাপ্রুভড':r.status==='blocked'?'ব্লকড':'বাতিল'"></span>
+                </td>
+                <td>
+                  <div class="flex gap-1.5 flex-wrap">
+                    <button x-show="r.status==='pending'" @click="approveReseller(r)" class="btn-success !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-check"></i> অ্যাপ্রুভ</button>
+                    <button x-show="r.status==='pending'" @click="rejectReseller(r)" class="btn-danger !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-xmark"></i> বাতিল</button>
+                    <button x-show="r.status==='approved'||r.status==='blocked'" @click="toggleBlockReseller(r)" class="btn-warn !text-xs !py-1.5 !px-2.5" x-text="r.status==='blocked'?'আনব্লক':'ব্লক করুন'"></button>
+                    <button @click="deleteReseller(r)" class="btn-ghost !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-trash"></i></button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="filteredResellers.length===0" class="text-center py-12" style="color:var(--fg3)">
+        <i class="fa-solid fa-store-slash text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো রিসেলার নেই</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ WITHDRAWAL REQUESTS (NEW) ══ -->
+  <div x-show="activeTab==='withdrawals'" x-cloak class="animate-fade-in">
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <div class="pill-scroll flex-1">
+        <template x-for="s in ['সব','pending','paid','rejected']" :key="s">
+          <button @click="withdrawF=s" :style="withdrawF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s==='সব'?'সব':s==='pending'?'পেন্ডিং':s==='paid'?'পরিশোধিত':'বাতিল'"></button>
+        </template>
+      </div>
+    </div>
+    <div class="dd-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>রিসেলার</th><th>পরিমাণ</th><th>মাধ্যম</th><th>নম্বর</th><th>তারিখ</th><th>স্ট্যাটাস</th><th>এক্সন</th></tr></thead>
+          <tbody>
+            <template x-for="w in filteredWithdrawals" :key="w.fbKey">
+              <tr>
+                <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="getResellerName(w.resellerPhone)"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="w.resellerPhone"></p></td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(w.amount||0).toLocaleString()"></span></td>
+                <td class="text-xs" x-text="w.method||'—'"></td>
+                <td class="font-mono text-xs" x-text="w.number||'—'"></td>
+                <td class="text-xs" style="color:var(--fg3)" x-text="w.requestedAt?new Date(w.requestedAt).toLocaleDateString('bn-BD'):''"></td>
+                <td>
+                  <span class="text-xs font-bold px-2 py-1 rounded-full" :style="w.status==='pending'?'background:#FFF7ED;color:#C2410C':w.status==='paid'?'background:#F0FDF4;color:#15803D':'background:#FEF2F2;color:#B91C1C'" x-text="w.status==='pending'?'পেন্ডিং':w.status==='paid'?'পরিশোধিত':'বাতিল'"></span>
+                </td>
+                <td>
+                  <div class="flex gap-1.5" x-show="w.status==='pending'">
+                    <button @click="approveWithdrawal(w)" class="btn-success !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-check"></i> পরিশোধ করুন</button>
+                    <button @click="rejectWithdrawal(w)" class="btn-danger !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-xmark"></i></button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="filteredWithdrawals.length===0" class="text-center py-12" style="color:var(--fg3)">
+        <i class="fa-solid fa-money-bill-transfer text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো উইথড্র রিকোয়েস্ট নেই</p>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ NOTIFICATIONS ══ -->
   <div x-show="activeTab==='notifications'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -1550,6 +1698,8 @@ function Admin(){return{
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,
 
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
+  fbResellers:[],fbWithdrawals:[],fbWalletTx:[],
+  resellerSearch:'',resellerStatusF:'সব',withdrawF:'সব',
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
@@ -1564,7 +1714,7 @@ function Admin(){return{
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:''},
+  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100},
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
     {title:'',sub:'সেরা পণ্য · সেরা দাম · দ্রুত ডেলিভারি',img:'',badge:'🔥 হট ডিল'},
@@ -1593,7 +1743,8 @@ function Admin(){return{
   tabLabels:{
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
-    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার'
+    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
+    resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'উইথড্র রিকোয়েস্ট'
   },
 
   themes:{
@@ -1611,6 +1762,7 @@ function Admin(){return{
     name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',
     section:'',cat:'',gender:'',
     promoCode:'',promoDesc:'',
+    resellEnabled:false,resellerPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
     isEid:false,active:true,
     saving:false,saveErr:'',
     images:[],carIdx:0,
@@ -1635,6 +1787,21 @@ function Admin(){return{
       .filter(o=>!this.orderSearch||o.customerName?.includes(this.orderSearch)||o.phone?.includes(this.orderSearch)||String(o.id).includes(this.orderSearch));
   },
   get pendingCount(){return this.fbOrders.filter(o=>o.status==='পেন্ডিং').length},
+  // ══ RESELLER / MLM GETTERS (NEW) ══
+  get pendingResellers(){return this.fbResellers.filter(r=>r.status==='pending')},
+  get approvedResellers(){return this.fbResellers.filter(r=>r.status==='approved'||r.status==='blocked')},
+  get filteredResellers(){
+    const q=(this.resellerSearch||'').trim().toLowerCase();
+    return this.fbResellers.filter(r=>{
+      const matchQ=!q||(r.name||'').toLowerCase().includes(q)||(r.fbKey||'').includes(q)||(r.myReferralCode||'').toLowerCase().includes(q);
+      const matchS=this.resellerStatusF==='সব'||r.status===this.resellerStatusF;
+      return matchQ&&matchS;
+    }).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  },
+  get totalResellerWallet(){return this.fbResellers.reduce((s,r)=>s+(r.walletBalance||0),0)},
+  get pendingWithdrawals(){return this.fbWithdrawals.filter(w=>w.status==='pending')},
+  get filteredWithdrawals(){return this.fbWithdrawals.filter(w=>this.withdrawF==='সব'||w.status===this.withdrawF)},
+  getResellerName(phone){const r=this.fbResellers.find(x=>x.fbKey===phone);return r?r.name||phone:phone},
   get totalRevenue(){return this.fbOrders.filter(o=>o.status==='ডেলিভার্ড').reduce((s,o)=>s+(o.total||0),0)},
   get orderStats(){
     const total=this.fbOrders.length||1;
@@ -1682,6 +1849,9 @@ function Admin(){return{
       window.$db.listenNotifications(notifs=>this.fbNotifications=notifs.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)));
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
       window.$db.listenPinnedProducts(pins=>{this.fbPinned=pins});
+      window.$db.listenResellers(rs=>this.fbResellers=rs);
+      window.$db.listenWithdrawals(ws=>this.fbWithdrawals=ws.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
+      window.$db.listenWalletTx(txs=>this.fbWalletTx=txs.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
       window.$db.listenSettings(s=>{
         if(s.settings)Object.assign(this.settings,s.settings);
         if(s.banners&&s.banners.length){this.banners=s.banners;this.adminBanners=JSON.parse(JSON.stringify(s.banners));}
@@ -1820,6 +1990,7 @@ function Admin(){return{
       editKey:null,
       name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',
       section:'',cat:'',gender:'',promoCode:'',promoDesc:'',
+      resellEnabled:false,resellerPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
       images:[],carIdx:0,
       mode:'A',dragA:false,dragB:false,urlInput:'',
@@ -1837,6 +2008,8 @@ function Admin(){return{
       sizes:(p.sizes||[]).join(', '),
       section:p.section||p.sectionId||'',cat:p.cat||'',gender:p.gender||'',
       promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',
+      resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,
+      genCommission1:p.genCommission1||0,genCommission2:p.genCommission2||0,genCommission3:p.genCommission3||0,
       isEid:p.isEidCollection||false,active:p.active!==false,
       saving:false,saveErr:'',
       images:imgs.map(url=>({url,status:'ok',prog:100,name:'existing'})),
@@ -1946,6 +2119,11 @@ function Admin(){return{
       sizes:this.up.sizes?this.up.sizes.split(',').map(s=>s.trim()).filter(Boolean):[],
       desc:this.up.desc,badge:this.up.badge,
       promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,
+      resellEnabled:this.up.resellEnabled||false,
+      resellerPrice:this.up.resellEnabled?(Number(this.up.resellerPrice)||0):0,
+      genCommission1:this.up.resellEnabled?(Number(this.up.genCommission1)||0):0,
+      genCommission2:this.up.resellEnabled?(Number(this.up.genCommission2)||0):0,
+      genCommission3:this.up.resellEnabled?(Number(this.up.genCommission3)||0):0,
       isEidCollection:this.up.isEid||false,
       gender:this.up.gender||'both',
       active:this.up.active,
@@ -1964,7 +2142,86 @@ function Admin(){return{
   async deleteProd(key){if(!confirm('পণ্য মুছবেন?'))return;try{await window.$db.deleteProduct(key);this.showToast('পণ্য মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
 
   // ══════════ ORDER CRUD ══════════
-  async updateOrderStatus(key,status){try{await window.$db.updateOrder(key,{status});this.showToast('স্ট্যাটাস আপডেট! ✅','success')}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
+  async updateOrderStatus(key,status){
+    try{
+      await window.$db.updateOrder(key,{status});
+      if(status==='ডেলিভার্ড'){
+        const order=this.fbOrders.find(o=>o.fbKey===key);
+        if(order)await this.creditReferralCommissions(order,key);
+      }
+      this.showToast('স্ট্যাটাস আপডেট! ✅','success')
+    }catch{this.showToast('আপডেট ব্যর্থ!','error')}
+  },
+
+  // ══════════ RESELLER / MLM SYSTEM (NEW) ══════════
+  generateReferralCode(phone){return 'RS'+String(phone).slice(-6)+Math.random().toString(36).slice(2,4).toUpperCase()},
+  async approveReseller(r){
+    try{
+      let bonus=0;
+      if(r.referralCodeUsed&&!r.bonusCredited)bonus=Number(this.settings.resellSignupBonus)||0;
+      const myCode=r.myReferralCode||this.generateReferralCode(r.fbKey);
+      await window.$db.saveReseller({status:'approved',myReferralCode:myCode,walletBalance:(r.walletBalance||0)+bonus,bonusCredited:bonus>0?true:(r.bonusCredited||false),approvedAt:Date.now()},r.fbKey);
+      if(bonus>0)await window.$db.pushWalletTx({resellerPhone:r.fbKey,amount:bonus,type:'bonus',note:'সাইনআপ বোনাস (প্রমো কোড ব্যবহার করে রেজিস্ট্রেশন)',timestamp:Date.now()});
+      this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅','success');
+    }catch{this.showToast('অ্যাপ্রুভ ব্যর্থ!','error')}
+  },
+  async rejectReseller(r){if(!confirm('এই আবেদন বাতিল করবেন?'))return;try{await window.$db.saveReseller({status:'rejected'},r.fbKey);this.showToast('আবেদন বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  async toggleBlockReseller(r){
+    if(!confirm(r.status==='blocked'?'আনব্লক করবেন?':'ব্লক করবেন? ব্লক করলে সে আর রিসেলিং প্যানেল ব্যবহার করতে পারবে না।'))return;
+    try{await window.$db.saveReseller({status:r.status==='blocked'?'approved':'blocked'},r.fbKey);this.showToast('স্ট্যাটাস আপডেট হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async deleteReseller(r){if(!confirm('একদম মুছে ফেলবেন? এটি ফেরানো যাবে না।'))return;try{await window.$db.deleteReseller(r.fbKey);this.showToast('মুছা হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  getUplineChain(phone,levels){
+    const chain=[];let cur=phone;
+    for(let i=0;i<levels;i++){
+      const r=this.fbResellers.find(x=>x.fbKey===cur);
+      if(!r||!r.referredBy)break;
+      chain.push(r.referredBy);cur=r.referredBy;
+    }
+    return chain;
+  },
+  async creditWallet(phone,amount,type,note,orderId){
+    if(!phone||!amount)return;
+    const r=this.fbResellers.find(x=>x.fbKey===phone);
+    if(!r||r.status==='blocked'||r.status==='rejected')return;
+    const newBal=(r.walletBalance||0)+amount;
+    await window.$db.saveReseller({walletBalance:newBal},phone);
+    await window.$db.pushWalletTx({resellerPhone:phone,amount,type,note,orderId:orderId||null,timestamp:Date.now()});
+  },
+  async creditReferralCommissions(order,key){
+    if(order.orderType!=='reseller'||order.commissionCredited)return;
+    try{
+      const resellerPhone=order.resellerPhone;
+      let ownProfit=0,gen1=0,gen2=0,gen3=0;
+      (order.items||[]).forEach(it=>{
+        const qty=it.qty||1;
+        ownProfit+=((it.resellerSellPrice??it.price??0)-(it.resellerPrice||0))*qty;
+        gen1+=(it.genCommission1||0)*qty;
+        gen2+=(it.genCommission2||0)*qty;
+        gen3+=(it.genCommission3||0)*qty;
+      });
+      if(ownProfit>0)await this.creditWallet(resellerPhone,ownProfit,'profit','নিজের প্রফিট — অর্ডার #'+order.id,order.id);
+      const chain=this.getUplineChain(resellerPhone,3);
+      const genAmts=[gen1,gen2,gen3],genLabels=['১ম','২য়','৩য়'];
+      chain.forEach((upPhone,i)=>{
+        if(genAmts[i]>0)this.creditWallet(upPhone,genAmts[i],'commission',genLabels[i]+' জেনারেশন কমিশন — অর্ডার #'+order.id,order.id);
+      });
+      await window.$db.updateOrder(key,{commissionCredited:true});
+    }catch(e){console.warn('commission credit failed',e)}
+  },
+  // ══════════ WITHDRAWAL REQUESTS (NEW) ══════════
+  async approveWithdrawal(w){
+    try{
+      const r=this.fbResellers.find(x=>x.fbKey===w.resellerPhone);
+      const bal=r?.walletBalance||0;
+      if(bal<w.amount){this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error');return;}
+      await window.$db.saveReseller({walletBalance:bal-w.amount},w.resellerPhone);
+      await window.$db.pushWalletTx({resellerPhone:w.resellerPhone,amount:-w.amount,type:'withdrawal',note:'উইথড্র পরিশোধ ('+(w.method||'')+' '+(w.number||'')+')',timestamp:Date.now()});
+      await window.$db.saveWithdrawal({status:'paid',paidAt:Date.now()},w.fbKey);
+      this.showToast('উইথড্র পরিশোধ সম্পন্ন! ✅','success');
+    }catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async rejectWithdrawal(w){if(!confirm('রিকোয়েস্ট বাতিল করবেন?'))return;try{await window.$db.saveWithdrawal({status:'rejected'},w.fbKey);this.showToast('বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
   async updateTrackingLink(key,link){try{await window.$db.updateOrder(key,{trackingLink:link||null});if(link)this.showToast('ট্র্যাকিং লিংক সেভ! ✅','success');}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
   async deleteOrder(key){if(!confirm('মুছবেন?'))return;try{await window.$db.deleteOrder(key);this.showToast('অর্ডার মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
 
