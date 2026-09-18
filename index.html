@@ -87,6 +87,8 @@ window.$db={
   listenWithdrawals:(cb)=>onValue(ref(db,'withdrawals'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Wallet transaction ledger (NEW — bonus/commission/profit/withdrawal history)
   pushWalletTx:async(data)=>{const r=push(ref(db,'walletTx'));await set(r,data);return r.key},
+  // Reseller Inbox — admin sends messages to resellers (NEW)
+  pushResellerMessage:async(data)=>{const r=push(ref(db,'resellerMessages'));await set(r,data);return r.key},
   listenWalletTx:(cb)=>onValue(ref(db,'walletTx'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Notifications
   saveNotification:async(data,id)=>{if(id){await update(ref(db,'notifications/'+id),data);return id;}const r=push(ref(db,'notifications'));await set(r,data);return r.key},
@@ -465,6 +467,22 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <span x-show="!notifModal.saving"><i class="fa-solid fa-paper-plane mr-1"></i><span x-text="notifModal.editing?'আপডেট করুন':'পাঠান'"></span></span>
       </button>
       <button @click="notifModal.open=false" class="btn-ghost">বাতিল</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESELLER MESSAGE MODAL (NEW) -->
+<div x-show="msgModal.open" x-cloak class="modal-overlay" style="z-index:300" @click.self="closeMsgModal()">
+  <div class="modal-body p-6">
+    <div class="flex items-center justify-between mb-5">
+      <p class="font-display text-xl" style="color:var(--fg)">মেসেজ পাঠান</p>
+      <button @click="closeMsgModal()" class="btn-ghost w-8 h-8 p-0 flex items-center justify-center rounded-xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p class="text-xs mb-3" style="color:var(--fg3)">প্রাপক: <span class="font-bold" style="color:var(--fg)" x-text="msgModal.resellerName"></span></p>
+    <textarea class="dd-input resize-none" rows="4" x-model="msgModal.text" placeholder="মেসেজ লিখুন..."></textarea>
+    <div class="flex gap-3 mt-4">
+      <button @click="sendResellerMessage()" class="btn-primary flex-1" style="justify-content:center"><i class="fa-solid fa-paper-plane mr-1"></i>পাঠান</button>
+      <button @click="closeMsgModal()" class="btn-ghost">বাতিল</button>
     </div>
   </div>
 </div>
@@ -1389,6 +1407,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                     <button x-show="r.status==='pending'" @click="approveReseller(r)" class="btn-success !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-check"></i> অ্যাপ্রুভ</button>
                     <button x-show="r.status==='pending'" @click="rejectReseller(r)" class="btn-danger !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-xmark"></i> বাতিল</button>
                     <button x-show="r.status==='approved'||r.status==='blocked'" @click="toggleBlockReseller(r)" class="btn-warn !text-xs !py-1.5 !px-2.5" x-text="r.status==='blocked'?'আনব্লক':'ব্লক করুন'"></button>
+                    <button @click="openMsgModal(r)" class="btn-ghost !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-envelope"></i></button>
                     <button @click="deleteReseller(r)" class="btn-ghost !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-trash"></i></button>
                   </div>
                 </td>
@@ -1700,6 +1719,7 @@ function Admin(){return{
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
   fbResellers:[],fbWithdrawals:[],fbWalletTx:[],
   resellerSearch:'',resellerStatusF:'সব',withdrawF:'সব',
+  msgModal:{open:false,resellerPhone:'',resellerName:'',text:''},
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
@@ -2222,6 +2242,17 @@ function Admin(){return{
     }catch{this.showToast('ব্যর্থ!','error')}
   },
   async rejectWithdrawal(w){if(!confirm('রিকোয়েস্ট বাতিল করবেন?'))return;try{await window.$db.saveWithdrawal({status:'rejected'},w.fbKey);this.showToast('বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  // ══════════ RESELLER INBOX MESSAGING (NEW) ══════════
+  openMsgModal(r){this.msgModal={open:true,resellerPhone:r.fbKey,resellerName:r.name||r.fbKey,text:''}},
+  closeMsgModal(){this.msgModal.open=false},
+  async sendResellerMessage(){
+    if(!this.msgModal.text.trim())return this.showToast('মেসেজ লিখুন!','error');
+    try{
+      await window.$db.pushResellerMessage({resellerPhone:this.msgModal.resellerPhone,text:this.msgModal.text.trim(),timestamp:Date.now()});
+      this.showToast('মেসেজ পাঠানো হয়েছে! ✅','success');
+      this.closeMsgModal();
+    }catch{this.showToast('ব্যর্থ!','error')}
+  },
   async updateTrackingLink(key,link){try{await window.$db.updateOrder(key,{trackingLink:link||null});if(link)this.showToast('ট্র্যাকিং লিংক সেভ! ✅','success');}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
   async deleteOrder(key){if(!confirm('মুছবেন?'))return;try{await window.$db.deleteOrder(key);this.showToast('অর্ডার মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
 
