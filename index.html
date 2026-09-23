@@ -39,6 +39,7 @@ tailwind.config={
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,push,set,onValue,update,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 const cfg={
   apiKey:"AIzaSyCQVlbjApQYtyc86ZTVPsBjOZ3J-RHv_vI",
@@ -51,6 +52,15 @@ const cfg={
 };
 const app=initializeApp(cfg);
 const db=getDatabase(app);
+const auth=getAuth(app);
+(function(){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0F0D0A;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Hind Siliguri,sans-serif';
+const inp='width:100%;padding:11px 12px;margin-bottom:10px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;box-sizing:border-box';
+ov.innerHTML='<div style="width:100%;max-width:340px;background:#fff;border-radius:14px;padding:24px"><h2 style="margin:0 0 4px;font-size:20px">অ্যাডমিন লগইন</h2><p style="margin:0 0 16px;font-size:12px;color:#777">শুধু অনুমোদিত অ্যাডমিন</p><input id="al-e" type="email" placeholder="ইমেইল" style="'+inp+'"><input id="al-p" type="password" placeholder="পাসওয়ার্ড" style="'+inp+'"><button id="al-b" style="width:100%;padding:12px;border:0;border-radius:9px;background:#E8320A;color:#fff;font-weight:700;font-size:14px;cursor:pointer">লগইন</button><p id="al-m" style="color:#c00;font-size:12px;margin:10px 0 0"></p></div>';
+const lo=document.createElement('button');lo.textContent='লগআউট';lo.style.cssText='position:fixed;right:10px;bottom:10px;z-index:9999;padding:6px 12px;border:0;border-radius:99px;background:#0F0D0A;color:#fff;font-size:11px;cursor:pointer;opacity:.7;display:none';lo.onclick=()=>signOut(auth);
+document.body.appendChild(ov);document.body.appendChild(lo);
+const go=()=>{const m=ov.querySelector('#al-m');m.textContent='';signInWithEmailAndPassword(auth,ov.querySelector('#al-e').value.trim(),ov.querySelector('#al-p').value).catch(()=>{m.textContent='ইমেইল বা পাসওয়ার্ড ভুল!'})};
+ov.querySelector('#al-b').onclick=go;ov.querySelector('#al-p').onkeydown=e=>{if(e.key==='Enter')go()};
+onAuthStateChanged(auth,u=>{ov.style.display=u?'none':'flex';lo.style.display=u?'block':'none'});})();
 const storage=getStorage(app);
 window.$db={
   // Products
@@ -416,6 +426,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
           </div>
           <div class="dd-card-sm p-3"><p class="dd-label">গ্রাহক</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.phone"></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">ঠিকানা</p><p class="text-xs font-semibold" style="color:var(--fg)" x-text="(viewOrder.district||'')+', '+(viewOrder.division||'')"></p></div>
+          <div class="dd-card-sm p-3" x-show="viewOrder.shipping>0"><p class="dd-label">ডেলিভারি চার্জ ৳<span x-text="viewOrder.shipping"></span></p><p class="text-sm font-bold" :style="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'color:#15803D':'color:#B45309'" x-text="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'✅ অগ্রিম পেইড'+(viewOrder.trxId?' (TrxID: '+viewOrder.trxId+')':''):'⏳ ডেলিভারির সময় নিতে হবে'"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-show="viewOrder.collectAmount!=null||viewOrder.dueOnDelivery!=null">কাস্টমার থেকে আদায়: ৳<span x-text="viewOrder.collectAmount!=null?viewOrder.collectAmount:viewOrder.dueOnDelivery"></span></p></div>
           <div class="dd-card-sm p-3" x-show="viewOrder.payMethod"><p class="dd-label">পেমেন্ট মাধ্যম</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.payMethod"></p></div>
         </div>
         <div class="dd-card-sm p-3">
