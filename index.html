@@ -231,6 +231,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 .mode-tabs{display:flex;background:var(--bg2);border-radius:10px;padding:3px;gap:2px}
 .mode-tab{flex:1;padding:8px 6px;border-radius:8px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:'Hind Siliguri',sans-serif;transition:all .2s;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:5px;color:var(--fg3);background:transparent}
 .mode-tab.on-a{background:var(--accent);color:#fff}
+.mode-tab.on-c{background:#0EA5E9;color:#fff}
 .mode-tab.on-b{background:#D97706;color:#fff}
 /* Carousel preview (upload form) */
 .car-wrap{position:relative;border-radius:14px;overflow:hidden;background:var(--bg3);aspect-ratio:1/1}
@@ -790,7 +791,8 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div class="dd-card p-4">
           <div class="mode-tabs mb-4">
             <button @click="up.mode='A'" :class="up.mode==='A'?'mode-tab on-a':'mode-tab'"><i class="fa-solid fa-upload" style="font-size:10px"></i>System A — সরাসরি</button>
-            <button @click="up.mode='B'" :class="up.mode==='B'?'mode-tab on-b':'mode-tab'"><i class="fa-solid fa-wand-magic-sparkles" style="font-size:10px"></i>System B — অটো-লিঙ্ক</button>
+            <button @click="up.mode='C'" :class="up.mode==='C'?'mode-tab on-c':'mode-tab'"><i class="fa-solid fa-cloud" style="font-size:10px"></i>System C — Cloudinary</button>
+            <button @click="up.mode='B'" :class="up.mode==='B'?'mode-tab on-b':'mode-tab'"><i class="fa-solid fa-wand-magic-sparkles" style="font-size:10px"></i>System B — ImgBB</button>
           </div>
 
           <!-- SYSTEM A: Direct File Upload -> Firebase Storage -->
@@ -817,6 +819,60 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                   <span class="text-xs font-mono flex-shrink-0" style="color:var(--accent)" x-text="img.prog+'%'"></span>
                 </div>
               </template>
+            </div>
+          </div>
+
+          <!-- SYSTEM C: Auto-Link Generator via Cloudinary (NEW) -->
+          <div x-show="up.mode==='C'">
+            <template x-if="!(settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset)">
+              <div class="rounded-xl px-3 py-3 mb-3 text-center" style="background:#FFF7ED;border:1px solid #FED7AA">
+                <p class="text-xs font-bold mb-1" style="color:#C2410C"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Cloudinary কনফিগার করা নেই</p>
+                <p class="text-xs mb-2" style="color:var(--fg3)">এটা ব্যবহার করতে আগে সেটিংস থেকে Cloud Name ও Upload Preset বসান</p>
+                <button @click="activeTab='settings'" class="text-xs font-bold px-3 py-1.5 rounded-lg text-white" style="background:#0EA5E9;border:none;cursor:pointer">সেটিংসে যান →</button>
+              </div>
+            </template>
+            <template x-if="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset">
+              <div class="rounded-xl px-3 py-2 mb-3" style="background:#F0F9FF;border:1px solid #BAE6FD">
+                <p class="text-xs font-bold" style="color:#0369A1"><i class="fa-solid fa-circle-info mr-1"></i>System C — Cloudinary (<span x-text="settings.cloudinaryCloudName"></span>)</p>
+                <p class="text-xs mt-1 leading-relaxed" style="color:var(--fg3)">ছবি বেছে নিন → Cloudinary-তে অটো আপলোড → Direct URL স্বয়ংক্রিয়ভাবে তৈরি হয়ে কারাউসেলে যোগ হবে। কোনো কী দিতে হবে না, সেটিংস থেকেই কনফিগার হয়ে আছে।</p>
+              </div>
+            </template>
+            <label class="img-drop block" :class="up.dragC?'drag':''" style="border-color:#0EA5E9" @dragover.prevent="up.dragC=true" @dragleave="up.dragC=false" @drop.prevent="up.dragC=false;addToQueue($event.dataTransfer.files)">
+              <input type="file" multiple accept="image/*" @change="addToQueue($event.target.files)"/>
+              <i class="fa-solid fa-cloud-arrow-up text-3xl mb-2" style="color:#0EA5E9"></i>
+              <p class="text-sm font-semibold" style="color:var(--fg2)">ছবি বেছে নিন → অটো আপলোড</p>
+              <p class="text-xs mt-1" style="color:var(--fg3)">Cloudinary-তে আপলোড হয়ে URL তৈরি হবে</p>
+            </label>
+            <div x-show="up.queue.length>0" class="mt-3">
+              <div class="flex items-center justify-between mb-2">
+                <p class="text-xs font-bold" style="color:var(--fg3)" x-text="up.queue.length+' ফাইল কিউতে আছে'"></p>
+                <div class="flex gap-1.5">
+                  <button @click="clearDoneQueue()" class="btn-ghost text-xs" style="padding:5px 10px">ক্লিয়ার</button>
+                  <button @click="runCloudinary()" :disabled="up.qRunning||!(settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset)" class="text-xs font-bold px-3 py-1.5 rounded-lg text-white" style="background:#0EA5E9;border:none;cursor:pointer">
+                    <i :class="up.qRunning?'fa-solid fa-spinner fa-spin':'fa-solid fa-play'" style="font-size:9px"></i>
+                    <span x-text="up.qRunning?'আপলোড হচ্ছে...':'শুরু করুন'"></span>
+                  </button>
+                </div>
+              </div>
+              <div class="space-y-1.5">
+                <template x-for="(f,i) in up.queue" :key="i">
+                  <div class="flex items-center gap-2 px-2.5 py-2 rounded-xl" style="background:var(--bg2)">
+                    <i :class="f.s==='done'?'fa-solid fa-circle-check':f.s==='err'?'fa-solid fa-circle-xmark':f.s==='run'?'fa-solid fa-spinner fa-spin':'fa-solid fa-file-image'"
+                      :style="'font-size:12px;'+(f.s==='done'?'color:#16A34A':f.s==='err'?'color:#DC2626':f.s==='run'?'color:#0EA5E9':'color:var(--fg3)')"></i>
+                    <span class="text-xs truncate flex-1" style="color:var(--fg2)" x-text="f.name"></span>
+                    <span x-show="f.s==='run'" class="text-xs font-mono flex-shrink-0" style="color:#0EA5E9" x-text="f.prog+'%'"></span>
+                    <span x-show="f.s==='done'" class="text-xs font-bold flex-shrink-0" style="color:#16A34A">✓</span>
+                    <span x-show="f.s==='err'" class="text-xs font-bold flex-shrink-0" style="color:#DC2626">✗</span>
+                    <button @click="up.queue.splice(i,1)" class="flex-shrink-0" style="background:none;border:none;cursor:pointer;color:var(--fg3)"><i class="fa-solid fa-xmark text-xs"></i></button>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div x-show="up.log.length>0" class="mt-3">
+              <p class="text-xs font-bold mb-1" style="color:var(--fg3)">UPLOAD LOG</p>
+              <div class="ulog" x-ref="logEl">
+                <template x-for="(l,i) in up.log" :key="i"><div :class="'l-'+l.t" x-text="l.m"></div></template>
+              </div>
             </div>
           </div>
 
@@ -1703,6 +1759,25 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div><label class="dd-label">রিটার্ন পলিসি</label><textarea class="dd-input resize-none" rows="2" x-model="settings.shopPolicy" placeholder="৭ দিনের রিটার্ন পলিসি..."></textarea></div>
       </div>
       <div class="dd-card p-5 space-y-4">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-cloud" style="color:var(--accent)"></i>Cloudinary — ছবি আপলোড</p>
+        <div class="rounded-xl px-3 py-2.5" style="background:var(--accentL);border:1px solid var(--border)">
+          <p class="text-xs leading-relaxed" style="color:var(--fg3)">একবার এখানে কনফিগার করলে প্রোডাক্ট আপলোড ফর্মে "System C — Cloudinary" থেকে ছবি সরাসরি Cloudinary-তে আপলোড হয়ে যাবে, প্রতিবার কোনো Key দিতে হবে না।</p>
+        </div>
+        <div>
+          <label class="dd-label">Cloud Name <a href="https://cloudinary.com/console" target="_blank" style="color:var(--accent)" class="normal-case font-semibold">→ cloudinary.com/console</a></label>
+          <input class="dd-input" x-model="settings.cloudinaryCloudName" placeholder="যেমন: dxyzabc12"/>
+        </div>
+        <div>
+          <label class="dd-label">Unsigned Upload Preset</label>
+          <input class="dd-input" x-model="settings.cloudinaryUploadPreset" placeholder="যেমন: dailydeal_unsigned"/>
+          <p class="text-xs mt-1.5 leading-relaxed" style="color:var(--fg3)">Cloudinary কনসোলে Settings → Upload → Upload presets → Add upload preset, Signing Mode <b>Unsigned</b> সিলেক্ট করে সেভ করলে এই নামটা পাবেন।</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-bold" :style="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'color:#16A34A':'color:#D97706'">
+          <i :class="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'fa-solid fa-circle-check':'fa-solid fa-triangle-exclamation'"></i>
+          <span x-text="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'কনফিগার করা আছে':'এখনো কনফিগার করা হয়নি'"></span>
+        </div>
+      </div>
+      <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-share-nodes" style="color:var(--accent)"></i>সোশ্যাল ও পেমেন্ট</p>
         <div><label class="dd-label">Facebook পেজ লিংক</label><input class="dd-input" x-model="settings.fbLink" placeholder="https://facebook.com/..."/></div>
         <div><label class="dd-label">রিসেলার লিংক</label><input class="dd-input" x-model="settings.resellerLink" placeholder="https://t.me/..."/></div>
@@ -1818,7 +1893,7 @@ function Admin(){return{
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100},
+  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:''},
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
     {title:'',sub:'সেরা পণ্য · সেরা দাম · দ্রুত ডেলিভারি',img:'',badge:'🔥 হট ডিল'},
@@ -1870,7 +1945,7 @@ function Admin(){return{
     isEid:false,active:true,
     saving:false,saveErr:'',
     images:[],carIdx:0,
-    mode:'A',dragA:false,dragB:false,urlInput:'',
+    mode:'A',dragA:false,dragB:false,dragC:false,urlInput:'',
     imgbbKey:'',showKey:false,
     queue:[],qRunning:false,log:[],
   },
@@ -2103,7 +2178,7 @@ function Admin(){return{
       resellEnabled:false,resellerPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
       images:[],carIdx:0,
-      mode:'A',dragA:false,dragB:false,urlInput:'',
+      mode:'A',dragA:false,dragB:false,dragC:false,urlInput:'',
       imgbbKey:this.up.imgbbKey||'',showKey:false,
       queue:[],qRunning:false,log:[],
     };
@@ -2124,7 +2199,7 @@ function Admin(){return{
       saving:false,saveErr:'',
       images:imgs.map(url=>({url,status:'ok',prog:100,name:'existing'})),
       carIdx:0,
-      mode:'A',dragA:false,dragB:false,urlInput:'',
+      mode:'A',dragA:false,dragB:false,dragC:false,urlInput:'',
       imgbbKey:this.up.imgbbKey||'',showKey:false,
       queue:[],qRunning:false,log:[],
     };
@@ -2206,6 +2281,46 @@ function Admin(){return{
       xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(Math.round(e.loaded/e.total*100))};
       xhr.onload=()=>{
         try{const r=JSON.parse(xhr.responseText);if(r.success)res(r.data.url);else rej(new Error(r.error?.message||'ImgBB error'))}
+        catch(e){rej(e)}
+      };
+      xhr.onerror=()=>rej(new Error('Network error'));
+      xhr.send(fd);
+    });
+  },
+  // ══════════ CLOUDINARY (NEW — System C, configured centrally in Settings) ══════════
+  async runCloudinary(){
+    const cn=this.settings.cloudinaryCloudName,up=this.settings.cloudinaryUploadPreset;
+    if(!cn||!up){this.showToast('আগে Settings থেকে Cloudinary কনফিগার করুন!','error');return;}
+    this.up.qRunning=true;
+    for(let i=0;i<this.up.queue.length;i++){
+      const item=this.up.queue[i];
+      if(item.s==='done'||item.s==='err')continue;
+      item.s='run';
+      this._log('info','['+new Date().toLocaleTimeString()+'] Uploading: '+item.name);
+      try{
+        const url=await this._cloudinary(item.file,cn,up,pct=>{item.prog=pct});
+        item.s='done';item.prog=100;
+        this.up.images.push({url,status:'ok',prog:100,name:item.name});
+        this.up.carIdx=Math.max(0,this.up.images.filter(im=>im.url).length-1);
+        this._log('ok','✓ '+item.name+' → '+url.slice(0,60));
+      }catch(e){
+        item.s='err';
+        this._log('err','✗ '+item.name+': '+e.message);
+      }
+      await this.$nextTick();
+      const el=this.$refs?.logEl;
+      if(el)el.scrollTop=el.scrollHeight;
+    }
+    this.up.qRunning=false;
+  },
+  _cloudinary(file,cloudName,preset,onProgress){
+    return new Promise((res,rej)=>{
+      const fd=new FormData();fd.append('file',file);fd.append('upload_preset',preset);
+      const xhr=new XMLHttpRequest();
+      xhr.open('POST','https://api.cloudinary.com/v1_1/'+cloudName+'/image/upload');
+      xhr.upload.onprogress=e=>{if(e.lengthComputable&&onProgress)onProgress(Math.round(e.loaded/e.total*100))};
+      xhr.onload=()=>{
+        try{const r=JSON.parse(xhr.responseText);if(r.secure_url)res(r.secure_url);else rej(new Error(r.error?.message||'Cloudinary error'))}
         catch(e){rej(e)}
       };
       xhr.onerror=()=>rej(new Error('Network error'));
