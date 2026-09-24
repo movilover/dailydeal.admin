@@ -313,6 +313,19 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 <div x-show="sidebarOpen" x-cloak class="sidebar-overlay md:hidden" @click="sidebarOpen=false"></div>
 
 <!-- CATEGORY MODAL (name/emoji/img/gender + Section link) -->
+<div x-show="dupModal.open" x-cloak class="modal-overlay" @click.self="dupModal.open=false">
+  <div class="dd-card p-5" style="max-width:380px;width:92%;margin:auto" x-show="dupModal.prod">
+    <div style="width:52px;height:52px;border-radius:50%;background:#FEF3C7;color:#B45309;display:grid;place-items:center;font-size:22px;margin:0 auto 10px"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <p class="font-bold text-center" style="font-size:17px;color:var(--fg)">সতর্কতা! ডুপ্লিকেট পণ্য</p>
+    <p class="text-sm text-center mt-1" style="color:var(--fg2)">একই রঙ, ডিজাইন বা এফিলিয়েট আইডির পণ্য ইতিমধ্যেই আপলোড করা আছে।</p>
+    <p class="text-xs text-center mt-1 font-bold" style="color:#B45309" x-text="dupModal.why"></p>
+    <div class="flex gap-3 mt-4 p-3 rounded-2xl" style="background:var(--bg2)">
+      <img :src="dupModal.prod&&dupModal.prod.img" style="width:64px;height:64px;object-fit:cover;border-radius:10px" onerror="this.style.visibility='hidden'"/>
+      <div style="min-width:0"><p class="text-sm font-bold" x-text="dupModal.prod&&dupModal.prod.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="dupModal.prod?('৳'+dupModal.prod.price+(dupModal.prod.designSKU?' · SKU: '+dupModal.prod.designSKU:'')+(dupModal.prod.affiliateProductId?' · ID: '+dupModal.prod.affiliateProductId:'')):''"></p><p class="text-xs" style="color:var(--fg3)" x-text="dupModal.prod&&dupModal.prod.colors&&dupModal.prod.colors.length?'কালার: '+dupModal.prod.colors.join(', '):''"></p></div>
+    </div>
+    <div class="flex gap-2 mt-4"><button @click="dupModal.open=false" class="btn-primary flex-1" style="justify-content:center">বাতিল করুন</button><button @click="dupModal.open=false;up.dupOk=true;saveProduct()" class="btn-ghost flex-1">তবুও আপলোড করুন</button></div>
+  </div>
+</div>
 <div x-show="catModal.open" x-cloak class="modal-overlay" @click.self="catModal.open=false">
   <div class="modal-body p-6">
     <div class="flex items-center justify-between mb-5">
@@ -345,7 +358,8 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
       </div>
     </div>
     <div class="space-y-3">
-      <div><label class="dd-label">ক্যাটাগরির নাম *</label><input class="dd-input" x-model="catModal.form.name" placeholder="যেমন: Men's, Women's, বোরকা"/></div>
+      <div><label class="dd-label">ক্যাটাগরির নাম *</label><input class="dd-input" x-model="catModal.form.name" placeholder="যেমন: ছেলেদের পণ্য, জিন্স প্যান্ট, বোরকা"/></div>
+          <div><label class="dd-label">মূল ক্যাটাগরি (এটা উপ-ক্যাটাগরি হলে বেছে নিন)</label><div class="sel-wrap"><select class="dd-input" x-model="catModal.form.parent"><option value="">— এটাই মূল ক্যাটাগরি (হোমে ছবিসহ দেখাবে) —</option><template x-for="c in fbCategories.filter(x=>!x.parent&&x.name!==catModal.form.name)" :key="c.fbKey"><option :value="c.name" x-text="c.name"></option></template></select></div><p class="text-xs mt-1" style="color:var(--fg3)">যেমন: মূল = "ছেলেদের পণ্য", উপ = "শার্ট", "জিন্স প্যান্ট"। মূল ক্যাটাগরিতে ক্লিক করলে ইউজার সব উপ-ক্যাটাগরি দেখবে।</p></div>
       <div><label class="dd-label">ইমোজি</label><input class="dd-input" x-model="catModal.form.emoji" placeholder="🛍️"/></div>
       <div><label class="dd-label">ছবির URL (বিকল্প)</label><input class="dd-input" x-model="catModal.form.img" placeholder="https://..."/></div>
       <div>
@@ -955,6 +969,11 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div class="space-y-4">
 
           <div><label class="dd-label">পণ্যের নাম *</label><input class="dd-input" x-model="up.name" placeholder="পণ্যের সম্পূর্ণ নাম লিখুন"/></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="dd-label">ডিজাইন SKU</label><input class="dd-input" x-model="up.designSKU" placeholder="যেমন: POLO-1021"/></div>
+            <div><label class="dd-label">এফিলিয়েট প্রোডাক্ট আইডি</label><input class="dd-input" x-model="up.affiliateId" placeholder="সাপ্লায়ারের প্রোডাক্ট আইডি"/></div>
+          </div>
+          <p class="text-xs" style="color:var(--fg3);margin-top:-6px">একই এফিলিয়েট আইডি, অথবা একই নাম + কালার + ডিজাইন SKU হলে সেভের আগে ডুপ্লিকেট সতর্কতা আসবে।</p>
 
           <div class="grid grid-cols-2 gap-3">
             <div><label class="dd-label">বিক্রয় মূল্য (৳) *</label><input class="dd-input" type="number" x-model.number="up.price" placeholder="0" min="0"/></div>
@@ -974,7 +993,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
               <div class="sel-wrap"><select class="dd-input" x-model="up.cat">
                 <option value="">ক্যাটাগরি বেছে নিন</option>
                 <template x-for="c in (up.section?fbCategories.filter(c=>c.section===up.section||c.sectionId===up.section):fbCategories)" :key="c.fbKey">
-                  <option :value="c.name" x-text="(c.emoji?c.emoji+' ':'')+c.name"></option>
+                  <option :value="c.name" x-text="(c.parent?c.parent+' › ':'')+c.name"></option>
                 </template>
               </select></div>
             </div>
@@ -1002,6 +1021,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
   <div class="flex gap-2 items-center"><input type="number" class="dd-input" x-model.number="up.szFrom" placeholder="থেকে"/><input type="number" class="dd-input" x-model.number="up.szTo" placeholder="পর্যন্ত"/><input type="number" class="dd-input" x-model.number="up.szStep" placeholder="ধাপ"/><button type="button" @click="addSzRange(up.szFrom,up.szTo,up.szStep)" class="szc on" style="white-space:nowrap">+ যোগ</button><button type="button" @click="up.sizes=''" class="szc">মুছুন</button></div>
   <label class="dd-label" style="margin-top:10px">কালার</label>
   <input class="dd-input" x-model="up.colors" placeholder="কালো, সাদা, নেভি — কমা দিয়ে আলাদা করুন"/>
+  <p class="text-xs" style="color:var(--fg3)">কালারের ক্রম ছবির ক্রমের সাথে মিলবে: ১ম কালার = ১ম ছবি, ২য় কালার = ২য় ছবি। ইউজার কালারের নিচে সেই ছবি দেখে বেছে নেবে।</p>
   <div class="flex flex-wrap gap-1.5"><template x-for="c in ['কালো','সাদা','অফ-হোয়াইট','লাল','মেরুন','নীল','নেভি','সবুজ','হলুদ','গোলাপি','ধূসর','বাদামি','বেইজ']" :key="c"><button type="button" @click="toggleCl(c)" class="szc" :class="hasCl(c)?'on':''" x-text="c"></button></template></div>
 </div>
           </div>
@@ -1940,7 +1960,7 @@ function Admin(){return{
   customColors:{accent:'#E8320A'},
   quickColors:['#E8320A','#7C3AED','#1D4ED8','#B8860B','#E8196A','#16A34A','#0EA5E9','#F97316','#EC4899','#14B8A6','#8B5CF6','#EF4444'],
 
-  catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',section:''}},
+  dupModal:{open:false,prod:null,why:''},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
   secModal:{open:false,editing:null,saving:false,form:{name:'',icon:'🛍️',color:'#6B7280',color2:'#9CA3AF',order:99,active:true}},
   notifModal:{open:false,editing:null,saving:false,form:{title:'',body:'',type:'general',icon:'fa-solid fa-bell',appLink:'',linkLabel:'',date:''}},
   cbModal:{open:false,editing:null,saving:false,form:{label:'',icon:'🛍️',color:'#E8320A',color2:'#FF6B45',action:'',cat:'',link:'',active:true}},
@@ -1973,7 +1993,7 @@ function Admin(){return{
   // Product upload form state (superset of both plans' product forms)
   up:{
     editKey:null,
-    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',szFrom:'',szTo:'',szStep:2,
+    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
     section:'',cat:'',gender:'',
     promoCode:'',promoDesc:'',
     resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
@@ -2158,8 +2178,8 @@ function Admin(){return{
 
   // ══════════ CATEGORY ══════════
   openCatModal(cat){
-    if(cat){this.catModal.editing=cat;this.catModal.form={name:cat.name||'',emoji:cat.emoji||'',img:cat.img||'',gender:cat.gender||'both',section:cat.section||cat.sectionId||''};}
-    else{this.catModal.editing=null;this.catModal.form={name:'',emoji:'',img:'',gender:this.catModal.form.gender||'both',section:''};}
+    if(cat){this.catModal.editing=cat;this.catModal.form={name:cat.name||'',emoji:cat.emoji||'',img:cat.img||'',gender:cat.gender||'both',parent:cat.parent||'',section:cat.section||cat.sectionId||''};}
+    else{this.catModal.editing=null;this.catModal.form={name:'',emoji:'',img:'',gender:this.catModal.form.gender||'both',parent:'',section:''};}
     this.catModal.uploadPct=0;this.catModal.open=true;
   },
   async uploadCatImage(e){
@@ -2180,7 +2200,7 @@ function Admin(){return{
   async saveCategory(){
     if(!this.catModal.form.name.trim())return this.showToast('ক্যাটাগরির নাম দিন!','error');
     this.catModal.saving=true;
-    const data={name:this.catModal.form.name.trim(),emoji:this.catModal.form.emoji||'📦',img:this.catModal.form.img||'',gender:this.catModal.form.gender||'both',section:this.catModal.form.section||'',sectionId:this.catModal.form.section||'',updatedAt:new Date().toISOString()};
+    const data={name:this.catModal.form.name.trim(),emoji:this.catModal.form.emoji||'📦',img:this.catModal.form.img||'',gender:this.catModal.form.gender||'both',parent:this.catModal.form.parent||'',section:this.catModal.form.section||'',sectionId:this.catModal.form.section||'',updatedAt:new Date().toISOString()};
     try{await window.$db.saveCategory(data,this.catModal.editing?.fbKey||null);this.showToast('ক্যাটাগরি সেভ! ✅','success');this.catModal.open=false;}
     catch{this.showToast('সেভ ব্যর্থ!','error')}
     this.catModal.saving=false;
@@ -2208,7 +2228,7 @@ function Admin(){return{
   resetUp(){
     this.up={
       editKey:null,
-      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',szFrom:'',szTo:'',szStep:2,
+      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:'',cat:'',gender:'',promoCode:'',promoDesc:'',
       resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
@@ -2225,7 +2245,7 @@ function Admin(){return{
       editKey:p.fbKey,
       name:p.name||'',price:p.price||0,oldPrice:p.oldPrice||0,
       desc:p.desc||'',badge:p.badge||'',
-      sizes:(p.sizes||[]).join(', '),colors:(p.colors||[]).join(', '),szFrom:'',szTo:'',szStep:2,
+      sizes:(p.sizes||[]).join(', '),colors:(p.colors||[]).join(', '),designSKU:p.designSKU||'',affiliateId:p.affiliateProductId||'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:p.section||p.sectionId||'',cat:p.cat||'',gender:p.gender||'',
       promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',
       resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,marketPrice:p.marketPrice||0,
@@ -2308,6 +2328,12 @@ function Admin(){return{
     this.up.qRunning=false;
   },
   _log(t,m){this.up.log.push({t,m})},
+  _norm(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim()},
+  _findDup(){const u=this.up,aff=this._norm(u.affiliateId),nm=this._norm(u.name),col=this._clArr(u.colors).map(x=>this._norm(x)).sort().join('|'),sku=this._norm(u.designSKU);
+    for(const p of (this.fbProducts||[])){if(!p||p.fbKey===u.editKey)continue;
+      if(aff&&this._norm(p.affiliateProductId)===aff)return {p,why:'একই এফিলিয়েট প্রোডাক্ট আইডি মিলেছে'};
+      if(nm&&this._norm(p.name)===nm&&(p.colors||[]).map(x=>this._norm(x)).sort().join('|')===col&&this._norm(p.designSKU)===sku)return {p,why:'একই নাম, কালার ও ডিজাইন SKU মিলেছে'}}
+    return null},
   _szArr(s){return String(s||'').split(/[,\/|\s]+|\.(?=[A-Za-z])/).map(x=>x.trim()).filter(Boolean)},
   _clArr(s){return String(s||'').split(/[,\/|]+/).map(x=>x.trim()).filter(Boolean)},
   hasSz(s){return this._szArr(this.up.sizes).some(x=>x.toLowerCase()===s.toLowerCase())},
@@ -2376,6 +2402,8 @@ function Admin(){return{
     if(!this.up.name.trim()){this.up.saveErr='পণ্যের নাম লিখুন!';return;}
     if(!this.up.price||this.up.price<=0){this.up.saveErr='সঠিক মূল্য দিন!';return;}
     if(this.up.images.some(i=>i.status==='uploading')){this.up.saveErr='আপলোড সম্পন্ন হওয়ার জন্য অপেক্ষা করুন।';return;}
+    const skipDup=this.up.dupOk;this.up.dupOk=false;
+    if(!skipDup){const d=this._findDup();if(d){this.dupModal={open:true,prod:d.p,why:d.why};return}}
     const imgs=this.up.images.filter(i=>i.url&&i.status!=='err').map(i=>i.url);
     const data={
       name:this.up.name.trim(),
@@ -2386,6 +2414,7 @@ function Admin(){return{
       images:imgs,img:imgs[0]||'',
       sizes:this._szArr(this.up.sizes),colors:this._clArr(this.up.colors),
       desc:this.up.desc,badge:this.up.badge,
+      designSKU:(this.up.designSKU||'').trim(),affiliateProductId:(this.up.affiliateId||'').trim(),
       promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,
       resellEnabled:this.up.resellEnabled||false,
       resellerPrice:this.up.resellEnabled?(Number(this.up.resellerPrice)||0):0,
@@ -2628,5 +2657,10 @@ function Admin(){return{
   showToast(msg,type='success'){this.toast={show:true,msg,type};setTimeout(()=>this.toast.show=false,3500)},
 }}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js" crossorigin="anonymous"></script>
+<script>(function(){var t,run=function(){try{if(!window.twemoji)return;twemoji.parse(document.body,{folder:'svg',ext:'.svg',className:'emoji'});document.querySelectorAll('option img.emoji,textarea img.emoji').forEach(function(i){i.replaceWith(i.alt)})}catch(e){}};
+new MutationObserver(function(rs){if(rs.some(function(r){var el=r.target.nodeType===1?r.target:r.target.parentElement;return el&&!el.closest('option,textarea')})){clearTimeout(t);t=setTimeout(run,150)}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+window.addEventListener('load',run)})();</script>
+<style>img.emoji{height:1.15em;width:1.15em;vertical-align:-.2em;display:inline-block}</style>
 </body>
 </html>
