@@ -274,6 +274,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 </style>
+<style>.szc{padding:6px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--card);color:var(--fg);font:600 12px inherit;cursor:pointer}.szc.on{background:var(--accent);border-color:var(--accent);color:#fff}.paycard{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}.paylogo{width:54px;height:54px;border-radius:12px;background:var(--card);border:1px solid var(--border);display:grid;place-items:center;flex:none;overflow:hidden;font-weight:800;color:var(--fg3)}.paylogo img{max-width:100%;max-height:100%;object-fit:contain}</style>
 </head>
 <body :class="'theme-'+activeTheme" class="theme-light">
 
@@ -991,7 +992,18 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 
           <div class="grid grid-cols-2 gap-3">
             <div><label class="dd-label">ব্যাজ লেবেল</label><input class="dd-input" x-model="up.badge" placeholder="🔥 HOT, ✨ নতুন, সেল..."/></div>
-            <div><label class="dd-label">সাইজ (কমা দিয়ে)</label><input class="dd-input" x-model="up.sizes" placeholder="S, M, L, XL, XXL"/></div>
+            <div class="space-y-2">
+  <label class="dd-label">সাইজ</label>
+  <input class="dd-input" x-model="up.sizes" placeholder="S, M, L, XL — কমা দিয়ে আলাদা করুন"/>
+  <p class="text-xs" style="color:var(--fg3)">ইংরেজি সাইজ (চাপ দিলে যোগ/বাদ হবে)</p>
+  <div class="flex flex-wrap gap-1.5"><template x-for="s in ['XS','S','M','L','XL','XXL','3XL','4XL','Free']" :key="s"><button type="button" @click="toggleSz(s)" class="szc" :class="hasSz(s)?'on':''" x-text="s"></button></template></div>
+  <p class="text-xs" style="color:var(--fg3)">নাম্বার সাইজ (প্যান্ট, জুতা, কিডস, বোরকা) — দ্রুত যোগ করুন</p>
+  <div class="flex flex-wrap gap-1.5"><template x-for="r in [['বোরকা ৪৮–৫৮',48,58,2],['বোরকা ৫০–৫৮',50,58,2],['প্যান্ট ২৮–৪২',28,42,2],['জুতা ৩৮–৪৫',38,45,1],['কিডস ১২–২০',12,20,1],['কিডস ২০–৩৪',20,34,2]]" :key="r[0]"><button type="button" @click="addSzRange(r[1],r[2],r[3])" class="szc" x-text="r[0]"></button></template></div>
+  <div class="flex gap-2 items-center"><input type="number" class="dd-input" x-model.number="up.szFrom" placeholder="থেকে"/><input type="number" class="dd-input" x-model.number="up.szTo" placeholder="পর্যন্ত"/><input type="number" class="dd-input" x-model.number="up.szStep" placeholder="ধাপ"/><button type="button" @click="addSzRange(up.szFrom,up.szTo,up.szStep)" class="szc on" style="white-space:nowrap">+ যোগ</button><button type="button" @click="up.sizes=''" class="szc">মুছুন</button></div>
+  <label class="dd-label" style="margin-top:10px">কালার</label>
+  <input class="dd-input" x-model="up.colors" placeholder="কালো, সাদা, নেভি — কমা দিয়ে আলাদা করুন"/>
+  <div class="flex flex-wrap gap-1.5"><template x-for="c in ['কালো','সাদা','অফ-হোয়াইট','লাল','মেরুন','নীল','নেভি','সবুজ','হলুদ','গোলাপি','ধূসর','বাদামি','বেইজ']" :key="c"><button type="button" @click="toggleCl(c)" class="szc" :class="hasCl(c)?'on':''" x-text="c"></button></template></div>
+</div>
           </div>
 
           <div><label class="dd-label">পণ্যের বিবরণ / Description</label><textarea class="dd-input resize-none" rows="4" x-model="up.desc" placeholder="পণ্যের বিস্তারিত বিবরণ লিখুন..."></textarea></div>
@@ -1017,6 +1029,10 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                 <div>
                   <label class="dd-label">রিসেলার প্রাইস (৳) — রিসেলার এই দামে কিনবে</label>
                   <input class="dd-input" type="number" x-model.number="up.resellerPrice" placeholder="0" min="0"/>
+                </div>
+                <div>
+                  <label class="dd-label">মার্কেট প্রাইস (৳) — মার্কেটে যত টাকায় বিক্রি হয় (রিসেলারদের সর্বোচ্চ সাজেস্টেড দাম)</label>
+                  <input class="dd-input" type="number" x-model.number="up.marketPrice" placeholder="0" min="0"/>
                 </div>
                 <p class="dd-label !mb-1 !mt-1">MLM কমিশন (প্রতি সেলে, জেনারেশন অনুযায়ী ৳)</p>
                 <div class="grid grid-cols-3 gap-2">
@@ -1793,8 +1809,16 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div><label class="dd-label">Facebook পেজ লিংক</label><input class="dd-input" x-model="settings.fbLink" placeholder="https://facebook.com/..."/></div>
         <div><label class="dd-label">রিসেলার লিংক</label><input class="dd-input" x-model="settings.resellerLink" placeholder="https://t.me/..."/></div>
         <div><label class="dd-label">App ডাউনলোড লিংক</label><input class="dd-input" x-model="settings.appLink" placeholder="https://play.google.com/..."/></div>
-        <div><label class="dd-label">bKash নম্বর</label><input class="dd-input" x-model="settings.bkash" placeholder="01XXXXXXXXX"/></div>
-        <div><label class="dd-label">Nagad নম্বর</label><input class="dd-input" x-model="settings.nagad" placeholder="01XXXXXXXXX"/></div>
+        <div class="space-y-3" style="grid-column:1/-1">
+          <p class="dd-label" style="margin:0">পেমেন্ট মাধ্যম ও লোগো (নম্বর দিলে তবেই সাইটে দেখাবে)</p>
+          <template x-for="m in [{k:'bkash',n:'bKash',ph:'01XXXXXXXXX'},{k:'nagad',n:'Nagad',ph:'01XXXXXXXXX'},{k:'rocket',n:'Rocket',ph:'01XXXXXXXXX'},{k:'bank',n:'ব্যাংক অ্যাকাউন্ট',ph:'ব্যাংকের নাম, অ্যাকাউন্ট নম্বর, হোল্ডারের নাম'}]" :key="m.k">
+            <div class="paycard">
+              <div class="paylogo"><img x-show="settings[m.k+'Logo']" :src="settings[m.k+'Logo']"/><span x-show="!settings[m.k+'Logo']" x-text="m.n.slice(0,1)"></span></div>
+              <div style="flex:1;min-width:0"><label class="dd-label" x-text="m.n+' নম্বর/তথ্য'"></label><input class="dd-input" x-model="settings[m.k]" :placeholder="m.ph"/>
+                <div class="flex gap-2 mt-2"><label class="szc on" style="cursor:pointer">লোগো আপলোড<input type="file" accept="image/*" class="hidden" style="display:none" @change="payLogoUpload(m.k,$event)"/></label><button type="button" x-show="settings[m.k+'Logo']" @click="settings[m.k+'Logo']=''" class="szc">লোগো মুছুন</button></div></div>
+            </div>
+          </template>
+        </div>
         <div><label class="dd-label">WhatsApp</label><input class="dd-input" x-model="settings.wa" placeholder="880XXXXXXXXX"/></div>
       </div>
       <div class="dd-card p-5 space-y-4">
@@ -1949,10 +1973,10 @@ function Admin(){return{
   // Product upload form state (superset of both plans' product forms)
   up:{
     editKey:null,
-    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',
+    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',szFrom:'',szTo:'',szStep:2,
     section:'',cat:'',gender:'',
     promoCode:'',promoDesc:'',
-    resellEnabled:false,resellerPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
+    resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
     isEid:false,active:true,
     saving:false,saveErr:'',
     images:[],carIdx:0,
@@ -2184,9 +2208,9 @@ function Admin(){return{
   resetUp(){
     this.up={
       editKey:null,
-      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',
+      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',szFrom:'',szTo:'',szStep:2,
       section:'',cat:'',gender:'',promoCode:'',promoDesc:'',
-      resellEnabled:false,resellerPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
+      resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
       images:[],carIdx:0,
       mode:'A',dragA:false,dragB:false,dragC:false,urlInput:'',
@@ -2201,10 +2225,10 @@ function Admin(){return{
       editKey:p.fbKey,
       name:p.name||'',price:p.price||0,oldPrice:p.oldPrice||0,
       desc:p.desc||'',badge:p.badge||'',
-      sizes:(p.sizes||[]).join(', '),
+      sizes:(p.sizes||[]).join(', '),colors:(p.colors||[]).join(', '),szFrom:'',szTo:'',szStep:2,
       section:p.section||p.sectionId||'',cat:p.cat||'',gender:p.gender||'',
       promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',
-      resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,
+      resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,marketPrice:p.marketPrice||0,
       genCommission1:p.genCommission1||0,genCommission2:p.genCommission2||0,genCommission3:p.genCommission3||0,
       isEid:p.isEidCollection||false,active:p.active!==false,
       saving:false,saveErr:'',
@@ -2284,6 +2308,14 @@ function Admin(){return{
     this.up.qRunning=false;
   },
   _log(t,m){this.up.log.push({t,m})},
+  _szArr(s){return String(s||'').split(/[,\/|\s]+|\.(?=[A-Za-z])/).map(x=>x.trim()).filter(Boolean)},
+  _clArr(s){return String(s||'').split(/[,\/|]+/).map(x=>x.trim()).filter(Boolean)},
+  hasSz(s){return this._szArr(this.up.sizes).some(x=>x.toLowerCase()===s.toLowerCase())},
+  toggleSz(s){let a=this._szArr(this.up.sizes);a=this.hasSz(s)?a.filter(x=>x.toLowerCase()!==s.toLowerCase()):[...a,s];this.up.sizes=a.join(', ')},
+  addSzRange(f,t,st){f=Number(f);t=Number(t);st=Number(st)||1;if(!f||!t||t<f)return this.showToast('সঠিক রেঞ্জ দিন','error');const a=this._szArr(this.up.sizes);for(let n=f;n<=t;n+=st){const v=String(n);if(!a.includes(v))a.push(v)}this.up.sizes=a.join(', ')},
+  hasCl(c){return this._clArr(this.up.colors).includes(c)},
+  toggleCl(c){let a=this._clArr(this.up.colors);a=a.includes(c)?a.filter(x=>x!==c):[...a,c];this.up.colors=a.join(', ')},
+  payLogoUpload(k,ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=Math.min(1,140/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*m);c.height=Math.round(im.height*m);c.getContext('2d').drawImage(im,0,0,c.width,c.height);this.settings[k+'Logo']=c.toDataURL('image/png');this.showToast('লোগো সেট হয়েছে — সেভ করুন','success')};im.src=r.result};r.readAsDataURL(f);ev.target.value=''},
   _imgbb(file,key,onProgress){
     return new Promise((res,rej)=>{
       const fd=new FormData();fd.append('image',file);
@@ -2352,11 +2384,12 @@ function Admin(){return{
       cat:this.up.cat,
       section:this.up.section,sectionId:this.up.section,
       images:imgs,img:imgs[0]||'',
-      sizes:this.up.sizes?this.up.sizes.split(',').map(s=>s.trim()).filter(Boolean):[],
+      sizes:this._szArr(this.up.sizes),colors:this._clArr(this.up.colors),
       desc:this.up.desc,badge:this.up.badge,
       promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,
       resellEnabled:this.up.resellEnabled||false,
       resellerPrice:this.up.resellEnabled?(Number(this.up.resellerPrice)||0):0,
+      marketPrice:this.up.resellEnabled?(Number(this.up.marketPrice)||0):0,
       genCommission1:this.up.resellEnabled?(Number(this.up.genCommission1)||0):0,
       genCommission2:this.up.resellEnabled?(Number(this.up.genCommission2)||0):0,
       genCommission3:this.up.resellEnabled?(Number(this.up.genCommission3)||0):0,
