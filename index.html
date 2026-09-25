@@ -742,7 +742,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
   <div x-show="activeTab==='upload'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
       <div>
-        <p class="font-bold text-base" style="color:var(--fg)" x-text="up.editKey?'✏️ পণ্য সম্পাদনা':'📦 নতুন পণ্য আপলোড'"></p>
+        <p class="font-bold text-base" style="color:var(--fg)" x-text="up.editKey?'✏️ পণ্য সম্পাদনা':'📦 নতুন পণ্য আপলোড'"></p><p class="text-xs font-mono mt-1" style="color:var(--accent)" x-text="'পণ্য আইডি: #'+(up.editKey?(fbProducts.find(p=>p.fbKey===up.editKey)?.productId||'—'):nextProductId)+' (স্বয়ংক্রিয়)'"></p>
         <p class="text-xs mt-1" style="color:var(--fg3)">সকল তথ্য পূরণ করুন এবং ছবি যোগ করুন</p>
       </div>
       <button x-show="up.editKey" @click="resetUp()" class="btn-ghost"><i class="fa-solid fa-rotate-left"></i>নতুন পণ্য</button>
@@ -973,7 +973,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
             <div><label class="dd-label">ডিজাইন SKU</label><input class="dd-input" x-model="up.designSKU" placeholder="যেমন: POLO-1021"/></div>
             <div><label class="dd-label">এফিলিয়েট প্রোডাক্ট আইডি</label><input class="dd-input" x-model="up.affiliateId" placeholder="সাপ্লায়ারের প্রোডাক্ট আইডি"/></div>
           </div>
-          <p class="text-xs" style="color:var(--fg3);margin-top:-6px">একই এফিলিয়েট আইডি, অথবা একই নাম + কালার + ডিজাইন SKU হলে সেভের আগে ডুপ্লিকেট সতর্কতা আসবে।</p>
+          <p class="text-xs" style="color:var(--fg3);margin-top:-6px">একই এফিলিয়েট আইডি, অথবা একই নাম + ছবির সংখ্যা + ডিজাইন SKU হলে সেভের আগে ডুপ্লিকেট সতর্কতা আসবে।</p>
 
           <div class="grid grid-cols-2 gap-3">
             <div><label class="dd-label">বিক্রয় মূল্য (৳) *</label><input class="dd-input" type="number" x-model.number="up.price" placeholder="0" min="0"/></div>
@@ -1019,10 +1019,10 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
   <p class="text-xs" style="color:var(--fg3)">নাম্বার সাইজ (প্যান্ট, জুতা, কিডস, বোরকা) — দ্রুত যোগ করুন</p>
   <div class="flex flex-wrap gap-1.5"><template x-for="r in [['বোরকা ৪৮–৫৮',48,58,2],['বোরকা ৫০–৫৮',50,58,2],['প্যান্ট ২৮–৪২',28,42,2],['জুতা ৩৮–৪৫',38,45,1],['কিডস ১২–২০',12,20,1],['কিডস ২০–৩৪',20,34,2]]" :key="r[0]"><button type="button" @click="addSzRange(r[1],r[2],r[3])" class="szc" x-text="r[0]"></button></template></div>
   <div class="flex gap-2 items-center"><input type="number" class="dd-input" x-model.number="up.szFrom" placeholder="থেকে"/><input type="number" class="dd-input" x-model.number="up.szTo" placeholder="পর্যন্ত"/><input type="number" class="dd-input" x-model.number="up.szStep" placeholder="ধাপ"/><button type="button" @click="addSzRange(up.szFrom,up.szTo,up.szStep)" class="szc on" style="white-space:nowrap">+ যোগ</button><button type="button" @click="up.sizes=''" class="szc">মুছুন</button></div>
-  <label class="dd-label" style="margin-top:10px">কালার</label>
-  <input class="dd-input" x-model="up.colors" placeholder="কালো, সাদা, নেভি — কমা দিয়ে আলাদা করুন"/>
-  <p class="text-xs" style="color:var(--fg3)">কালারের ক্রম ছবির ক্রমের সাথে মিলবে: ১ম কালার = ১ম ছবি, ২য় কালার = ২য় ছবি। ইউজার কালারের নিচে সেই ছবি দেখে বেছে নেবে।</p>
-  <div class="flex flex-wrap gap-1.5"><template x-for="c in ['কালো','সাদা','অফ-হোয়াইট','লাল','মেরুন','নীল','নেভি','সবুজ','হলুদ','গোলাপি','ধূসর','বাদামি','বেইজ']" :key="c"><button type="button" @click="toggleCl(c)" class="szc" :class="hasCl(c)?'on':''" x-text="c"></button></template></div>
+  <div class="rounded-xl p-3 mt-2" style="background:var(--bg2);border:1px dashed var(--border)">
+    <p class="text-xs font-bold" style="color:var(--fg2)"><i class="fa-solid fa-images mr-1"></i> কালার/ভ্যারিয়েন্ট = ছবি</p>
+    <p class="text-xs mt-1" style="color:var(--fg3)">আলাদা রঙ বা ডিজাইনের জন্য বাম পাশে সেই ছবিগুলো যোগ করুন। প্রতিটি ছবি একটি ভ্যারিয়েন্ট হিসেবে কাস্টমারের সামনে থাম্বনেইল আকারে আসবে — আলাদা করে রঙের নাম লেখার দরকার নেই।</p>
+  </div>
 </div>
           </div>
 
@@ -1101,7 +1101,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
   <div x-show="activeTab==='products'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <p class="text-sm" style="color:var(--fg3)" x-text="fbProducts.length+' টি পণ্য'"></p>
-      <button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button>
+      <div class="flex gap-2 flex-wrap"><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
     </div>
     <div class="flex gap-3 mb-4 flex-wrap">
       <div class="relative flex-1" style="min-width:180px">
@@ -1125,7 +1125,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                   </div>
                 </td>
                 <td>
-                  <p class="font-semibold text-sm" style="color:var(--fg)" x-text="p.name"></p>
+                  <p class="font-semibold text-sm" style="color:var(--fg)" x-text="p.name"></p><p class="text-xs font-mono mt-0.5" style="color:var(--fg3)" x-show="p.productId" x-text="'ID #'+p.productId"></p>
                   <div class="flex gap-1.5 mt-1 flex-wrap">
                     <span x-show="p.badge" class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:var(--accentL);color:var(--accent)" x-text="p.badge"></span>
                     <span x-show="p.isEidCollection" class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FFFBEB;color:#B8860B">🌙 ঈদ</span>
@@ -1163,7 +1163,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
   <div x-show="activeTab==='categories'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-5">
       <p class="text-sm" style="color:var(--fg3)" x-text="fbCategories.length+' টি ক্যাটাগরি'"></p>
-      <button @click="openCatModal()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন ক্যাটাগরি</button>
+      <div class="flex gap-2 flex-wrap"><button x-show="!fbCategories.length" @click="seedDefaultCategories()" class="btn-ghost text-xs"><i class="fa-solid fa-wand-magic-sparkles"></i>ডিফল্ট ৫টি ক্যাটাগরি বসান</button><button @click="openCatModal()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন ক্যাটাগরি</button></div>
     </div>
     <!-- Men's section -->
     <div class="dd-card p-4 mb-5">
@@ -1993,7 +1993,7 @@ function Admin(){return{
   // Product upload form state (superset of both plans' product forms)
   up:{
     editKey:null,
-    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
+    name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
     section:'',cat:'',gender:'',
     promoCode:'',promoDesc:'',
     resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
@@ -2008,7 +2008,7 @@ function Admin(){return{
   // ══════════ COMPUTED ══════════
   get allSections(){return this.fbSections.slice().sort((a,b)=>(a.order??99)-(b.order??99))},
   get filteredProds(){
-    return this.fbProducts.filter(p=>{
+    return this.fbProducts.slice().sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).filter(p=>{
       const q=this.prodSearch.toLowerCase();
       return(!q||(p.name||'').toLowerCase().includes(q))
         &&(!this.prodSectionF||(p.section===this.prodSectionF||p.sectionId===this.prodSectionF))
@@ -2059,6 +2059,8 @@ function Admin(){return{
   get eidProducts(){return this.fbProducts.filter(p=>p.isEidCollection)},
   get filteredEidProds(){return this.fbProducts.filter(p=>(p.name||'').toLowerCase().includes(this.eidSearch.toLowerCase()))},
   get pinnedKeys(){return this.fbPinned.map(p=>p.productKey||p.fbKey).filter(Boolean)},
+  get nextProductId(){const ids=this.fbProducts.map(p=>Number(p.productId)||0);return(ids.length?Math.max(...ids):100)+1},
+  get productsMissingId(){return this.fbProducts.filter(p=>!p.productId)},
 
   // ══════════ HELPERS ══════════
   getSectionName(sid){if(!sid)return'';return this.allSections.find(s=>s.fbKey===sid)?.name||''},
@@ -2228,7 +2230,7 @@ function Admin(){return{
   resetUp(){
     this.up={
       editKey:null,
-      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',colors:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
+      name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:'',cat:'',gender:'',promoCode:'',promoDesc:'',
       resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
@@ -2245,7 +2247,7 @@ function Admin(){return{
       editKey:p.fbKey,
       name:p.name||'',price:p.price||0,oldPrice:p.oldPrice||0,
       desc:p.desc||'',badge:p.badge||'',
-      sizes:(p.sizes||[]).join(', '),colors:(p.colors||[]).join(', '),designSKU:p.designSKU||'',affiliateId:p.affiliateProductId||'',dupOk:false,szFrom:'',szTo:'',szStep:2,
+      sizes:(p.sizes||[]).join(', '),designSKU:p.designSKU||'',affiliateId:p.affiliateProductId||'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:p.section||p.sectionId||'',cat:p.cat||'',gender:p.gender||'',
       promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',
       resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,marketPrice:p.marketPrice||0,
@@ -2329,19 +2331,17 @@ function Admin(){return{
   },
   _log(t,m){this.up.log.push({t,m})},
   _norm(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim()},
-  _findDup(){const u=this.up,aff=this._norm(u.affiliateId),nm=this._norm(u.name),col=this._clArr(u.colors).map(x=>this._norm(x)).sort().join('|'),sku=this._norm(u.designSKU);
+  _findDup(){const u=this.up,aff=this._norm(u.affiliateId),nm=this._norm(u.name),col=(u.images||[]).length,sku=this._norm(u.designSKU);
     for(const p of (this.fbProducts||[])){if(!p||p.fbKey===u.editKey)continue;
       if(aff&&this._norm(p.affiliateProductId)===aff)return {p,why:'একই এফিলিয়েট প্রোডাক্ট আইডি মিলেছে'};
-      if(nm&&this._norm(p.name)===nm&&(p.colors||[]).map(x=>this._norm(x)).sort().join('|')===col&&this._norm(p.designSKU)===sku)return {p,why:'একই নাম, কালার ও ডিজাইন SKU মিলেছে'}}
+      if(nm&&this._norm(p.name)===nm&&(p.images||[]).length===col&&this._norm(p.designSKU)===sku)return {p,why:'একই নাম, ছবির সংখ্যা ও ডিজাইন SKU মিলেছে'}}
     return null},
   _szArr(s){return String(s||'').split(/[,\/|\s]+|\.(?=[A-Za-z])/).map(x=>x.trim()).filter(Boolean)},
   _clArr(s){return String(s||'').split(/[,\/|]+/).map(x=>x.trim()).filter(Boolean)},
   hasSz(s){return this._szArr(this.up.sizes).some(x=>x.toLowerCase()===s.toLowerCase())},
   toggleSz(s){let a=this._szArr(this.up.sizes);a=this.hasSz(s)?a.filter(x=>x.toLowerCase()!==s.toLowerCase()):[...a,s];this.up.sizes=a.join(', ')},
   addSzRange(f,t,st){f=Number(f);t=Number(t);st=Number(st)||1;if(!f||!t||t<f)return this.showToast('সঠিক রেঞ্জ দিন','error');const a=this._szArr(this.up.sizes);for(let n=f;n<=t;n+=st){const v=String(n);if(!a.includes(v))a.push(v)}this.up.sizes=a.join(', ')},
-  hasCl(c){return this._clArr(this.up.colors).includes(c)},
-  toggleCl(c){let a=this._clArr(this.up.colors);a=a.includes(c)?a.filter(x=>x!==c):[...a,c];this.up.colors=a.join(', ')},
-  payLogoUpload(k,ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=Math.min(1,140/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*m);c.height=Math.round(im.height*m);c.getContext('2d').drawImage(im,0,0,c.width,c.height);this.settings[k+'Logo']=c.toDataURL('image/png');this.showToast('লোগো সেট হয়েছে — সেভ করুন','success')};im.src=r.result};r.readAsDataURL(f);ev.target.value=''},
+    payLogoUpload(k,ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const m=Math.min(1,140/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*m);c.height=Math.round(im.height*m);c.getContext('2d').drawImage(im,0,0,c.width,c.height);this.settings[k+'Logo']=c.toDataURL('image/png');this.showToast('লোগো সেট হয়েছে — সেভ করুন','success')};im.src=r.result};r.readAsDataURL(f);ev.target.value=''},
   _imgbb(file,key,onProgress){
     return new Promise((res,rej)=>{
       const fd=new FormData();fd.append('image',file);
@@ -2412,7 +2412,7 @@ function Admin(){return{
       cat:this.up.cat,
       section:this.up.section,sectionId:this.up.section,
       images:imgs,img:imgs[0]||'',
-      sizes:this._szArr(this.up.sizes),colors:this._clArr(this.up.colors),
+      sizes:this._szArr(this.up.sizes),colors:[],
       desc:this.up.desc,badge:this.up.badge,
       designSKU:(this.up.designSKU||'').trim(),affiliateProductId:(this.up.affiliateId||'').trim(),
       promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,
@@ -2427,7 +2427,7 @@ function Admin(){return{
       active:this.up.active,
       updatedAt:new Date().toISOString(),
     };
-    if(!this.up.editKey)data.timestamp=Date.now();
+    if(!this.up.editKey){data.timestamp=Date.now();data.productId=this.nextProductId;}
     this.saving=true;this.up.saving=true;
     try{
       await window.$db.saveProduct(data,this.up.editKey||null);
@@ -2438,6 +2438,25 @@ function Admin(){return{
     this.saving=false;this.up.saving=false;
   },
   async deleteProd(key){if(!confirm('পণ্য মুছবেন?'))return;try{await window.$db.deleteProduct(key);this.showToast('পণ্য মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
+  async backfillProductIds(){
+    const missing=this.productsMissingId.slice().sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));
+    if(!missing.length)return this.showToast('সবগুলো পণ্যের আইডি আগে থেকেই আছে!','success');
+    let next=this.nextProductId;
+    for(const p of missing){try{await window.$db.saveProduct({productId:next},p.fbKey);next++}catch(e){}}
+    this.showToast(missing.length+'টি পণ্যে আইডি বসানো হয়েছে! ✅','success');
+  },
+  async seedDefaultCategories(){
+    if(this.fbCategories.length&&!confirm('আগে থেকেই ক্যাটাগরি আছে। ডিফল্ট ৫টি ক্যাটাগরি যোগ করবেন?'))return;
+    const defs=[
+      {name:'ছেলেদের পণ্য',emoji:'👔',gender:'men'},
+      {name:'মেয়েদের পণ্য',emoji:'👗',gender:'women'},
+      {name:'কসমেটিক আইটেম',emoji:'💄',gender:'both'},
+      {name:'কম্বো অফার',emoji:'🎁',gender:'both'},
+      {name:'ইলেকট্রনিক্স ও অন্যান্য',emoji:'🔌',gender:'both'},
+    ];
+    for(const d of defs){try{await window.$db.saveCategory({...d,img:'',parent:'',section:'',sectionId:'',updatedAt:new Date().toISOString()},null)}catch(e){}}
+    this.showToast('ডিফল্ট ক্যাটাগরি যোগ হয়েছে! ✅','success');
+  },
 
   // ══════════ ORDER CRUD ══════════
   async updateOrderStatus(key,status){
