@@ -1892,12 +1892,23 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
             <p class="text-sm font-bold" style="color:var(--fg)" x-text="k.phone||k.uid"></p>
             <span class="text-xs font-bold px-2.5 py-1 rounded-full" :style="k.status==='approved'?'background:#F0FDF4;color:#15803D':k.status==='rejected'?'background:#FEF2F2;color:#B91C1C':k.status==='reupload'?'background:#FFFBEB;color:#B45309':'background:#FFF7ED;color:#C2410C'" x-text="k.status==='approved'?'অনুমোদিত':k.status==='rejected'?'বাতিল':k.status==='reupload'?'পুনরায় আপলোড':'পেন্ডিং'"></span>
           </div>
-          <div class="grid grid-cols-3 gap-2 mb-3">
+          <div class="grid gap-2 mb-3" :class="k.studentId?'grid-cols-4':'grid-cols-3'">
             <img :src="k.nidFront" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidFront" onerror="this.style.opacity=0.15"/>
             <img :src="k.nidBack" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidBack" onerror="this.style.opacity=0.15"/>
             <img :src="k.selfie" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.selfie" onerror="this.style.opacity=0.15"/>
+            <img x-show="k.studentId" :src="k.studentId" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.studentId" onerror="this.style.opacity=0.15"/>
           </div>
-          <p class="text-xs" style="color:var(--fg3)">ইমার্জেন্সি: <span x-text="k.emergencyContact1"></span><span x-show="k.emergencyContact2" x-text="' · '+k.emergencyContact2"></span></p>
+          <template x-if="k.fatherPhone||k.motherPhone||k.closeContact">
+            <div class="text-xs space-y-0.5" style="color:var(--fg3)">
+              <p x-show="k.fatherPhone"><b style="color:var(--fg2)">বাবা:</b> <span x-text="k.fatherPhone"></span></p>
+              <p x-show="k.motherPhone"><b style="color:var(--fg2)">মা:</b> <span x-text="k.motherPhone"></span></p>
+              <p x-show="k.closeContact"><b style="color:var(--fg2)">ঘনিষ্ঠ যোগাযোগ:</b> <span x-text="k.closeContact"></span></p>
+            </div>
+          </template>
+          <template x-if="!(k.fatherPhone||k.motherPhone||k.closeContact)">
+            <p class="text-xs" style="color:var(--fg3)">ইমার্জেন্সি: <span x-text="k.emergencyContact1"></span><span x-show="k.emergencyContact2" x-text="' · '+k.emergencyContact2"></span></p>
+          </template>
+          <p x-show="k.notStudent" class="text-[11px] mt-1" style="color:var(--fg3)"><i class="fa-solid fa-circle-info mr-1"></i>স্টুডেন্ট না</p>
           <p x-show="k.note" class="text-xs mt-1.5" style="color:#B45309" x-text="'নোট: '+k.note"></p>
           <div class="flex gap-2 mt-3" x-show="k.status==='pending'">
             <button @click="approveKyc(k)" class="btn-success !text-xs flex-1" style="justify-content:center"><i class="fa-solid fa-check mr-1"></i>অনুমোদন</button>
@@ -2047,6 +2058,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
       <p class="text-xs mb-3" style="color:var(--fg3)">শপের কভার ফটো — শপের নাম মাঝখানে স্বয়ংক্রিয়ভাবে দেখাবে।</p>
       <div class="cover-preview mb-3">
         <div class="cp-bg" x-show="settings.profileCover" :style="'background-image:url('+settings.profileCover+')'"></div>
+        <div x-show="!settings.profileCover" x-html="deliverySvg()" style="position:absolute;right:0;bottom:0;width:50%;height:80%;pointer-events:none"></div>
         <div class="cp-overlay"></div>
         <div class="cp-content">
           <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-2" style="background:rgba(255,255,255,.15)"><i class="fa-solid fa-store text-white"></i></div>
@@ -2054,6 +2066,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
           <p class="text-white text-xs mt-1 font-medium" style="opacity:.7" x-text="settings.tagline||'অনলাইন শপিং'"></p>
         </div>
       </div>
+      <p class="text-[11px] mb-3" style="color:var(--fg3)">ডেলিভারি ম্যান/স্কুটার থিমের ছবি ভালো মানাবে, না থাকলে বিল্ট-ইন ডেলিভারি ইলাস্ট্রেশন দেখাবে।</p>
       <div class="flex gap-3">
         <label class="flex-1 cursor-pointer">
           <div class="dd-input flex items-center gap-2" style="justify-content:center;height:42px">
@@ -2073,7 +2086,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     <!-- Banners -->
     <div class="flex items-center justify-between mb-4">
       <p class="font-bold text-sm" style="color:var(--fg)">ব্যানার স্লাইডসমূহ</p>
-      <button @click="adminBanners.push({title:'',sub:'',img:'',badge:'🔥 হট ডিল'})" class="btn-primary text-xs py-2 px-3"><i class="fa-solid fa-plus"></i>নতুন</button>
+      <button @click="adminBanners.push({title:'',sub:'',img:'',badge:'🔥 হট ডিল',svgKey:'deal'})" class="btn-primary text-xs py-2 px-3"><i class="fa-solid fa-plus"></i>নতুন</button>
     </div>
     <div class="grid md:grid-cols-2 gap-4">
       <template x-for="(b,i) in adminBanners" :key="i">
@@ -2098,6 +2111,12 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                 <div><i class="fa-solid fa-image text-xl mb-1" style="color:var(--fg3)"></i><p class="text-xs" style="color:var(--fg2)">ছবি আপলোড</p></div>
               </template>
             </label>
+            <p class="text-[11px] mt-1.5" style="color:var(--fg3)">শপিং/bKash পেমেন্ট/৫০% ছাড় থিমের ছবি আপলোড করুন, নাহলে বিল্ট-ইন ইলাস্ট্রেশন দেখাবে।</p>
+            <div x-show="!adminBanners[i].img" x-cloak class="flex gap-2 mt-2">
+              <button type="button" @click="adminBanners[i].svgKey='deal'" class="flex-1 text-xs font-bold py-2 rounded-xl" :style="(adminBanners[i].svgKey||'deal')==='deal'?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'">🛍️ শপিং</button>
+              <button type="button" @click="adminBanners[i].svgKey='eid'" class="flex-1 text-xs font-bold py-2 rounded-xl" :style="adminBanners[i].svgKey==='eid'?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'">🌙 ঈদ</button>
+              <button type="button" @click="adminBanners[i].svgKey='resell'" class="flex-1 text-xs font-bold py-2 rounded-xl" :style="adminBanners[i].svgKey==='resell'?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'">🪙 রিসেলার</button>
+            </div>
             <div x-show="bannerUploadPct[i]>0&&bannerUploadPct[i]<100" class="mt-1">
               <div class="prog-bar"><div class="prog-bar-fill" :style="'width:'+(bannerUploadPct[i]||0)+'%'"></div></div>
             </div>
@@ -2105,6 +2124,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
           </div>
           <div class="banner-preview-mini">
             <div class="absolute inset-0 bg-cover bg-center" x-show="adminBanners[i].img" :style="'background-image:url('+adminBanners[i].img+');opacity:.4'"></div>
+            <div x-show="!adminBanners[i].img" x-html="heroSvg(adminBanners[i].svgKey||'deal')" style="position:absolute;right:-4px;bottom:0;width:42%;height:88%;pointer-events:none"></div>
             <div class="bp-overlay"></div>
             <div class="bp-content">
               <span class="text-white text-xs font-bold px-2 py-0.5 rounded-full mb-1" style="background:var(--accent)" x-text="adminBanners[i].badge||'🔥 হট ডিল'"></span>
@@ -3227,6 +3247,28 @@ function Admin(){return{
     this.banners=JSON.parse(JSON.stringify(this.adminBanners));
     if(window.$db)this.getCurrentSettings().then(curr=>window.$db.saveSettings(curr));
     this.showToast('ব্যানার ও কভার সেভ! ✅','success');
+  },
+  heroSvg(key){
+    const s='#fff',g='#FFD166';
+    const wrap=(inner)=>'<svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">'+inner+'</svg>';
+    if(key==='eid')return wrap('<circle cx="70" cy="70" r="34" fill="'+s+'" opacity=".95"/><circle cx="82" cy="62" r="30" fill="#1B1410"/>'+
+      '<g fill="'+g+'"><path d="M150 40l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/><path d="M170 90l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M40 130l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/></g>'+
+      '<g transform="translate(95,120)"><rect x="0" y="0" width="60" height="46" rx="6" fill="'+g+'"/><rect x="0" y="18" width="60" height="8" fill="'+s+'"/><rect x="26" y="0" width="8" height="46" fill="'+s+'"/><path d="M0 0h60l-8-14H8z" fill="'+s+'" opacity=".85"/></g>');
+    if(key==='resell')return wrap('<g fill="'+g+'"><ellipse cx="60" cy="150" rx="34" ry="10"/><ellipse cx="60" cy="138" rx="34" ry="10"/><ellipse cx="60" cy="126" rx="34" ry="10"/><ellipse cx="60" cy="114" rx="34" ry="10" fill="'+s+'"/></g>'+
+      '<text x="60" y="120" font-size="16" font-weight="800" fill="#B8860B" text-anchor="middle">৳</text>'+
+      '<path d="M110 150 L150 90 L140 90 L170 45" stroke="'+s+'" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M156 45h20v20" stroke="'+s+'" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '<g transform="translate(120,130)"><rect x="0" y="0" width="46" height="32" rx="5" fill="'+s+'"/><rect x="0" y="8" width="46" height="7" fill="#B8860B"/></g>');
+    return wrap('<g transform="translate(35,90)"><path d="M4 20 L96 20 L88 100 L12 100 Z" fill="'+s+'"/><path d="M24 20 C24 0 76 0 76 20" stroke="'+s+'" stroke-width="9" fill="none"/></g>'+
+      '<circle cx="150" cy="55" r="34" fill="'+g+'"/><text x="150" y="49" font-size="15" font-weight="800" fill="#92400E" text-anchor="middle">৫০%</text><text x="150" y="66" font-size="11" font-weight="700" fill="#92400E" text-anchor="middle">ছাড়</text>'+
+      '<g fill="'+g+'"><path d="M20 15l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M170 130l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M40 150l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>');
+  },
+  deliverySvg(){
+    const s='#fff',g='#FFD166';
+    return '<svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">'+
+      '<g fill="'+g+'"><path d="M20 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M170 40l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path d="M30 150l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"/></g>'+
+      '<g transform="translate(90,60)"><rect x="0" y="0" width="52" height="42" rx="6" fill="'+g+'"/><rect x="0" y="16" width="52" height="7" fill="'+s+'"/><rect x="22" y="0" width="7" height="42" fill="'+s+'"/></g>'+
+      '<g transform="translate(50,105)"><rect x="30" y="10" width="90" height="34" rx="6" fill="'+s+'"/><path d="M110 10 L140 10 L155 30 L155 44 L110 44 Z" fill="'+s+'" opacity=".85"/><circle cx="55" cy="52" r="12" fill="#1B1410"/><circle cx="55" cy="52" r="5" fill="'+s+'"/><circle cx="130" cy="52" r="12" fill="#1B1410"/><circle cx="130" cy="52" r="5" fill="'+s+'"/><rect x="0" y="18" width="30" height="8" fill="'+s+'"/></g>'+
+      '</svg>';
   },
 
   // ══════════ SETTINGS ══════════
