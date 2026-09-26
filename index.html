@@ -119,6 +119,17 @@ window.$db={
   updateSavingsWallet:async(key,data)=>update(ref(db,'savingsWallets/'+key),data),
   updateSavingsContribution:async(walletKey,cKey,data)=>update(ref(db,'savingsWallets/'+walletKey+'/contributions/'+cKey),data),
   listenSavingsWallets:(cb)=>onValue(ref(db,'savingsWallets'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d,contributions:d.contributions?Object.entries(d.contributions).map(([ck,cd])=>({ckey:ck,...cd})):[]})):[])},{onlyOnce:false}),
+  // কিস্তিতে কেনাকাটা / ইনস্টলমেন্ট অর্ডার (NEW)
+  updateInstallmentOrder:async(key,data)=>update(ref(db,'installmentOrders/'+key),data),
+  updateInstallmentSchedule:async(key,idx,data)=>update(ref(db,'installmentOrders/'+key+'/schedule/'+idx),data),
+  listenInstallmentOrders:(cb)=>onValue(ref(db,'installmentOrders'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d,schedule:d.schedule||[]})):[])},{onlyOnce:false}),
+  // সরলীকৃত KYC (NEW)
+  saveKyc:async(uid,data)=>update(ref(db,'kyc/'+uid),data),
+  listenKyc:(cb)=>onValue(ref(db,'kyc'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({uid:k,...d})):[])},{onlyOnce:false}),
+  // ভেন্ডর/সাপ্লায়ার ম্যানেজমেন্ট (NEW)
+  saveVendor:async(data,id)=>{if(id){await update(ref(db,'vendors/'+id),data);return id;}const r=push(ref(db,'vendors'));await set(r,data);return r.key},
+  deleteVendor:async(id)=>remove(ref(db,'vendors/'+id)),
+  listenVendors:(cb)=>onValue(ref(db,'vendors'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Storage (System A — direct Firebase upload)
   uploadImage:async(file,path,onProgress)=>{
     const storageRef=sRef(storage,path);
@@ -619,6 +630,47 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 </div>
 
 <div class="admin-layout">
+<!-- KYC IMAGE LIGHTBOX (NEW) -->
+<div x-show="lightboxImg" x-cloak class="modal-overlay" style="z-index:400;background:rgba(0,0,0,.85)" @click="lightboxImg=''">
+  <img :src="lightboxImg" style="max-width:92vw;max-height:92vh;border-radius:12px;object-fit:contain"/>
+</div>
+<!-- VENDOR MODAL (NEW) -->
+<div x-show="vendorModal.open" x-cloak class="modal-overlay" style="z-index:300">
+  <div class="modal-body p-6" style="max-width:420px">
+    <div class="flex items-center justify-between mb-4">
+      <p class="font-display text-xl" style="color:var(--fg)" x-text="vendorModal.editKey?'ভেন্ডর সম্পাদনা':'নতুন ভেন্ডর'"></p>
+      <button @click="closeVendorModal()" class="btn-ghost w-8 h-8 p-0 flex items-center justify-center rounded-xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="space-y-3">
+      <div><label class="dd-label">ভেন্ডরের নাম *</label><input class="dd-input" x-model="vendorModal.form.name" placeholder="যেমন: এবিসি টেক্সটাইল"/></div>
+      <div><label class="dd-label">পাইকারি দাম (৳) *</label><input class="dd-input" type="number" min="0" x-model.number="vendorModal.form.wholesalePrice" placeholder="0"/></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="dd-label">প্ল্যাটফর্ম ফি (%)</label><input class="dd-input" type="number" min="0" x-model.number="vendorModal.form.platformFeePct" placeholder="0"/></div>
+        <div><label class="dd-label">রিসেলার মার্জিন (%)</label><input class="dd-input" type="number" min="0" x-model.number="vendorModal.form.resellerMarginPct" placeholder="0"/></div>
+      </div>
+      <div><label class="dd-label">স্ট্যাটাস</label><div class="sel-wrap"><select class="dd-input" x-model="vendorModal.form.status"><option value="active">সক্রিয়</option><option value="inactive">নিষ্ক্রিয়</option></select></div></div>
+      <p class="text-xs" style="color:var(--fg3)">ফাইনাল মূল্য প্রিভিউ: <b class="font-mono" style="color:var(--accent)" x-text="'৳'+vendorFinalPrice(vendorModal.form).toLocaleString()"></b></p>
+    </div>
+    <div class="flex gap-3 mt-5">
+      <button @click="saveVendorForm()" class="btn-primary flex-1" style="justify-content:center"><i class="fa-solid fa-save mr-1"></i>সেভ করুন</button>
+      <button @click="closeVendorModal()" class="btn-ghost">বাতিল</button>
+    </div>
+  </div>
+</div>
+<!-- KYC REJECT MODAL (NEW) -->
+<div x-show="kycNoteModal.open" x-cloak class="modal-overlay" style="z-index:300">
+  <div class="modal-body p-6" style="max-width:400px">
+    <div class="flex items-center justify-between mb-4">
+      <p class="font-display text-xl" style="color:var(--fg)">KYC বাতিলের কারণ</p>
+      <button @click="kycNoteModal.open=false" class="btn-ghost w-8 h-8 p-0 flex items-center justify-center rounded-xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <textarea class="dd-input resize-none" rows="3" x-model="kycNoteModal.note" placeholder="কারণ লিখুন, কাস্টমার এটি দেখতে পাবে..."></textarea>
+    <div class="flex gap-3 mt-4">
+      <button @click="confirmRejectKyc()" class="btn-danger flex-1" style="justify-content:center">বাতিল নিশ্চিত করুন</button>
+      <button @click="kycNoteModal.open=false" class="btn-ghost">ফিরে যান</button>
+    </div>
+  </div>
+</div>
 <!-- SIDEBAR -->
 <aside class="sidebar" :class="sidebarOpen?'open':''">
   <div class="px-5 mb-4">
@@ -669,6 +721,20 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
       <i class="fa-solid fa-headset w-4 text-center text-sm"></i><span>সাপোর্ট টিকেট</span>
       <span x-show="pendingTickets.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingTickets.length"></span>
     </button>
+
+    <p class="nav-group-label">কিস্তিতে কেনাকাটা</p>
+    <button @click="activeTab='installments';sidebarOpen=false" class="nav-item" :class="activeTab==='installments'?'active':''">
+      <i class="fa-solid fa-calendar-check w-4 text-center text-sm"></i><span>কিস্তি অর্ডার ম্যানেজার</span>
+      <span x-show="pendingInstallmentPayments.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingInstallmentPayments.length"></span>
+    </button>
+    <button @click="activeTab='kyc';sidebarOpen=false" class="nav-item" :class="activeTab==='kyc'?'active':''">
+      <i class="fa-solid fa-id-card w-4 text-center text-sm"></i><span>KYC রিভিউ</span>
+      <span x-show="pendingKyc.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingKyc.length"></span>
+    </button>
+    <button @click="activeTab='vendors';sidebarOpen=false" class="nav-item" :class="activeTab==='vendors'?'active':''">
+      <i class="fa-solid fa-industry w-4 text-center text-sm"></i><span>ভেন্ডর/সাপ্লায়ার</span>
+    </button>
+
 
     <p class="nav-group-label">কনটেন্ট</p>
     <button @click="activeTab='notifications';sidebarOpen=false" class="nav-item" :class="activeTab==='notifications'?'active':''"><i class="fa-solid fa-bell w-4 text-center text-sm"></i><span>নোটিফিকেশন</span></button>
@@ -1087,6 +1153,45 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                 <p class="text-xs" style="color:var(--fg3)">যে রিসেলার সরাসরি বিক্রি করবে তার উপরে থাকা ১ম/২য়/৩য় লেভেলের আপলাইন রেফারারকে এই টাকা কমিশন হিসেবে দেওয়া হবে (অর্ডার ডেলিভার্ড হলে)।</p>
               </div>
             </template>
+          </div>
+
+          <div class="rounded-xl p-3.5" style="background:#EFF6FF;border:1px dashed #1D4ED8">
+            <label class="flex items-center gap-3 cursor-pointer mb-3">
+              <span class="tog"><input type="checkbox" x-model="up.installmentEnabled"/><span class="tog-sl"></span></span>
+              <span>
+                <p class="text-sm font-bold" style="color:#1D4ED8"><i class="fa-solid fa-calendar-check mr-1.5"></i>কিস্তিতে কেনাকাটা চালু করুন</p>
+                <p class="text-xs" style="color:var(--fg3)">চালু করলে এই পণ্যে কাস্টমার ডাউনপেমেন্ট দিয়ে বাকিটা মাসিক কিস্তিতে পরিশোধ করতে পারবে</p>
+              </span>
+            </label>
+            <template x-if="up.installmentEnabled">
+              <div class="space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="dd-label">ডাউনপেমেন্ট (%)</label><input class="dd-input" type="number" min="0" max="90" x-model.number="up.installmentDownPct" placeholder="25"/></div>
+                  <div><label class="dd-label">প্রসেসিং ফি (%)</label><input class="dd-input" type="number" min="0" max="20" step="0.5" x-model.number="up.installmentFeePct" placeholder="0"/></div>
+                </div>
+                <div>
+                  <p class="dd-label !mb-2">মেয়াদ (মাস) — কাস্টমার যেগুলো থেকে বেছে নিতে পারবে</p>
+                  <div class="flex gap-2">
+                    <label class="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer" :style="up.installmentTenure3?'background:#1D4ED8;color:#fff':'background:var(--bg2);color:var(--fg2)'"><input type="checkbox" x-model="up.installmentTenure3" class="hidden"/>৩ মাস</label>
+                    <label class="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl cursor-pointer" :style="up.installmentTenure6?'background:#1D4ED8;color:#fff':'background:var(--bg2);color:var(--fg2)'"><input type="checkbox" x-model="up.installmentTenure6" class="hidden"/>৬ মাস</label>
+                  </div>
+                </div>
+                <div><label class="dd-label">সর্বনিম্ন অর্ডার মূল্য (৳) — এর নিচে কিস্তি সুবিধা দেখাবে না</label><input class="dd-input" type="number" min="0" x-model.number="up.installmentMinOrder" placeholder="1000"/></div>
+                <p class="text-xs" style="color:var(--fg3)">এটি ঋণ/লোন নয় — কাস্টমার আজ ডাউনপেমেন্ট দিয়ে বাকিটা প্রতি মাসে bKash/Nagad-এ পাঠাবে, আপনি ম্যানুয়ালি ভেরিফাই করে কিস্তি সম্পন্ন করবেন।</p>
+              </div>
+            </template>
+          </div>
+
+          <div class="rounded-xl p-3.5 space-y-3" style="background:#F0FDF4;border:1px dashed #16A34A">
+            <p class="text-sm font-bold" style="color:#15803D"><i class="fa-solid fa-industry mr-1.5"></i>ভেন্ডর / সাপ্লায়ার (ঐচ্ছিক)</p>
+            <div>
+              <label class="dd-label">ভেন্ডর বেছে নিন</label>
+              <div class="relative sel-wrap"><select class="dd-input" x-model="up.vendorId" @change="applyVendorPricing()">
+                <option value="">— কোনো ভেন্ডর না —</option>
+                <template x-for="v in fbVendors.filter(x=>x.status!=='inactive')" :key="v.fbKey"><option :value="v.fbKey" x-text="v.name+' (পাইকারি ৳'+v.wholesalePrice+')'"></option></template>
+              </select></div>
+              <p class="text-xs mt-1.5" style="color:var(--fg3)">ভেন্ডর বেছে নিলে ভেন্ডরের পাইকারি দাম + প্ল্যাটফর্ম ফি % + রিসেলার মার্জিন % অনুযায়ী রিসেলার প্রাইস ও বিক্রয়মূল্য অটো ক্যালকুলেট হবে (পরে ইচ্ছেমতো এডিট করা যাবে)।</p>
+            </div>
           </div>
 
           <div class="rounded-xl p-3.5 space-y-3" style="background:var(--bg2);border:1px solid var(--border)">
@@ -1706,9 +1811,142 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     </div>
   </div>
 
+  <!-- ══ কিস্তি অর্ডার ম্যানেজার (NEW) ══ -->
+  <div x-show="activeTab==='installments'" x-cloak class="animate-fade-in">
+    <template x-if="pendingInstallmentPayments.length>0">
+    <div class="dd-card p-4 mb-5">
+      <p class="font-bold text-sm mb-3" style="color:var(--fg)"><i class="fa-solid fa-clock" style="color:#C2410C"></i> যাচাই বাকি কিস্তি পেমেন্ট (<span x-text="pendingInstallmentPayments.length"></span>)</p>
+      <div class="space-y-2">
+        <template x-for="it in pendingInstallmentPayments" :key="it.order.fbKey+'-'+it.idx">
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)">
+            <div class="min-w-0">
+              <p class="text-xs font-bold truncate" style="color:var(--fg)" x-text="(it.order.phone||it.order.uid)+' — '+it.order.productName+' · মাস '+it.month"></p>
+              <p class="text-xs mt-0.5" style="color:var(--fg3)" x-text="'৳'+Number(it.amount||0).toLocaleString()+' · TrxID: '+(it.trxId||'—')"></p>
+            </div>
+            <div class="flex gap-1.5 flex-shrink-0">
+              <button @click="approveInstallmentPayment(it)" class="btn-success !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-check"></i></button>
+              <button @click="rejectInstallmentPayment(it)" class="btn-danger !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+    </template>
+
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <div class="pill-scroll flex-1">
+        <template x-for="s in ['সব','active','completed','defaulted']" :key="s">
+          <button @click="installmentF=s" :style="installmentF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s==='সব'?'সব':s==='active'?'চলমান':s==='completed'?'সম্পূর্ণ':'ডিফল্টেড'"></button>
+        </template>
+      </div>
+    </div>
+    <div class="space-y-3">
+      <template x-for="o in filteredInstallmentOrders" :key="o.fbKey">
+        <div class="dd-card p-4">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <img :src="o.productImg" class="w-11 h-11 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)" onerror="this.style.opacity=0"/>
+              <div class="min-w-0"><p class="text-sm font-bold truncate" style="color:var(--fg)" x-text="o.productName"></p><p class="text-xs mt-0.5" style="color:var(--fg3)" x-text="(o.phone||o.uid)+' · '+o.tenureMonths+' মাস · মোট ৳'+Number(o.totalAmount||0).toLocaleString()"></p></div>
+            </div>
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0" :style="o.status==='active'?'background:#EFF6FF;color:#1D4ED8':o.status==='completed'?'background:#F0FDF4;color:#15803D':'background:#FEF2F2;color:#B91C1C'" x-text="o.status==='active'?'চলমান':o.status==='completed'?'সম্পূর্ণ':'ডিফল্টেড'"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="dd-table">
+              <thead><tr><th>মাস</th><th>পরিমাণ</th><th>স্ট্যাটাস</th><th>TrxID</th></tr></thead>
+              <tbody>
+                <template x-for="(s,idx) in (o.schedule||[])" :key="idx">
+                  <tr>
+                    <td x-text="s.month"></td>
+                    <td class="font-mono" x-text="'৳'+Number(s.amount||0).toLocaleString()"></td>
+                    <td>
+                      <span class="text-xs font-bold px-2 py-1 rounded-full" :style="s.status==='paid'?'background:#F0FDF4;color:#15803D':s.status==='submitted'?'background:#FFF7ED;color:#C2410C':installmentIsOverdue(s)?'background:#FEF2F2;color:#B91C1C':'background:var(--bg2);color:var(--fg3)'" x-text="s.status==='paid'?'পরিশোধিত':s.status==='submitted'?'যাচাই বাকি':installmentIsOverdue(s)?'ওভারডিউ':'বাকি'"></span>
+                    </td>
+                    <td class="text-xs" x-text="s.trxId||'—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+          <button x-show="o.status==='active'" @click="markInstallmentDefaulted(o)" class="btn-danger !text-xs mt-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i>ডিফল্টেড হিসেবে চিহ্নিত করুন</button>
+        </div>
+      </template>
+      <div x-show="filteredInstallmentOrders.length===0" class="text-center py-12" style="color:var(--fg3)">
+        <i class="fa-solid fa-calendar-check text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো কিস্তি অর্ডার নেই</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ KYC রিভিউ (NEW) ══ -->
+  <div x-show="activeTab==='kyc'" x-cloak class="animate-fade-in">
+    <div class="flex flex-wrap gap-3 mb-5 items-center">
+      <div class="pill-scroll flex-1">
+        <template x-for="s in ['সব','pending','approved','rejected','reupload']" :key="s">
+          <button @click="kycF=s" :style="kycF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s==='সব'?'সব':s==='pending'?'পেন্ডিং':s==='approved'?'অনুমোদিত':s==='rejected'?'বাতিল':'পুনরায় আপলোড'"></button>
+        </template>
+      </div>
+    </div>
+    <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+      <template x-for="k in filteredKyc" :key="k.uid">
+        <div class="dd-card p-4">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-bold" style="color:var(--fg)" x-text="k.phone||k.uid"></p>
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full" :style="k.status==='approved'?'background:#F0FDF4;color:#15803D':k.status==='rejected'?'background:#FEF2F2;color:#B91C1C':k.status==='reupload'?'background:#FFFBEB;color:#B45309':'background:#FFF7ED;color:#C2410C'" x-text="k.status==='approved'?'অনুমোদিত':k.status==='rejected'?'বাতিল':k.status==='reupload'?'পুনরায় আপলোড':'পেন্ডিং'"></span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <img :src="k.nidFront" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidFront" onerror="this.style.opacity=0.15"/>
+            <img :src="k.nidBack" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidBack" onerror="this.style.opacity=0.15"/>
+            <img :src="k.selfie" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.selfie" onerror="this.style.opacity=0.15"/>
+          </div>
+          <p class="text-xs" style="color:var(--fg3)">ইমার্জেন্সি: <span x-text="k.emergencyContact1"></span><span x-show="k.emergencyContact2" x-text="' · '+k.emergencyContact2"></span></p>
+          <p x-show="k.note" class="text-xs mt-1.5" style="color:#B45309" x-text="'নোট: '+k.note"></p>
+          <div class="flex gap-2 mt-3" x-show="k.status==='pending'">
+            <button @click="approveKyc(k)" class="btn-success !text-xs flex-1" style="justify-content:center"><i class="fa-solid fa-check mr-1"></i>অনুমোদন</button>
+            <button @click="requestKycReupload(k)" class="btn-warn !text-xs flex-1" style="justify-content:center"><i class="fa-solid fa-rotate mr-1"></i>পুনরায় আপলোড</button>
+            <button @click="openKycRejectModal(k)" class="btn-danger !text-xs flex-1" style="justify-content:center"><i class="fa-solid fa-xmark mr-1"></i>বাতিল</button>
+          </div>
+        </div>
+      </template>
+      <div x-show="filteredKyc.length===0" class="text-center py-12 col-span-full" style="color:var(--fg3)">
+        <i class="fa-solid fa-id-card text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো KYC জমা নেই</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ভেন্ডর/সাপ্লায়ার ম্যানেজমেন্ট (NEW) ══ -->
+  <div x-show="activeTab==='vendors'" x-cloak class="animate-fade-in">
+    <button @click="openVendorModal(null)" class="btn-primary mb-4"><i class="fa-solid fa-plus mr-1"></i>নতুন ভেন্ডর যোগ করুন</button>
+    <div class="dd-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>নাম</th><th>পাইকারি দাম</th><th>প্ল্যাটফর্ম ফি %</th><th>রিসেলার মার্জিন %</th><th>ফাইনাল মূল্য</th><th>স্ট্যাটাস</th><th>এক্সন</th></tr></thead>
+          <tbody>
+            <template x-for="v in fbVendors" :key="v.fbKey">
+              <tr>
+                <td class="font-semibold" style="color:var(--fg)" x-text="v.name"></td>
+                <td class="font-mono" x-text="'৳'+Number(v.wholesalePrice||0).toLocaleString()"></td>
+                <td x-text="(v.platformFeePct||0)+'%'"></td>
+                <td x-text="(v.resellerMarginPct||0)+'%'"></td>
+                <td class="font-mono font-bold" style="color:var(--accent)" x-text="'৳'+vendorFinalPrice(v).toLocaleString()"></td>
+                <td><span class="text-xs font-bold px-2 py-1 rounded-full" :style="v.status==='active'?'background:#F0FDF4;color:#15803D':'background:var(--bg2);color:var(--fg3)'" x-text="v.status==='active'?'সক্রিয়':'নিষ্ক্রিয়'"></span></td>
+                <td class="flex gap-1.5">
+                  <button @click="openVendorModal(v)" class="w-8 h-8 rounded-xl flex items-center justify-center text-xs btn-ghost"><i class="fa-solid fa-pen"></i></button>
+                  <button @click="deleteVendorConfirm(v)" class="w-8 h-8 rounded-xl flex items-center justify-center text-xs btn-danger"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div x-show="fbVendors.length===0" class="text-center py-12" style="color:var(--fg3)">
+        <i class="fa-solid fa-industry text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো ভেন্ডর যোগ করা হয়নি</p>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ SUPPORT TICKETS (NEW) ══ -->
   <div x-show="activeTab==='tickets'" x-cloak class="animate-fade-in">
     <div class="flex flex-wrap gap-3 mb-5 items-center">
+
       <div class="pill-scroll flex-1">
         <template x-for="s in ['সব','pending','resolved','cancelled']" :key="s">
           <button @click="ticketF=s" :style="ticketF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s==='সব'?'সব':s==='pending'?'পেন্ডিং':s==='resolved'?'সমাধান হয়েছে':'বাতিল'"></button>
@@ -1889,6 +2127,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div><label class="dd-label">দোকানের ঠিকানা</label><textarea class="dd-input resize-none" rows="2" x-model="settings.shopAddress" placeholder="ঢাকা, বাংলাদেশ..."></textarea></div>
         <div><label class="dd-label">যোগাযোগ নম্বর</label><input class="dd-input" x-model="settings.shopPhone" placeholder="01XXXXXXXXX"/></div>
         <div><label class="dd-label">রিটার্ন পলিসি</label><textarea class="dd-input resize-none" rows="2" x-model="settings.shopPolicy" placeholder="৭ দিনের রিটার্ন পলিসি..."></textarea></div>
+        <div><label class="dd-label">KYC থ্রেশহোল্ড (৳) — এর বেশি কিস্তি অর্ডারে KYC বাধ্যতামূলক</label><input class="dd-input" type="number" min="0" x-model.number="settings.kycThreshold" placeholder="5000"/></div>
       </div>
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-cloud" style="color:var(--accent)"></i>Cloudinary — ছবি আপলোড</p>
@@ -2100,6 +2339,10 @@ function Admin(){return{
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
   fbResellers:[],fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
   fbSavingsWallets:[],savingsF:'সব',
+  fbInstallmentOrders:[],installmentF:'সব',
+  fbKyc:[],kycF:'সব',kycNoteModal:{open:false,uid:null,note:''},
+  fbVendors:[],vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeePct:0,resellerMarginPct:0,status:'active'}},
+  lightboxImg:'',
   resellerSearch:'',resellerStatusF:'সব',withdrawF:'সব',depositF:'সব',ticketF:'সব',
   msgModal:{open:false,resellerPhone:'',resellerName:'',text:''},
   totalUsers:0,
@@ -2116,7 +2359,7 @@ function Admin(){return{
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -2160,7 +2403,8 @@ function Admin(){return{
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
-    resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'উইথড্র রিকোয়েস্ট',deposits:'ডিপোজিট রিকোয়েস্ট',tickets:'সাপোর্ট টিকেট'
+    resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'উইথড্র রিকোয়েস্ট',deposits:'ডিপোজিট রিকোয়েস্ট',tickets:'সাপোর্ট টিকেট',
+    savings:'সঞ্চয় ওয়ালেট',installments:'কিস্তি অর্ডার ম্যানেজার',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার'
   },
 
   themes:{
@@ -2179,6 +2423,8 @@ function Admin(){return{
     section:'',cat:'',gender:'',
     promoCode:'',promoDesc:'',promoDiscountPct:0,
     resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
+    installmentEnabled:false,installmentDownPct:25,installmentFeePct:0,installmentTenure3:true,installmentTenure6:false,installmentMinOrder:1000,
+    vendorId:'',
     isEid:false,active:true,
     saving:false,saveErr:'',
     images:[],carIdx:0,
@@ -2226,6 +2472,20 @@ function Admin(){return{
   },
   get filteredSavingsWallets(){return this.fbSavingsWallets.filter(w=>this.savingsF==='সব'||w.status===this.savingsF)},
   savingsProgressPct(w){return w&&w.targetAmount?Math.min(100,Math.round(((w.currentAmount||0)/w.targetAmount)*100)):0},
+  // ══ কিস্তিতে কেনাকাটা / ইনস্টলমেন্ট অর্ডার (NEW) ══
+  get pendingInstallmentPayments(){
+    const out=[];
+    this.fbInstallmentOrders.forEach(o=>(o.schedule||[]).forEach((s,idx)=>{if(s.status==='submitted')out.push({...s,idx,order:o})}));
+    return out.sort((a,b)=>(a.dueDate||0)-(b.dueDate||0));
+  },
+  get filteredInstallmentOrders(){return this.fbInstallmentOrders.filter(o=>this.installmentF==='সব'||o.status===this.installmentF)},
+  installmentPaidCount(o){return (o.schedule||[]).filter(s=>s.status==='paid').length},
+  installmentIsOverdue(s){return s.status==='due'&&s.dueDate&&s.dueDate<Date.now()},
+  // ══ সরলীকৃত KYC (NEW) ══
+  get pendingKyc(){return this.fbKyc.filter(k=>k.status==='pending')},
+  get filteredKyc(){return this.fbKyc.filter(k=>this.kycF==='সব'||k.status===this.kycF)},
+  // ══ ভেন্ডর/সাপ্লায়ার (NEW) ══
+  vendorFinalPrice(v){const wp=Number(v.wholesalePrice)||0;return Math.round(wp*(1+(Number(v.platformFeePct)||0)/100+(Number(v.resellerMarginPct)||0)/100));},
   get pendingTickets(){return this.fbSupportTickets.filter(t=>t.status==='pending')},
   get filteredTickets(){return this.fbSupportTickets.filter(t=>this.ticketF==='সব'||t.status===this.ticketF)},
   getResellerName(phone){const r=this.fbResellers.find(x=>x.fbKey===phone);return r?r.name||phone:phone},
@@ -2284,6 +2544,9 @@ function Admin(){return{
       window.$db.listenWalletTx(txs=>this.fbWalletTx=txs.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
       window.$db.listenDeposits(ds=>this.fbDeposits=ds.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
       window.$db.listenSavingsWallets(ws=>this.fbSavingsWallets=ws.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+      window.$db.listenInstallmentOrders(ios=>this.fbInstallmentOrders=ios.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+      window.$db.listenKyc(ks=>this.fbKyc=ks.sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0)));
+      window.$db.listenVendors(vs=>this.fbVendors=vs.sort((a,b)=>(a.name||'').localeCompare(b.name||'')));
       window.$db.listenSupportTickets(ts=>this.fbSupportTickets=ts.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
       window.$db.listenSettings(s=>{
         if(s.settings)Object.assign(this.settings,s.settings);
@@ -2424,6 +2687,8 @@ function Admin(){return{
       name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:'',cat:'',gender:'',promoCode:'',promoDesc:'',promoDiscountPct:0,
       resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
+      installmentEnabled:false,installmentDownPct:25,installmentFeePct:0,installmentTenure3:true,installmentTenure6:false,installmentMinOrder:1000,
+      vendorId:'',
       isEid:false,active:true,saving:false,saveErr:'',
       images:[],carIdx:0,
       mode:'A',dragA:false,dragB:false,dragC:false,urlInput:'',
@@ -2443,6 +2708,13 @@ function Admin(){return{
       promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',promoDiscountPct:p.promoDiscountPct||0,
       resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,marketPrice:p.marketPrice||0,
       genCommission1:p.genCommission1||0,genCommission2:p.genCommission2||0,genCommission3:p.genCommission3||0,
+      installmentEnabled:p.installmentSettings?.enabled||false,
+      installmentDownPct:p.installmentSettings?.downPaymentPct??25,
+      installmentFeePct:p.installmentSettings?.processingFeePct??0,
+      installmentTenure3:!p.installmentSettings||(p.installmentSettings.tenureOptions||[3,6]).includes(3),
+      installmentTenure6:(p.installmentSettings?.tenureOptions||[]).includes(6),
+      installmentMinOrder:p.installmentSettings?.minOrderAmount??1000,
+      vendorId:p.vendorId||'',
       isEid:p.isEidCollection||false,active:p.active!==false,
       saving:false,saveErr:'',
       images:imgs.map(url=>({url,status:'ok',prog:100,name:'existing'})),
@@ -2613,6 +2885,14 @@ function Admin(){return{
       genCommission1:this.up.resellEnabled?(Number(this.up.genCommission1)||0):0,
       genCommission2:this.up.resellEnabled?(Number(this.up.genCommission2)||0):0,
       genCommission3:this.up.resellEnabled?(Number(this.up.genCommission3)||0):0,
+      installmentSettings:{
+        enabled:this.up.installmentEnabled||false,
+        downPaymentPct:Number(this.up.installmentDownPct)||25,
+        processingFeePct:Number(this.up.installmentFeePct)||0,
+        tenureOptions:[this.up.installmentTenure3?3:null,this.up.installmentTenure6?6:null].filter(Boolean),
+        minOrderAmount:Number(this.up.installmentMinOrder)||1000,
+      },
+      vendorId:this.up.vendorId||'',
       isEidCollection:this.up.isEid||false,
       gender:this.up.gender||'both',
       active:this.up.active,
@@ -2780,6 +3060,61 @@ function Admin(){return{
       await window.$db.updateSavingsWallet(w.fbKey,{status:'shipped',orderId:order.id,orderFbKey:key});
       this.showToast('অর্ডার তৈরি হয়েছে, এখন শিপমেন্টের জন্য প্রস্তুত ✅','success');
     }catch{this.showToast('ব্যর্থ!','error')}
+  },
+  // ══════════ কিস্তিতে কেনাকাটা / ইনস্টলমেন্ট অর্ডার ম্যানেজার (NEW) ══════════
+  async approveInstallmentPayment(item){
+    try{
+      await window.$db.updateInstallmentSchedule(item.order.fbKey,item.idx,{status:'paid',approvedAt:Date.now()});
+      const sched=(item.order.schedule||[]).map((s,i)=>i===item.idx?{...s,status:'paid'}:s);
+      const allPaid=sched.every(s=>s.status==='paid');
+      if(allPaid)await window.$db.updateInstallmentOrder(item.order.fbKey,{status:'completed'});
+      this.showToast('কিস্তি পেমেন্ট কনফার্ম হয়েছে! ✅','success');
+    }catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async rejectInstallmentPayment(item){
+    if(!confirm('এই কিস্তির পেমেন্ট বাতিল করবেন? কাস্টমারকে আবার জমা দিতে হবে।'))return;
+    try{await window.$db.updateInstallmentSchedule(item.order.fbKey,item.idx,{status:'due',trxId:''});this.showToast('বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async markInstallmentDefaulted(o){
+    if(!confirm('এই কিস্তি অর্ডারটি ডিফল্টেড হিসেবে চিহ্নিত করবেন?'))return;
+    try{await window.$db.updateInstallmentOrder(o.fbKey,{status:'defaulted'});this.showToast('আপডেট হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}
+  },
+  // ══════════ সরলীকৃত KYC (NEW) ══════════
+  async approveKyc(k){try{await window.$db.saveKyc(k.uid,{status:'approved',reviewedAt:Date.now(),note:''});this.showToast('KYC অনুমোদিত হয়েছে! ✅','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  openKycRejectModal(k){this.kycNoteModal={open:true,uid:k.uid,note:''}},
+  async confirmRejectKyc(){
+    if(!this.kycNoteModal.note.trim())return this.showToast('বাতিলের কারণ লিখুন!','error');
+    try{
+      await window.$db.saveKyc(this.kycNoteModal.uid,{status:'rejected',reviewedAt:Date.now(),note:this.kycNoteModal.note.trim()});
+      this.kycNoteModal.open=false;
+      this.showToast('KYC বাতিল করা হয়েছে','success');
+    }catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async requestKycReupload(k){try{await window.$db.saveKyc(k.uid,{status:'reupload',reviewedAt:Date.now(),note:'ছবি স্পষ্ট নয় বা তথ্য অসম্পূর্ণ, আবার আপলোড করুন'});this.showToast('পুনরায় আপলোডের অনুরোধ পাঠানো হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  // ══════════ ভেন্ডর/সাপ্লায়ার ম্যানেজমেন্ট (NEW) ══════════
+  openVendorModal(v){this.vendorModal=v?{open:true,editKey:v.fbKey,form:{name:v.name||'',wholesalePrice:v.wholesalePrice||0,platformFeePct:v.platformFeePct||0,resellerMarginPct:v.resellerMarginPct||0,status:v.status||'active'}}:{open:true,editKey:null,form:{name:'',wholesalePrice:0,platformFeePct:0,resellerMarginPct:0,status:'active'}}},
+  closeVendorModal(){this.vendorModal.open=false},
+  async saveVendorForm(){
+    const f=this.vendorModal.form;
+    if(!f.name.trim())return this.showToast('ভেন্ডরের নাম লিখুন!','error');
+    if(!f.wholesalePrice||f.wholesalePrice<=0)return this.showToast('সঠিক পাইকারি দাম দিন!','error');
+    try{
+      await window.$db.saveVendor({name:f.name.trim(),wholesalePrice:Number(f.wholesalePrice)||0,platformFeePct:Number(f.platformFeePct)||0,resellerMarginPct:Number(f.resellerMarginPct)||0,status:f.status||'active'},this.vendorModal.editKey);
+      this.showToast(this.vendorModal.editKey?'ভেন্ডর আপডেট হয়েছে! ✅':'ভেন্ডর যোগ হয়েছে! ✅','success');
+      this.closeVendorModal();
+    }catch{this.showToast('ব্যর্থ!','error')}
+  },
+  async deleteVendorConfirm(v){if(!confirm('এই ভেন্ডরটি মুছে ফেলবেন?'))return;try{await window.$db.deleteVendor(v.fbKey);this.showToast('মুছে ফেলা হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  applyVendorPricing(){
+    const v=this.fbVendors.find(x=>x.fbKey===this.up.vendorId);
+    if(!v)return;
+    const wp=Number(v.wholesalePrice)||0;
+    const resellerPrice=Math.round(wp*(1+(Number(v.platformFeePct)||0)/100));
+    const sellPrice=Math.round(resellerPrice*(1+(Number(v.resellerMarginPct)||0)/100));
+    this.up.resellerPrice=resellerPrice;
+    if(!this.up.price||this.up.price<=0)this.up.price=sellPrice;
+    if(!this.up.marketPrice||this.up.marketPrice<=0)this.up.marketPrice=sellPrice;
+    this.showToast('ভেন্ডরের হিসাব অনুযায়ী দাম বসানো হয়েছে, চাইলে এডিট করুন','success');
   },
   // ══════════ SUPPORT TICKETS (NEW) ══════════
   async resolveTicket(t){try{await window.$db.saveSupportTicket({status:'resolved'},t.fbKey);this.showToast('টিকেট সমাধান হয়েছে! ✅','success')}catch{this.showToast('ব্যর্থ!','error')}},
