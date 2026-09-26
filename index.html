@@ -165,6 +165,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 .btn-warn{padding:8px 14px;border-radius:10px;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;font-weight:700;font-size:12px;cursor:pointer;font-family:'Hind Siliguri',sans-serif;display:inline-flex;align-items:center;gap:6px}
 .chip-pending{background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA}
 .chip-processing{background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE}
+.chip-outfordelivery{background:#F5F3FF;color:#6D28D9;border:1px solid #DDD6FE}
 .chip-delivered{background:#F0FDF4;color:#15803D;border:1px solid #BBF7D0}
 .chip-cancelled{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;border-radius:0 14px 14px 0;margin:2px 12px 2px 0;cursor:pointer;transition:all .2s;color:rgba(255,255,255,.45);font-size:13px;font-weight:600;border:none;background:transparent;width:calc(100% - 12px);font-family:'Hind Siliguri',sans-serif;text-align:left}
@@ -446,7 +447,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div class="grid grid-cols-2 gap-3">
           <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">স্ট্যাটাস</p>
-            <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}" x-text="viewOrder.status"></span>
+            <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-outfordelivery':viewOrder.status==='পাঠানো হচ্ছে','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}" x-text="viewOrder.status"></span>
           </div>
           <div class="dd-card-sm p-3"><p class="dd-label">গ্রাহক</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.phone"></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">ঠিকানা</p><p class="text-xs font-semibold" style="color:var(--fg)" x-text="(viewOrder.district||'')+', '+(viewOrder.division||'')"></p></div>
@@ -733,10 +734,10 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                 <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span></td>
                 <td><p class="font-semibold text-xs" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td><span class="font-mono font-bold text-xs" style="color:var(--accent)" x-text="'৳'+(o.total||0).toLocaleString()"></span></td>
-                <td><span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" x-text="o.status"></span></td>
+                <td><span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" x-text="o.status"></span></td>
                 <td>
                   <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-semibold" style="border-color:var(--border);background:var(--bg2);color:var(--fg)">
-                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option>
                   </select>
                 </td>
               </tr>
@@ -1042,7 +1043,9 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
             <div class="grid grid-cols-2 gap-3">
               <div><label class="dd-label">প্রোমো কোড</label><input class="dd-input" x-model="up.promoCode" placeholder="SAVE10"/></div>
               <div><label class="dd-label">প্রোমো বিবরণ</label><input class="dd-input" x-model="up.promoDesc" placeholder="১০% ছাড় পান"/></div>
+              <div><label class="dd-label">ছাড়ের পরিমাণ (%)</label><input class="dd-input" type="number" min="0" max="100" x-model.number="up.promoDiscountPct" placeholder="10"/></div>
             </div>
+            <p class="text-xs mt-2" style="color:var(--fg3)">চেকআউট পেজে ইউজার এই কোড লিখলে উপরের % ছাড় প্রয়োগ হবে।</p>
           </div>
 
           <div class="rounded-xl p-3.5" style="background:#FFFBEB;border:1px dashed #B8860B">
@@ -1458,8 +1461,8 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
                 <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(o.total||0).toLocaleString()"></span></td>
                 <td class="text-xs" style="color:var(--fg3)" x-text="o.payMethod||'—'"></td>
                 <td>
-                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-bold" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" style="border:none">
-                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-bold" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" style="border:none">
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option>
                   </select>
                 </td>
                 <td style="min-width:160px">
@@ -1850,6 +1853,64 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         </div>
         <div><label class="dd-label">WhatsApp</label><input class="dd-input" x-model="settings.wa" placeholder="880XXXXXXXXX"/></div>
       </div>
+
+      <!-- ══ CHECKOUT PAYMENT SYSTEM ══ -->
+      <div class="dd-card p-5 space-y-4" style="grid-column:1/-1">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-money-bill-transfer" style="color:var(--accent)"></i>চেকআউট পেমেন্ট সিস্টেম</p>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <label class="flex items-center justify-between p-3 rounded-2xl cursor-pointer" style="background:var(--bg2)">
+            <span class="text-sm font-bold" style="color:var(--fg)">🚚 ক্যাশ অন ডেলিভারি (COD)</span>
+            <input type="checkbox" x-model="settings.paymentOptions.codEnabled" class="w-5 h-5 accent-current" style="color:var(--accent)"/>
+          </label>
+          <label class="flex items-center justify-between p-3 rounded-2xl cursor-pointer" style="background:var(--bg2)">
+            <span class="text-sm font-bold" style="color:var(--fg)">💳 এডভান্স/প্রি-পেমেন্ট</span>
+            <input type="checkbox" x-model="settings.paymentOptions.prepaidEnabled" class="w-5 h-5 accent-current" style="color:var(--accent)"/>
+          </label>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div><label class="dd-label">COD অতিরিক্ত চার্জ (৳)</label><input type="number" class="dd-input" x-model.number="settings.codSettings.extraCharge" placeholder="0"/></div>
+          <div><label class="dd-label">এখনই পেমেন্ট করলে ডেলিভারি ছাড় (৳)</label><input type="number" class="dd-input" x-model.number="settings.codSettings.discountOnAdvance" placeholder="10"/></div>
+        </div>
+        <p class="dd-label" style="margin:0">পেমেন্ট মেথড ম্যানেজার — প্রতিটার জন্য নম্বর, on/off ও প্রি-পেমেন্ট ছাড়</p>
+        <template x-for="k in Object.keys(settings.paymentMethods)" :key="k">
+          <div class="paycard flex-col sm:flex-row items-start sm:items-center gap-3" style="align-items:stretch">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <div class="paylogo"><span x-text="(settings.paymentMethods[k].label||k).slice(0,1)"></span></div>
+              <div style="flex:1;min-width:0">
+                <label class="dd-label" x-text="settings.paymentMethods[k].label+' নম্বর'"></label>
+                <input class="dd-input" x-model="settings.paymentMethods[k].number" placeholder="01XXXXXXXXX"/>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2" style="min-width:220px">
+              <div><label class="dd-label">প্রি-পেমেন্ট ছাড় %</label><input type="number" step="0.1" class="dd-input" x-model.number="settings.paymentMethods[k].prepaidDiscountPct" placeholder="0"/></div>
+              <label class="flex items-center justify-center gap-2 rounded-xl px-2 mt-4 cursor-pointer" style="background:var(--bg2)"><input type="checkbox" x-model="settings.paymentMethods[k].enabled" class="w-4 h-4"/><span class="text-xs font-bold" style="color:var(--fg)">চালু</span></label>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ══ CHECKOUT PROMO BANNERS ══ -->
+      <div class="dd-card p-5 space-y-4" style="grid-column:1/-1">
+        <div class="flex items-center justify-between">
+          <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-tags" style="color:var(--accent)"></i>চেকআউট প্রমো ব্যানার</p>
+          <button @click="settings.checkoutPromoBanners.push({icon:'🎉',text:'',color:'#E2136E',active:true})" class="btn-primary text-xs py-2 px-3"><i class="fa-solid fa-plus"></i>নতুন</button>
+        </div>
+        <div x-show="!settings.checkoutPromoBanners.length" class="text-xs text-center py-4" style="color:var(--fg3)">এখনো কোনো প্রমো ব্যানার যোগ করা হয়নি।</div>
+        <template x-for="(b,i) in settings.checkoutPromoBanners" :key="i">
+          <div class="p-3 rounded-2xl space-y-2" style="background:var(--bg2)">
+            <div class="flex gap-2">
+              <input class="dd-input" style="width:64px;text-align:center" x-model="b.icon" placeholder="🎉"/>
+              <input class="dd-input flex-1" x-model="b.text" placeholder="bKash-এ ফুল পেমেন্ট করলে ২% ছাড়!"/>
+            </div>
+            <div class="flex items-center gap-3">
+              <input type="color" x-model="b.color" class="w-10 h-8 rounded cursor-pointer border-0"/>
+              <label class="flex items-center gap-2 text-xs font-bold cursor-pointer" style="color:var(--fg)"><input type="checkbox" x-model="b.active" class="w-4 h-4"/>চালু</label>
+              <button @click="settings.checkoutPromoBanners.splice(i,1)" class="ml-auto text-xs px-2 py-1 rounded-lg flex items-center gap-1" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer"><i class="fa-solid fa-trash text-xs"></i>মুছুন</button>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-bullhorn" style="color:var(--accent)"></i>মার্কি ও টিকার</p>
         <div><label class="dd-label">মার্কি বার্তা</label><input class="dd-input" x-model="settings.marqueeText" placeholder="🔥 বিশেষ অফার! আজই অর্ডার করুন..."/></div>
@@ -1878,6 +1939,30 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
               </template>
             </div>
           </div>
+        </div>
+      </div>
+      <div class="dd-card p-5 space-y-4">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-headset" style="color:var(--accent)"></i>হেল্পলাইন ও সাপোর্ট</p>
+        <p class="text-xs" style="color:var(--fg3)">ইউজার সাইটের সাপোর্ট পপ-আপ ও ফুটারে এই তথ্যগুলো দেখানো হবে।</p>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <div><label class="dd-label">সাপোর্ট মোবাইল নম্বর</label><input class="dd-input" x-model="settings.supportPhone" placeholder="01XXXXXXXXX"/></div>
+          <div><label class="dd-label">হোয়াটসঅ্যাপ নম্বর</label><input class="dd-input" x-model="settings.wa" placeholder="8801XXXXXXXXX"/></div>
+          <div><label class="dd-label">Facebook পেজ লিংক</label><input class="dd-input" x-model="settings.fbLink" placeholder="https://facebook.com/..."/></div>
+          <div><label class="dd-label">Telegram লিংক</label><input class="dd-input" x-model="settings.telegramLink" placeholder="https://t.me/..."/></div>
+        </div>
+      </div>
+
+      <div class="dd-card p-5 space-y-4">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-envelope-open-text" style="color:var(--accent)"></i>ইমেইল সার্ভিস (EmailJS) — পাসওয়ার্ড রিসেট কোডের জন্য</p>
+        <p class="text-xs" style="color:var(--fg3)">emailjs.com-এ ফ্রি একাউন্ট খুলে Service ID, Template ID ও Public Key বসান। টেমপ্লেটে <code>{{reset_code}}</code>, <code>{{to_email}}</code>, <code>{{site_name}}</code> ভ্যারিয়েবল ব্যবহার করুন।</p>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label class="dd-label">Service ID</label><input class="dd-input" x-model="settings.emailService.serviceId" placeholder="service_xxxx"/></div>
+          <div><label class="dd-label">Template ID</label><input class="dd-input" x-model="settings.emailService.templateId" placeholder="template_xxxx"/></div>
+          <div><label class="dd-label">Public Key</label><input class="dd-input" x-model="settings.emailService.publicKey" placeholder="public key"/></div>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap pt-1">
+          <input class="dd-input flex-1" style="min-width:160px" type="email" x-model="testEmailAddr" placeholder="টেস্ট ইমেইল ঠিকানা"/>
+          <button @click="sendTestEmail()" :disabled="testEmailSending" class="btn-primary text-xs py-2.5 px-4"><i class="fa-solid fa-paper-plane mr-1"></i><span x-text="testEmailSending?'পাঠানো হচ্ছে...':'টেস্ট মেইল পাঠান'"></span></button>
         </div>
       </div>
     </div>
@@ -1957,7 +2042,21 @@ function Admin(){return{
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:''},
+  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+    paymentOptions:{codEnabled:true,prepaidEnabled:true},
+    paymentMethods:{
+      bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
+      nagad:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'Nagad'},
+      rocket:{enabled:false,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'Rocket'},
+      upay:{enabled:false,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'উপায়'},
+      bank:{enabled:false,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'ব্যাংক ট্রান্সফার'},
+    },
+    codSettings:{extraCharge:0,discountOnAdvance:0},
+    checkoutPromoBanners:[],
+    supportPhone:'',telegramLink:'',
+    emailService:{provider:'emailjs',serviceId:'',templateId:'',publicKey:''},
+  },
+  testEmailAddr:'',testEmailSending:false,
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
     {title:'',sub:'সেরা পণ্য · সেরা দাম · দ্রুত ডেলিভারি',img:'',badge:'🔥 হট ডিল'},
@@ -2004,7 +2103,7 @@ function Admin(){return{
     editKey:null,
     name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
     section:'',cat:'',gender:'',
-    promoCode:'',promoDesc:'',
+    promoCode:'',promoDesc:'',promoDiscountPct:0,
     resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
     isEid:false,active:true,
     saving:false,saveErr:'',
@@ -2055,6 +2154,7 @@ function Admin(){return{
     return[
       {label:'পেন্ডিং',count:this.fbOrders.filter(o=>o.status==='পেন্ডিং').length,color:'#EA580C'},
       {label:'প্রসেসিং',count:this.fbOrders.filter(o=>o.status==='প্রসেসিং').length,color:'#2563EB'},
+      {label:'পাঠানো হচ্ছে',count:this.fbOrders.filter(o=>o.status==='পাঠানো হচ্ছে').length,color:'#6D28D9'},
       {label:'ডেলিভার্ড',count:this.fbOrders.filter(o=>o.status==='ডেলিভার্ড').length,color:'#16A34A'},
       {label:'বাতিল',count:this.fbOrders.filter(o=>o.status==='বাতিল').length,color:'#DC2626'},
     ].map(s=>({...s,pct:Math.round(s.count/total*100)}));
@@ -2240,7 +2340,7 @@ function Admin(){return{
     this.up={
       editKey:null,
       name:'',price:0,oldPrice:0,desc:'',badge:'',sizes:'',designSKU:'',affiliateId:'',dupOk:false,szFrom:'',szTo:'',szStep:2,
-      section:'',cat:'',gender:'',promoCode:'',promoDesc:'',
+      section:'',cat:'',gender:'',promoCode:'',promoDesc:'',promoDiscountPct:0,
       resellEnabled:false,resellerPrice:0,marketPrice:0,genCommission1:0,genCommission2:0,genCommission3:0,
       isEid:false,active:true,saving:false,saveErr:'',
       images:[],carIdx:0,
@@ -2258,7 +2358,7 @@ function Admin(){return{
       desc:p.desc||'',badge:p.badge||'',
       sizes:(p.sizes||[]).join(', '),designSKU:p.designSKU||'',affiliateId:p.affiliateProductId||'',dupOk:false,szFrom:'',szTo:'',szStep:2,
       section:p.section||p.sectionId||'',cat:p.cat||'',gender:p.gender||'',
-      promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',
+      promoCode:p.promoCode||'',promoDesc:p.promoDesc||'',promoDiscountPct:p.promoDiscountPct||0,
       resellEnabled:p.resellEnabled||false,resellerPrice:p.resellerPrice||0,marketPrice:p.marketPrice||0,
       genCommission1:p.genCommission1||0,genCommission2:p.genCommission2||0,genCommission3:p.genCommission3||0,
       isEid:p.isEidCollection||false,active:p.active!==false,
@@ -2424,7 +2524,7 @@ function Admin(){return{
       sizes:this._szArr(this.up.sizes),colors:[],
       desc:this.up.desc,badge:this.up.badge,
       designSKU:(this.up.designSKU||'').trim(),affiliateProductId:(this.up.affiliateId||'').trim(),
-      promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,
+      promoCode:this.up.promoCode||null,promoDesc:this.up.promoDesc||null,promoDiscountPct:this.up.promoDiscountPct||0,
       resellEnabled:this.up.resellEnabled||false,
       resellerPrice:this.up.resellEnabled?(Number(this.up.resellerPrice)||0):0,
       marketPrice:this.up.resellEnabled?(Number(this.up.marketPrice)||0):0,
@@ -2680,6 +2780,22 @@ function Admin(){return{
       await window.$db.saveSettings(data);
       this.showToast('সেটিংস সেভ! ✅','success');
     }catch{this.showToast('সেভ ব্যর্থ!','error')}
+  },
+  async sendTestEmail(){
+    const es=this.settings.emailService||{};
+    if(!this.testEmailAddr)return this.showToast('একটি টেস্ট ইমেইল ঠিকানা দিন!','error');
+    if(!es.serviceId||!es.templateId||!es.publicKey)return this.showToast('আগে Service ID, Template ID ও Public Key পূরণ করুন!','error');
+    this.testEmailSending=true;
+    try{
+      const res=await fetch('https://api.emailjs.com/api/v1.0/email/send',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({service_id:es.serviceId,template_id:es.templateId,user_id:es.publicKey,
+          template_params:{to_email:this.testEmailAddr,reset_code:'123456',site_name:this.settings.siteName||'Daily Deal'}})
+      });
+      this.testEmailSending=false;
+      if(res.ok)this.showToast('টেস্ট মেইল পাঠানো হয়েছে! ইনবক্স চেক করুন ✅','success');
+      else this.showToast('মেইল পাঠাতে ব্যর্থ — EmailJS তথ্য যাচাই করুন।','error');
+    }catch(e){this.testEmailSending=false;this.showToast('মেইল পাঠাতে ব্যর্থ — ইন্টারনেট/কনফিগ চেক করুন।','error')}
   },
 
   showToast(msg,type='success'){this.toast={show:true,msg,type};setTimeout(()=>this.toast.show=false,3500)},
