@@ -150,10 +150,10 @@ window.dispatchEvent(new Event('firebase-ready'));
 html,body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--fg);min-height:100vh}
 html{scroll-behavior:smooth}
 /* ══ টাচ/স্ক্রল স্মুথনেস ফিক্স (site-wide, ট্যাবলেট/টাচ ডিভাইসের জন্য) ══ */
-html,body{touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none}
+html,body{touch-action:pan-y;-webkit-overflow-scrolling:touch}
 *{-webkit-tap-highlight-color:transparent}
 a,button,.nav-item{touch-action:manipulation}
-.pill-scroll,.overflow-x-auto{-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.pill-scroll,.overflow-x-auto{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior-x:contain;scroll-behavior:smooth}
 
 body.theme-light{--bg:#F0EDE8;--bg2:#E8E2D8;--bg3:#DDD5C8;--fg:#0F0D0A;--fg2:#3D3830;--fg3:#7A7168;--card:#FFFFFF;--border:rgba(15,13,10,.09);--accent:#E8320A;--accent2:#FF6B45;--accentL:#FFF1EE;--shadow:rgba(15,13,10,.12);--sidebar:#161412}
 body.theme-dark{--bg:#09090E;--bg2:#111118;--bg3:#18181F;--fg:#EEEEFF;--fg2:#9090AA;--fg3:#505070;--card:#14141C;--border:rgba(238,238,255,.07);--accent:#7C3AED;--accent2:#A78BFA;--accentL:#1A1040;--shadow:rgba(0,0,0,.5);--sidebar:#08080C}
