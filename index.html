@@ -148,6 +148,12 @@ window.dispatchEvent(new Event('firebase-ready'));
 [x-cloak]{display:none!important}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--fg);min-height:100vh}
+html{scroll-behavior:smooth}
+/* ══ টাচ/স্ক্রল স্মুথনেস ফিক্স (site-wide, ট্যাবলেট/টাচ ডিভাইসের জন্য) ══ */
+html,body{touch-action:pan-y;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none}
+*{-webkit-tap-highlight-color:transparent}
+a,button,.nav-item{touch-action:manipulation}
+.pill-scroll,.overflow-x-auto{-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 
 body.theme-light{--bg:#F0EDE8;--bg2:#E8E2D8;--bg3:#DDD5C8;--fg:#0F0D0A;--fg2:#3D3830;--fg3:#7A7168;--card:#FFFFFF;--border:rgba(15,13,10,.09);--accent:#E8320A;--accent2:#FF6B45;--accentL:#FFF1EE;--shadow:rgba(15,13,10,.12);--sidebar:#161412}
 body.theme-dark{--bg:#09090E;--bg2:#111118;--bg3:#18181F;--fg:#EEEEFF;--fg2:#9090AA;--fg3:#505070;--card:#14141C;--border:rgba(238,238,255,.07);--accent:#7C3AED;--accent2:#A78BFA;--accentL:#1A1040;--shadow:rgba(0,0,0,.5);--sidebar:#08080C}
@@ -714,7 +720,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
       <span x-show="pendingDeposits.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingDeposits.length"></span>
     </button>
     <button @click="activeTab='savings';sidebarOpen=false" class="nav-item" :class="activeTab==='savings'?'active':''">
-      <i class="fa-solid fa-piggy-bank w-4 text-center text-sm"></i><span>সঞ্চয় ওয়ালেট</span>
+      <i class="fa-solid fa-calendar-days w-4 text-center text-sm"></i><span>কিস্তি ম্যানেজার (ধাপে ধাপে জমা)</span>
       <span x-show="pendingSavingsContribs.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingSavingsContribs.length"></span>
     </button>
     <button @click="activeTab='tickets';sidebarOpen=false" class="nav-item" :class="activeTab==='tickets'?'active':''">
@@ -724,7 +730,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 
     <p class="nav-group-label">কিস্তিতে কেনাকাটা</p>
     <button @click="activeTab='installments';sidebarOpen=false" class="nav-item" :class="activeTab==='installments'?'active':''">
-      <i class="fa-solid fa-calendar-check w-4 text-center text-sm"></i><span>কিস্তি অর্ডার ম্যানেজার</span>
+      <i class="fa-solid fa-calendar-check w-4 text-center text-sm"></i><span>কিস্তি অর্ডার (মাসিক প্ল্যান)</span>
       <span x-show="pendingInstallmentPayments.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingInstallmentPayments.length"></span>
     </button>
     <button @click="activeTab='kyc';sidebarOpen=false" class="nav-item" :class="activeTab==='kyc'?'active':''">
@@ -1806,7 +1812,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         </table>
       </div>
       <div x-show="filteredSavingsWallets.length===0" class="text-center py-12" style="color:var(--fg3)">
-        <i class="fa-solid fa-piggy-bank text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো সঞ্চয় ওয়ালেট নেই</p>
+        <i class="fa-solid fa-calendar-days text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো কিস্তি (জমাভিত্তিক) নেই</p>
       </div>
     </div>
   </div>
@@ -2424,7 +2430,7 @@ function Admin(){return{
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'উইথড্র রিকোয়েস্ট',deposits:'ডিপোজিট রিকোয়েস্ট',tickets:'সাপোর্ট টিকেট',
-    savings:'সঞ্চয় ওয়ালেট',installments:'কিস্তি অর্ডার ম্যানেজার',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার'
+    savings:'কিস্তি ম্যানেজার (ধাপে ধাপে জমা)',installments:'কিস্তি অর্ডার (মাসিক প্ল্যান)',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার'
   },
 
   themes:{
