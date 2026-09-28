@@ -69,6 +69,11 @@ window.$db={
   listenIntlCats:(cb)=>onValue(ref(db,'intlCategories'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])}),
   saveIntlCat:async(d)=>{const r=push(ref(db,'intlCategories'));await set(r,d);return r.key},
   deleteIntlCat:async(k)=>remove(ref(db,'intlCategories/'+k)),
+  getSupplierCfg:(id)=>new Promise(r=>onValue(ref(db,'supplierKeys/'+id),s=>r(s.val()||{}),{onlyOnce:true})),
+  setSupplierCfg:async(id,d)=>update(ref(db,'supplierKeys/'+id),d),
+  getOrderOnce:(k)=>new Promise(r=>onValue(ref(db,'orders/'+k),s=>r(s.val()),{onlyOnce:true})),
+  updateOrderRaw:async(k,d)=>update(ref(db,'orders/'+k),d),
+  setSupplierQueue:async(k,d)=>set(ref(db,'supplierQueue/'+k),d),
   listenSupplierQueue:(cb)=>onValue(ref(db,'supplierQueue'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])}),
   listenProducts:(cb)=>onValue(ref(db,'products'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Orders
@@ -778,7 +783,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <p class="font-bold text-sm mb-2"><i class="fa-solid fa-server"></i> ব্যাকএন্ড সংযোগ</p>
         <div class="grid md:grid-cols-2 gap-3">
           <div><label class="dd-label">Backend URL</label><input class="dd-input" x-model="sup.url" @change="localStorage.setItem('dd_sup_api',sup.url)" placeholder="https://your-server.com"/></div>
-          <div><label class="dd-label">Admin Token (সেশনে থাকবে)</label><input class="dd-input" type="password" x-model="sup.token" @change="sessionStorage.setItem('dd_sup_tok',sup.token)"/></div>
+          <div><label class="dd-label">Admin Token (ফাঁকা রাখলে সরাসরি Firebase মোড)</label><input class="dd-input" type="password" x-model="sup.token" @change="sessionStorage.setItem('dd_sup_tok',sup.token)"/></div>
         </div>
         <button class="btn-primary text-xs mt-3" @click="supLoad()"><i class="fa-solid fa-rotate"></i> সাপ্লায়ার লোড করুন</button>
       </div>
@@ -846,6 +851,10 @@ html,body{touch-action:auto!important;overflow-x:clip}
         </div>
         <p class="text-xs mt-2" x-show="sup.msg" x-text="sup.msg" style="color:var(--fg2)"></p>
       </div>
+      <div class="dd-card p-4"><p class="font-bold text-sm mb-2">✍️ ম্যানুয়াল পণ্য (API ছাড়া — লিংক/খরচ বসিয়ে)</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="col-span-2"><label class="dd-label">নাম</label><input class="dd-input" x-model="sup.man.title"/></div><div><label class="dd-label">খরচ (৳)</label><input class="dd-input" type="number" x-model="sup.man.cost"/></div><div><label class="dd-label">সাপ্লায়ার আইডি/SKU</label><input class="dd-input" x-model="sup.man.id"/></div>
+        <div class="col-span-2"><label class="dd-label">সাপ্লায়ার লিংক</label><input class="dd-input" x-model="sup.man.url"/></div><div class="col-span-2"><label class="dd-label">ছবির লিংক (প্রতি লাইনে একটা)</label><textarea class="dd-input" rows="2" x-model="sup.man.images"></textarea></div></div>
+        <button class="btn-ghost text-xs mt-2" @click="supAddManual()">তালিকায় যোগ করুন</button></div>
       <div class="grid md:grid-cols-2 gap-3">
         <template x-for="r in sup.results" :key="r.supplierProductId">
           <div class="dd-card p-3">
@@ -2546,7 +2555,7 @@ function Admin(){return{
   fbInstallmentOrders:[],installmentF:'সব',
   fbKyc:[],kycF:'সব',fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',kycNoteModal:{open:false,uid:null,note:''},
   fbVendors:[],  sup:{url:localStorage.getItem('dd_sup_api')||'',token:sessionStorage.getItem('dd_sup_tok')||'',cur:'aliexpress',q:'',results:[],busy:false,msg:'',importCat:'',cfg:{},genericText:{},intlCats:[],queue:[],
-    catForm:{name:'',emoji:'',img:'',order:99},gm:{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},
+    catForm:{name:'',emoji:'',img:'',order:99},man:{title:'',cost:'',images:'',url:'',id:''},gm:{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},
     list:[{id:'aliexpress',name:'AliExpress',icon:'🌏',type:'International Dropshipping',intl:true,base:'https://api-sg.aliexpress.com/sync'},
       {id:'cj',name:'CJdropshipping',icon:'📦',type:'International Dropshipping',intl:true,base:'https://developers.cjdropshipping.com/api2.0/v1'},
       {id:'dropoff',name:'Dropoff (DropFF)',icon:'🚚',type:'Local BD Dropshipping',intl:false,base:''},
@@ -2748,10 +2757,64 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     if(this._supInit)return;this._supInit=true;
     window.$db.listenIntlCats(c=>{this.sup.intlCats=c.sort((a,b)=>(a.order??99)-(b.order??99))});
     window.$db.listenSupplierQueue(q=>{this.sup.queue=q.sort((a,b)=>(b.at||0)-(a.at||0))});
-    if(this.sup.url&&this.sup.token)this.supLoad();
+    this.$watch('fbOrders',()=>{if(!(this.sup.url&&this.sup.token))this.supSyncQueue().catch(()=>{})});this.supLoad();
+  },
+  /* ═══ সরাসরি Firebase মোড (ব্যাকএন্ড ছাড়া) — Backend URL+Token থাকলে সেটাই ব্যবহার হয় ═══ */
+  async supDirect(path,opt={}){
+    const m=(opt.method||'GET').toUpperCase(),u=new URL('http://x'+path),p=u.pathname.split('/').filter(Boolean),body=opt.body?JSON.parse(opt.body):{};
+    const IDS=this.sup.list.map(s=>s.id),N=v=>Number(v)||0;
+    if(p[0]==='suppliers'&&!p[1]){const o={};for(const id of IDS){const c=await window.$db.getSupplierCfg(id);o[id]=c;}return o}
+    if(p[0]==='suppliers'&&m==='PUT'){const b={...body};delete b._hasKeys;b.updatedAt=Date.now();await window.$db.setSupplierCfg(p[1],b);return{ok:true}}
+    if(p[0]==='suppliers'&&p[2]==='test'){await this._dAd(p[1]).search(await window.$db.getSupplierCfg(p[1]),'phone',1);return{ok:true}}
+    if(p[0]==='suppliers'&&p[2]==='search'){const id=p[1],c=await window.$db.getSupplierCfg(id);if(!c.enabled)throw new Error('এই সাপ্লায়ার Disabled আছে');
+      const it=await this._dAd(id).search(c,u.searchParams.get('q')||'',1);return it.map(x=>{const b=this._dBDT(x,c);return{...x,costBDT:Math.round(b),...this.supPrice(b,c.markup||{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20})}})}
+    if(p[0]==='import'){const{supplierId:id,items,global:gm}=body,c=await window.$db.getSupplierCfg(id),done=[],failed=[],intl=['aliexpress','cj'].includes(id);
+      for(const it of items){try{const d=it.manual||await this._dAd(id).detail(c,it.supplierProductId),o=it.overrides||{},b=Math.round(this._dBDT(d,c)),pr=this.supPrice(b,gm||c.markup||{}),imgs=o.images?.length?o.images:(d.images||[]);
+        const rec={name:o.name||d.title,desc:o.desc??(d.description||''),images:imgs,img:imgs[0]||'',price:N(o.price)||pr.price,oldPrice:N(o.oldPrice)||pr.oldPrice,resellEnabled:true,resellerPrice:N(o.resellerPrice)||pr.resellerPrice,marketPrice:N(o.marketPrice)||pr.marketPrice,
+          designSKU:o.sku||(id.toUpperCase()+'-'+d.supplierProductId),cat:o.category||o.intlCat||'',intl,intlCat:intl?(o.intlCat||''):'',tags:o.tags||[],sizes:o.sizes||(d.variants||[]).map(v=>v.name).filter(Boolean),colors:o.colors||[],stock:o.stock??(d.stock||100),
+          shipping:o.shipping||c.shipping||{method:'Standard',cost:0},source:{supplierId:id,supplierProductId:d.supplierProductId,url:d.url||'',costPrice:b,currency:d.currency||'BDT',variants:d.variants||[],importedAt:Date.now()}};
+        const dup=this.fbProducts.find(x=>x.source&&x.source.supplierId===id&&x.source.supplierProductId===d.supplierProductId);
+        const key=await window.$db.saveProduct(dup?rec:{...rec,createdAt:Date.now()},dup?dup.fbKey:undefined);done.push({key})}catch(e){failed.push({id:it.supplierProductId,error:e.message})}}
+      return{done,failed}}
+    if(p[0]==='reprice'){let n=0;for(const x of this.fbProducts.filter(x=>x.source&&x.source.supplierId===body.supplierId)){await window.$db.saveProduct(this.supPrice(x.source.costPrice,body.markup),x.fbKey);n++}await window.$db.setSupplierCfg(body.supplierId,{markup:body.markup});return{updated:n}}
+    if(p[0]==='orders'&&p[2]==='route'){return this.supSyncQueue(p[1],true)}
+    throw new Error('অজানা রিকোয়েস্ট');
+  },
+  _dBDT(x,c){return x.currency==='BDT'?Number(x.cost):Number(x.cost)*(Number(c.fxToBDT)||125)},
+  _dAd(id){const H=this._dHelpers();return{aliexpress:H.ali,cj:H.cj}[id]||H.gen},
+  _dHelpers(){
+    if(this._dH)return this._dH;const N=v=>Number(v)||0,gp=(o,p)=>(p||'').split('.').reduce((a,k)=>a==null?a:a[k],o);
+    const hmac=async(sec,s)=>{const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(sec),{name:'HMAC',hash:'SHA-256'},false,['sign']);return[...new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(s)))].map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase()};
+    const jf=async(url,o)=>{let r;try{r=await fetch(url,o)}catch(e){throw new Error('ব্রাউজার থেকে সংযোগ ব্লক (CORS) — এই সাপ্লায়ার সরাসরি ব্রাউজার থেকে কল দিতে দেয় না; ব্যাকএন্ড লাগবে বা ম্যানুয়াল ইমপোর্ট ব্যবহার করুন')}
+      if(!r.ok)throw new Error('HTTP '+r.status);return r.json()};
+    const ali={async call(c,method,params){const q={app_key:c.appKey,access_token:c.accessToken,method,sign_method:'sha256',timestamp:Date.now().toString(),...params};
+        q.sign=await hmac(c.appSecret,Object.keys(q).sort().reduce((a,k)=>a+k+q[k],''));const j=await jf((c.baseUrl||'https://api-sg.aliexpress.com/sync')+'?'+new URLSearchParams(q));if(j.error_response)throw new Error(j.error_response.msg);return j},
+      async search(c,q,pg=1){const j=await this.call(c,'aliexpress.ds.text.search',{keyWord:q,countryCode:'BD',currency:'USD',local:'en_US',pageIndex:pg,pageSize:20});
+        return(gp(j,'aliexpress_ds_text_search_response.data.products.selection_search_product')||[]).map(x=>({supplierProductId:String(x.itemId),title:x.title,images:[x.itemMainPic&&(x.itemMainPic.startsWith('//')?'https:'+x.itemMainPic:x.itemMainPic)].filter(Boolean),cost:N(x.targetSalePrice||x.salePrice),currency:'USD',url:x.itemUrl||''}))},
+      async detail(c,pid){const j=await this.call(c,'aliexpress.ds.product.get',{product_id:pid,ship_to_country:'BD',target_currency:'USD',target_language:'EN'});const d=gp(j,'aliexpress_ds_product_get_response.result')||{},b=d.ae_item_base_info_dto||{},sk=gp(d,'ae_item_sku_info_dtos.ae_item_sku_info_d_t_o')||[];
+        return{supplierProductId:String(pid),title:b.subject,description:b.detail||'',images:String(gp(d,'ae_multimedia_info_dto.image_urls')||'').split(';').filter(Boolean),cost:N(sk[0]&&(sk[0].offer_sale_price||sk[0].sku_price)),currency:'USD',variants:sk.map(s=>({skuId:s.sku_id,name:s.sku_attr,cost:N(s.offer_sale_price||s.sku_price)})),url:'https://www.aliexpress.com/item/'+pid+'.html'}}};
+    const cj={b:c=>c.baseUrl||'https://developers.cjdropshipping.com/api2.0/v1',async tok(c){const j=await jf(this.b(c)+'/authentication/getAccessToken',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:c.email,password:c.apiKey})});if(!j.result)throw new Error(j.message||'CJ auth failed');return j.data.accessToken},
+      async req(c,p){const j=await jf(this.b(c)+p,{headers:{'CJ-Access-Token':await this.tok(c)}});if(j.result===false)throw new Error(j.message);return j.data},
+      async search(c,q,pg=1){const d=await this.req(c,'/product/list?productNameEn='+encodeURIComponent(q)+'&pageNum='+pg+'&pageSize=20');return(d.list||[]).map(x=>({supplierProductId:x.pid,title:x.productNameEn,images:[x.productImage],cost:N(String(x.sellPrice).split('--')[0]),currency:'USD',url:'https://cjdropshipping.com/product/'+x.pid}))},
+      async detail(c,pid){const d=await this.req(c,'/product/query?pid='+pid);return{supplierProductId:pid,title:d.productNameEn,description:d.description||'',images:[].concat(d.productImage||[],d.productImageSet||[]),cost:N(String(d.sellPrice).split('--')[0]),currency:'USD',variants:(d.variants||[]).map(v=>({skuId:v.vid,name:v.variantNameEn,cost:N(v.variantSellPrice)})),url:'https://cjdropshipping.com/product/'+pid}}};
+    const gen={async req(c,ep,q){const g=c.generic||{},e=(g.endpoints||{})[ep];if(!e)throw new Error('"'+ep+'" endpoint কনফিগার করা নেই');const[m,pa]=e.split(' '),url=new URL((c.baseUrl||'').replace(/\/$/,'')+pa.replace(/\{(\w+)\}/g,(_,k)=>encodeURIComponent((q||{})[k]||'')));if(m==='GET')Object.entries(q||{}).forEach(([k,v])=>url.searchParams.set(k,v));
+        return jf(url,{method:m,headers:{[g.authHeader||'Authorization']:(g.authPrefix??'Bearer ')+(c.accessToken||c.apiKey)}})},
+      norm(c,x){const m=(c.generic||{}).map||{},pk=(k,d)=>gp(x,m[k]||d);return{supplierProductId:String(pk('id','id')),title:pk('title','name'),description:pk('description','description')||'',images:[].concat(pk('images','images')||pk('image','image')||[]),cost:N(pk('cost','price')),currency:'BDT',variants:pk('variants','variants')||[],stock:N(pk('stock','stock')),url:pk('url','url')||''}},
+      async search(c,q,pg){const j=await this.req(c,'search',{q,page:pg});return(gp(j,((c.generic||{}).map||{}).list||'data')||[]).map(x=>this.norm(c,x))},async detail(c,id){const j=await this.req(c,'detail',{id});return this.norm(c,j.data||j)}};
+    return this._dH={ali,cj,gen};
+  },
+  /* নতুন অর্ডার → supplierQueue (অ্যাডমিন প্যানেল খোলা থাকলে অটো; ব্যাকএন্ড ছাড়া) */
+  async supSyncQueue(only,force){
+    const out={};
+    for(const o of this.fbOrders){if(only&&o.fbKey!==only)continue;if(o.routed&&!force)continue;
+      const g={};for(const it of(o.items||[])){const p=this.fbProducts.find(x=>x.fbKey===(it.productId||it.id));if(p&&p.source&&p.source.supplierId)(g[p.source.supplierId]=g[p.source.supplierId]||[]).push({supplierProductId:p.source.supplierProductId,qty:it.qty||1,sku:it.sku||'',name:p.name})}
+      if(!Object.keys(g).length){continue}
+      for(const[sid,items]of Object.entries(g)){await window.$db.setSupplierQueue(o.fbKey+'_'+sid,{orderKey:o.fbKey,supplierId:sid,items,address:{name:o.customerName||'',phone:o.phone||'',address:o.address||'',district:o.district||'',division:o.division||''},status:'pending_review',at:Date.now()});out[sid]={status:'queued'}}
+      await window.$db.updateOrderRaw(o.fbKey,{routed:true,supplierOrders:out})}
+    return out;
   },
   async supApi(path,opt={}){
-    if(!this.sup.url||!this.sup.token){this.showToast('Backend URL ও Admin Token দিন','error');throw new Error('no cfg')}
+    if(!this.sup.url||!this.sup.token)return this.supDirect(path,opt);
     const r=await fetch(this.sup.url.replace(/\/$/,'')+'/api/admin'+path,{...opt,headers:{'Content-Type':'application/json','x-admin-token':this.sup.token}});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;
   },
@@ -2772,6 +2835,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const price=Math.round(cost+add(m.mode,m.value)),rp=Math.round(cost+add(m.resellerMode||m.mode,m.resellerValue));
     return{price,oldPrice:Number(m.mrpPct)?Math.round(price*(1+m.mrpPct/100)):0,resellerPrice:Math.min(rp,price),marketPrice:price};
   },
+  supAddManual(){const m=this.sup.man;if(!m.title||!(Number(m.cost)>0))return this.showToast('নাম ও খরচ দিন','error');
+    const imgs=(m.images||'').split('\n').map(x=>x.trim()).filter(Boolean),id=m.id||('M'+Date.now()),r={supplierProductId:id,title:m.title,images:imgs,cost:Number(m.cost),currency:'BDT',url:m.url||'',costBDT:Number(m.cost),sel:true,open:true,manual:{supplierProductId:id,title:m.title,description:'',images:imgs,cost:Number(m.cost),currency:'BDT',url:m.url||'',variants:[]}};
+    Object.assign(r,this.supPrice(r.costBDT,this.sup.gm));r.ov={name:m.title,desc:'',sku:'',stock:100,sizes:'',colors:'',tags:'',shipCost:0,images:imgs.join('\n'),price:r.price,oldPrice:r.oldPrice,resellerPrice:r.resellerPrice,marketPrice:r.marketPrice};
+    this.sup.results.unshift(r);this.sup.man={title:'',cost:'',images:'',url:'',id:''}},
   supApplyMarkup(){this.sup.results.forEach(r=>Object.assign(r.ov,this.supPrice(r.costBDT,this.sup.gm)))},
   async supSearch(){
     this.sup.busy=true;this.sup.msg='খোঁজা হচ্ছে...';
@@ -2786,7 +2853,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     if(intl&&!this.sup.importCat)return this.showToast('ইন্টারন্যাশনাল ক্যাটাগরি বেছে নিন','error');
     const csv=s=>(s||'').split(',').map(x=>x.trim()).filter(Boolean);
     this.sup.busy=true;
-    try{const d=await this.supApi('/import',{method:'POST',body:JSON.stringify({supplierId:this.sup.cur,global:this.sup.gm,items:sel.map(r=>({supplierProductId:r.supplierProductId,overrides:{
+    try{const d=await this.supApi('/import',{method:'POST',body:JSON.stringify({supplierId:this.sup.cur,global:this.sup.gm,items:sel.map(r=>({supplierProductId:r.supplierProductId,manual:r.manual||undefined,overrides:{
       name:r.ov.name,desc:r.ov.desc||undefined,sku:r.ov.sku,stock:r.ov.stock,sizes:csv(r.ov.sizes).length?csv(r.ov.sizes):undefined,colors:csv(r.ov.colors),tags:csv(r.ov.tags),
       images:(r.ov.images||'').split('\n').map(x=>x.trim()).filter(Boolean),price:r.ov.price,oldPrice:r.ov.oldPrice,resellerPrice:r.ov.resellerPrice,marketPrice:r.ov.marketPrice,
       shipping:{method:this.sup.cfg[this.sup.cur]?.shipping?.method||'Standard',cost:r.ov.shipCost||0},intlCat:intl?this.sup.importCat:'',category:intl?'':this.sup.importCat}}))})});
