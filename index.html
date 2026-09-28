@@ -38,7 +38,7 @@ tailwind.config={
 <!-- Firebase (merged: products, orders, categories, sections, notifications, custom buttons, pinned products, settings, storage) -->
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,push,set,onValue,update,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,push,set,onValue,update,remove,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 const cfg={
@@ -66,6 +66,10 @@ window.$db={
   // Products
   saveProduct:async(data,id)=>{if(id){await update(ref(db,'products/'+id),data);return id;}const r=push(ref(db,'products'));await set(r,data);return r.key},
   deleteProduct:async(id)=>remove(ref(db,'products/'+id)),
+  listenIntlCats:(cb)=>onValue(ref(db,'intlCategories'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])}),
+  saveIntlCat:async(d)=>{const r=push(ref(db,'intlCategories'));await set(r,d);return r.key},
+  deleteIntlCat:async(k)=>remove(ref(db,'intlCategories/'+k)),
+  listenSupplierQueue:(cb)=>onValue(ref(db,'supplierQueue'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])}),
   listenProducts:(cb)=>onValue(ref(db,'products'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Orders
   createOrder:async(data)=>{const r=push(ref(db,'orders'));await set(r,data);return r.key},
@@ -130,6 +134,11 @@ window.$db={
   saveVendor:async(data,id)=>{if(id){await update(ref(db,'vendors/'+id),data);return id;}const r=push(ref(db,'vendors'));await set(r,data);return r.key},
   deleteVendor:async(id)=>remove(ref(db,'vendors/'+id)),
   listenVendors:(cb)=>onValue(ref(db,'vendors'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  // গ্রাহক ওয়ালেট রিকোয়েস্ট (ইউজার সাইটের সাথে সংযুক্ত)
+  listenCustReq:(kind,cb)=>onValue(ref(db,kind==='withdraw'?'customerWithdrawals':'customerDeposits'),s=>{const v=s.val();const out=[];if(v)Object.entries(v).forEach(([uid,reqs])=>Object.entries(reqs||{}).forEach(([k,d])=>out.push({...d,fbKey:k,uid,kind})));cb(out)},{onlyOnce:false}),
+  updateCustReq:async(kind,uid,key,data)=>update(ref(db,(kind==='withdraw'?'customerWithdrawals/':'customerDeposits/')+uid+'/'+key),data),
+  updateCustTx:async(uid,key,data)=>update(ref(db,'customerWalletTx/'+uid+'/'+key),data),
+  custCredit:async(uid,delta,tx)=>{await runTransaction(ref(db,'customerWallets/'+uid+'/balance'),cur=>(Number(cur)||0)+delta);if(tx){const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{amount:delta,at:Date.now(),status:'done',...tx});}},
   // Storage (System A — direct Firebase upload)
   uploadImage:async(file,path,onProgress)=>{
     const storageRef=sRef(storage,path);
@@ -301,6 +310,36 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
 </style>
 <style>.szc{padding:6px 12px;border-radius:99px;border:1.5px solid var(--border);background:var(--card);color:var(--fg);font:600 12px inherit;cursor:pointer}.szc.on{background:var(--accent);border-color:var(--accent);color:#fff}.paycard{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}.paylogo{width:54px;height:54px;border-radius:12px;background:var(--card);border:1px solid var(--border);display:grid;place-items:center;flex:none;overflow:hidden;font-weight:800;color:var(--fg3)}.paylogo img{max-width:100%;max-height:100%;object-fit:contain}</style>
+
+<style id="dd-admin-fix">
+/* ══ স্ক্রল বাগ ফিক্স ══
+   আগে html,body-তে touch-action:pan-y ছিল — এটা ভেতরের টেবিল/ট্যাবের আড়াআড়ি (ডানে-বামে) স্ক্রল আটকে দিত।
+   আর .main-area-তে min-width ছিল না, তাই চওড়া টেবিল পেজকেই স্ক্রিনের বাইরে ঠেলে দিত। */
+html,body{touch-action:auto!important;overflow-x:clip}
+.pill-scroll,.overflow-x-auto{touch-action:auto!important;overscroll-behavior-x:auto;-webkit-overflow-scrolling:touch}
+.admin-layout,.main-area{min-width:0}
+.main-area{max-width:100%;padding-bottom:96px}
+.sidebar{height:100vh;height:100dvh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+.overflow-x-auto{max-width:100%}
+.dd-table{min-width:640px}
+.dd-table td:last-child,.dd-table th:last-child{position:sticky;right:0;background:var(--card);box-shadow:-10px 0 14px -12px var(--shadow);z-index:1}
+.dd-table th:last-child{background:var(--bg2)}
+.dd-table tr:hover td:last-child{background:var(--bg2)}
+.modal-overlay{overscroll-behavior:contain}
+.modal-body{-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.nav-item{width:calc(100% - 12px);text-align:left}
+.nav-item span:first-of-type+span{flex-shrink:0}
+/* ══ হাব সাব-ট্যাব বার ══ */
+.hub-bar{position:sticky;top:0;z-index:40;margin:-10px -6px 16px;padding:10px 6px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.hub-bar .pill-scroll{padding:2px 0}
+.hub-tab{flex-shrink:0;display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:99px;border:1px solid var(--border);background:var(--card);color:var(--fg2);font:700 12.5px 'Hind Siliguri',sans-serif;cursor:pointer;white-space:nowrap;transition:all .2s}
+.hub-tab i{font-size:12px;opacity:.75}
+.hub-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--accent) 35%,transparent)}
+.hub-tab.on i{opacity:1}
+.hub-tab .bd{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#DC2626;color:#fff;font-size:10px;display:grid;place-items:center}
+.hub-tab.on .bd{background:#fff;color:var(--accent)}
+@media(max-width:768px){.hub-bar{margin:-6px -10px 14px;padding:8px 10px}}
+</style>
 </head>
 <body :class="'theme-'+activeTheme" class="theme-light">
 
@@ -687,69 +726,13 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
     <span class="text-xs font-bold" style="color:#4ADE80">Firebase সংযুক্ত</span>
   </div>
-  <nav class="flex-1 space-y-0.5 px-0">
-    <p class="nav-group-label">ড্যাশবোর্ড</p>
-    <button @click="activeTab='dashboard';sidebarOpen=false" class="nav-item" :class="activeTab==='dashboard'?'active':''"><i class="fa-solid fa-chart-line w-4 text-center text-sm"></i><span>ড্যাশবোর্ড</span></button>
-
-    <p class="nav-group-label">পণ্য ব্যবস্থাপনা</p>
-    <button @click="activeTab='upload';if(!up.editKey)resetUp();sidebarOpen=false" class="nav-item" :class="activeTab==='upload'?'active':''"><i class="fa-solid fa-cloud-arrow-up w-4 text-center text-sm"></i><span>পণ্য আপলোড</span></button>
-    <button @click="activeTab='products';sidebarOpen=false" class="nav-item" :class="activeTab==='products'?'active':''"><i class="fa-solid fa-boxes-stacked w-4 text-center text-sm"></i><span>সব পণ্য</span></button>
-    <button @click="activeTab='categories';sidebarOpen=false" class="nav-item" :class="activeTab==='categories'?'active':''"><i class="fa-solid fa-tags w-4 text-center text-sm"></i><span>ক্যাটাগরি</span></button>
-    <button @click="activeTab='sections';sidebarOpen=false" class="nav-item" :class="activeTab==='sections'?'active':''"><i class="fa-solid fa-layer-group w-4 text-center text-sm"></i><span>সেকশন</span></button>
-    <button @click="activeTab='assignment';sidebarOpen=false" class="nav-item" :class="activeTab==='assignment'?'active':''"><i class="fa-solid fa-arrows-up-down-left-right w-4 text-center text-sm"></i><span>পণ্য অ্যাসাইনমেন্ট</span></button>
-    <button @click="activeTab='eid';sidebarOpen=false" class="nav-item" :class="activeTab==='eid'?'active':''"><i class="fa-solid fa-moon w-4 text-center text-sm"></i><span>ঈদ কালেকশন</span></button>
-    <button @click="activeTab='pinned';sidebarOpen=false" class="nav-item" :class="activeTab==='pinned'?'active':''"><i class="fa-solid fa-thumbtack w-4 text-center text-sm"></i><span>পিন করা পণ্য</span></button>
-
-    <p class="nav-group-label">অর্ডার</p>
-    <button @click="activeTab='orders';sidebarOpen=false" class="nav-item" :class="activeTab==='orders'?'active':''">
-      <i class="fa-solid fa-receipt w-4 text-center text-sm"></i><span>অর্ডার</span>
-      <span x-show="pendingCount>0" x-text="pendingCount" class="ml-auto text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center" style="background:var(--accent);color:#fff;font-size:9px"></span>
-    </button>
-
-    <p class="nav-group-label">রিসেলিং সিস্টেম</p>
-    <button @click="activeTab='resellers';sidebarOpen=false" class="nav-item" :class="activeTab==='resellers'?'active':''">
-      <i class="fa-solid fa-store w-4 text-center text-sm"></i><span>রিসেলার ম্যানেজমেন্ট</span>
-      <span x-show="pendingResellers.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingResellers.length"></span>
-    </button>
-    <button @click="activeTab='withdrawals';sidebarOpen=false" class="nav-item" :class="activeTab==='withdrawals'?'active':''">
-      <i class="fa-solid fa-money-bill-transfer w-4 text-center text-sm"></i><span>উইথড্র রিকোয়েস্ট</span>
-      <span x-show="pendingWithdrawals.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingWithdrawals.length"></span>
-    </button>
-    <button @click="activeTab='deposits';sidebarOpen=false" class="nav-item" :class="activeTab==='deposits'?'active':''">
-      <i class="fa-solid fa-wallet w-4 text-center text-sm"></i><span>ডিপোজিট রিকোয়েস্ট</span>
-      <span x-show="pendingDeposits.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingDeposits.length"></span>
-    </button>
-    <button @click="activeTab='savings';sidebarOpen=false" class="nav-item" :class="activeTab==='savings'?'active':''">
-      <i class="fa-solid fa-calendar-days w-4 text-center text-sm"></i><span>কিস্তি ম্যানেজার (ধাপে ধাপে জমা)</span>
-      <span x-show="pendingSavingsContribs.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingSavingsContribs.length"></span>
-    </button>
-    <button @click="activeTab='tickets';sidebarOpen=false" class="nav-item" :class="activeTab==='tickets'?'active':''">
-      <i class="fa-solid fa-headset w-4 text-center text-sm"></i><span>সাপোর্ট টিকেট</span>
-      <span x-show="pendingTickets.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingTickets.length"></span>
-    </button>
-
-    <p class="nav-group-label">কিস্তিতে কেনাকাটা</p>
-    <button @click="activeTab='installments';sidebarOpen=false" class="nav-item" :class="activeTab==='installments'?'active':''">
-      <i class="fa-solid fa-calendar-check w-4 text-center text-sm"></i><span>কিস্তি অর্ডার (মাসিক প্ল্যান)</span>
-      <span x-show="pendingInstallmentPayments.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingInstallmentPayments.length"></span>
-    </button>
-    <button @click="activeTab='kyc';sidebarOpen=false" class="nav-item" :class="activeTab==='kyc'?'active':''">
-      <i class="fa-solid fa-id-card w-4 text-center text-sm"></i><span>KYC রিভিউ</span>
-      <span x-show="pendingKyc.length" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff" x-text="pendingKyc.length"></span>
-    </button>
-    <button @click="activeTab='vendors';sidebarOpen=false" class="nav-item" :class="activeTab==='vendors'?'active':''">
-      <i class="fa-solid fa-industry w-4 text-center text-sm"></i><span>ভেন্ডর/সাপ্লায়ার</span>
-    </button>
-
-
-    <p class="nav-group-label">কনটেন্ট</p>
-    <button @click="activeTab='notifications';sidebarOpen=false" class="nav-item" :class="activeTab==='notifications'?'active':''"><i class="fa-solid fa-bell w-4 text-center text-sm"></i><span>নোটিফিকেশন</span></button>
-    <button @click="activeTab='buttons';sidebarOpen=false" class="nav-item" :class="activeTab==='buttons'?'active':''"><i class="fa-solid fa-hand-pointer w-4 text-center text-sm"></i><span>কাস্টম বাটন</span></button>
-    <button @click="activeTab='banners';sidebarOpen=false" class="nav-item" :class="activeTab==='banners'?'active':''"><i class="fa-solid fa-images w-4 text-center text-sm"></i><span>ব্যানার ও কভার</span></button>
-
-    <p class="nav-group-label">সেটিংস</p>
-    <button @click="activeTab='settings';sidebarOpen=false" class="nav-item" :class="activeTab==='settings'?'active':''"><i class="fa-solid fa-gear w-4 text-center text-sm"></i><span>শপ সেটিংস</span></button>
-    <button @click="activeTab='appearance';sidebarOpen=false" class="nav-item" :class="activeTab==='appearance'?'active':''"><i class="fa-solid fa-palette w-4 text-center text-sm"></i><span>থিম ও কালার</span></button>
+  <nav class="flex-1 px-0 pb-4">
+    <template x-for="h in hubs" :key="h.id">
+      <button type="button" @click="goHub(h)" class="nav-item" :class="activeHub&&activeHub.id===h.id?'active':''">
+        <i class="fa-solid w-4 text-center text-sm" :class="h.ic"></i><span x-text="h.label"></span>
+        <span x-show="hubBadge(h)>0" x-text="hubBadge(h)" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff;min-width:20px;text-align:center"></span>
+      </button>
+    </template>
   </nav>
   <div class="px-4 mt-6 pt-4" style="border-top:1px solid rgba(255,255,255,.07)">
     <button @click="logout()" class="w-full text-left flex items-center gap-2 text-xs px-3 py-2 rounded-xl" style="background:rgba(220,38,38,.15);color:#FCA5A5;border:none;cursor:pointer;font-family:'Hind Siliguri',sans-serif">
@@ -772,12 +755,166 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     </div>
     <div class="flex items-center gap-2 flex-wrap justify-end">
       <button @click="activeTab='upload';resetUp()" class="btn-primary text-xs"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button>
-      <template x-for="(th,key) in themes" :key="key">
-        <button @click="setTheme(key)" class="theme-swatch" :class="activeTheme===key?'active':''" :style="'background:'+th.accent" :title="th.label"></button>
+    </div>
+  </div>
+  <!-- hub sub-tab bar -->
+  <div x-show="activeHub&&activeHub.tabs.length>1" x-cloak class="hub-bar">
+    <div class="pill-scroll">
+      <template x-for="t in (activeHub?activeHub.tabs:[])" :key="t">
+        <button type="button" @click="goTab(t)" class="hub-tab" :class="activeTab===t?'on':''">
+          <i class="fa-solid" :class="tabIcons[t]"></i><span x-text="tabLabels[t]"></span>
+          <span x-show="tabBadge(t)>0" class="bd" x-text="tabBadge(t)"></span>
+        </button>
       </template>
     </div>
   </div>
   <!-- ══ DASHBOARD ══ -->
+  <!-- ═══ SUPPLIER API INTEGRATION ═══ -->
+  <div x-show="['sup_keys','sup_import','sup_intl','sup_orders'].includes(activeTab)" x-cloak class="animate-fade-in space-y-4">
+
+    <!-- ── 1. API Credentials ── -->
+    <div x-show="activeTab==='sup_keys'" class="space-y-4">
+      <div class="dd-card p-4">
+        <p class="font-bold text-sm mb-2"><i class="fa-solid fa-server"></i> ব্যাকএন্ড সংযোগ</p>
+        <div class="grid md:grid-cols-2 gap-3">
+          <div><label class="dd-label">Backend URL</label><input class="dd-input" x-model="sup.url" @change="localStorage.setItem('dd_sup_api',sup.url)" placeholder="https://your-server.com"/></div>
+          <div><label class="dd-label">Admin Token (সেশনে থাকবে)</label><input class="dd-input" type="password" x-model="sup.token" @change="sessionStorage.setItem('dd_sup_tok',sup.token)"/></div>
+        </div>
+        <button class="btn-primary text-xs mt-3" @click="supLoad()"><i class="fa-solid fa-rotate"></i> সাপ্লায়ার লোড করুন</button>
+      </div>
+      <template x-for="s in sup.list" :key="s.id">
+        <div class="dd-card p-4" x-show="sup.cfg[s.id]">
+          <div class="flex items-center justify-between mb-3">
+            <div><p class="font-bold text-sm" x-text="s.icon+' '+s.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="s.type"></p></div>
+            <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" x-model="sup.cfg[s.id].enabled"/> <span x-text="sup.cfg[s.id].enabled?'Enabled':'Disabled'"></span></label>
+          </div>
+          <div class="grid md:grid-cols-2 gap-3">
+            <div class="md:col-span-2"><label class="dd-label">Base URL</label><input class="dd-input" x-model="sup.cfg[s.id].baseUrl" :placeholder="s.base"/></div>
+            <div><label class="dd-label">API Key<span x-show="s.id==='cj'"> (CJ password/API key)</span></label><input class="dd-input" x-model="sup.cfg[s.id].apiKey"/></div>
+            <div><label class="dd-label">Access Token</label><input class="dd-input" x-model="sup.cfg[s.id].accessToken"/></div>
+            <div x-show="s.id==='aliexpress'"><label class="dd-label">App Key</label><input class="dd-input" x-model="sup.cfg[s.id].appKey"/></div>
+            <div><label class="dd-label">App Secret</label><input class="dd-input" x-model="sup.cfg[s.id].appSecret"/></div>
+            <div x-show="s.id==='cj'"><label class="dd-label">CJ Account Email</label><input class="dd-input" x-model="sup.cfg[s.id].email"/></div>
+            <div x-show="s.intl"><label class="dd-label">১ USD = কত ৳ (Exchange rate)</label><input class="dd-input" type="number" x-model.number="sup.cfg[s.id].fxToBDT" placeholder="125"/></div>
+            <div><label class="dd-label">শিপিং মেথড</label><input class="dd-input" x-model="sup.cfg[s.id].shipping.method" placeholder="Standard"/></div>
+            <div><label class="dd-label">শিপিং খরচ (৳)</label><input class="dd-input" type="number" x-model.number="sup.cfg[s.id].shipping.cost"/></div>
+          </div>
+          <div class="mt-3 p-3 rounded-xl" style="background:var(--bg2)">
+            <p class="text-xs font-bold mb-2">ডিফল্ট মার্কআপ রুল</p>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+              <div><label class="dd-label">Retail টাইপ</label><select class="dd-input" x-model="sup.cfg[s.id].markup.mode"><option value="percent">%</option><option value="fixed">৳ ফিক্সড</option></select></div>
+              <div><label class="dd-label">Retail মান</label><input class="dd-input" type="number" x-model.number="sup.cfg[s.id].markup.value"/></div>
+              <div><label class="dd-label">Reseller টাইপ</label><select class="dd-input" x-model="sup.cfg[s.id].markup.resellerMode"><option value="percent">%</option><option value="fixed">৳ ফিক্সড</option></select></div>
+              <div><label class="dd-label">Reseller মান</label><input class="dd-input" type="number" x-model.number="sup.cfg[s.id].markup.resellerValue"/></div>
+              <div><label class="dd-label">MRP/Strike +%</label><input class="dd-input" type="number" x-model.number="sup.cfg[s.id].markup.mrpPct"/></div>
+            </div>
+            <button class="btn-ghost text-xs mt-2" @click="supReprice(s.id)"><i class="fa-solid fa-tags"></i> এই মার্কআপ ইমপোর্টেড সব পণ্যে প্রয়োগ করুন</button>
+          </div>
+          <div x-show="!s.intl" class="mt-3">
+            <label class="dd-label">API ম্যাপিং (JSON) — সাপ্লায়ারের অফিসিয়াল ডকুমেন্ট অনুযায়ী</label>
+            <textarea class="dd-input font-mono" rows="6" x-model="sup.genericText[s.id]" placeholder='{"authHeader":"Authorization","authPrefix":"Bearer ","endpoints":{"search":"GET /products","detail":"GET /products/{id}","order":"POST /orders"},"map":{"list":"data","id":"id","title":"name","cost":"price","images":"images"}}'></textarea>
+          </div>
+          <div class="flex gap-2 mt-3">
+            <button class="btn-primary text-xs" @click="supSave(s.id)"><i class="fa-solid fa-floppy-disk"></i> সেভ</button>
+            <button class="btn-ghost text-xs" @click="supTest(s.id)"><i class="fa-solid fa-plug-circle-check"></i> কানেকশন টেস্ট</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ── 2. Fetch / Import / Pricing / Customize ── -->
+    <div x-show="activeTab==='sup_import'" class="space-y-4">
+      <div class="dd-card p-4">
+        <div class="flex flex-wrap gap-2">
+          <select class="dd-input" style="max-width:220px" x-model="sup.cur"><template x-for="s in sup.list" :key="s.id"><option :value="s.id" x-text="s.icon+' '+s.name"></option></template></select>
+          <input class="dd-input flex-1" style="min-width:160px" x-model="sup.q" @keydown.enter="supSearch()" placeholder="পণ্য খুঁজুন (যেমন: smart watch)"/>
+          <button class="btn-primary text-xs" @click="supSearch()"><i class="fa-solid fa-magnifying-glass"></i> সার্চ</button>
+        </div>
+        <div class="mt-3 p-3 rounded-xl grid grid-cols-2 md:grid-cols-6 gap-2 items-end" style="background:var(--bg2)">
+          <div><label class="dd-label">Retail</label><select class="dd-input" x-model="sup.gm.mode"><option value="percent">+%</option><option value="fixed">+৳</option></select></div>
+          <div><label class="dd-label">মান</label><input class="dd-input" type="number" x-model.number="sup.gm.value"/></div>
+          <div><label class="dd-label">Reseller</label><select class="dd-input" x-model="sup.gm.resellerMode"><option value="percent">+%</option><option value="fixed">+৳</option></select></div>
+          <div><label class="dd-label">মান</label><input class="dd-input" type="number" x-model.number="sup.gm.resellerValue"/></div>
+          <div><label class="dd-label">MRP +%</label><input class="dd-input" type="number" x-model.number="sup.gm.mrpPct"/></div>
+          <button class="btn-ghost text-xs" @click="supApplyMarkup()">সবগুলোতে প্রয়োগ</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-3" x-show="sup.results.length">
+          <button class="btn-ghost text-xs" @click="sup.results.forEach(r=>r.sel=true)">সব সিলেক্ট</button>
+          <button class="btn-primary text-xs" @click="supImport()" :disabled="sup.busy"><i class="fa-solid fa-download"></i> সিলেক্টেড ইমপোর্ট (<span x-text="sup.results.filter(r=>r.sel).length"></span>)</button>
+          <select class="dd-input" style="max-width:200px" x-model="sup.importCat" x-show="['aliexpress','cj'].includes(sup.cur)"><option value="">ইন্টারন্যাশনাল ক্যাটাগরি...</option><template x-for="c in sup.intlCats" :key="c.fbKey"><option :value="c.name" x-text="(c.emoji||'')+' '+c.name"></option></template></select>
+          <input class="dd-input" style="max-width:200px" x-model="sup.importCat" x-show="!['aliexpress','cj'].includes(sup.cur)" placeholder="ক্যাটাগরি (নাম)"/>
+        </div>
+        <p class="text-xs mt-2" x-show="sup.msg" x-text="sup.msg" style="color:var(--fg2)"></p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3">
+        <template x-for="r in sup.results" :key="r.supplierProductId">
+          <div class="dd-card p-3">
+            <div class="flex gap-3">
+              <input type="checkbox" x-model="r.sel"/>
+              <img :src="r.images?.[0]" class="w-16 h-16 rounded-xl object-cover" onerror="this.style.visibility='hidden'"/>
+              <div class="flex-1 min-w-0"><p class="text-xs font-bold" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden" x-text="r.ov.name"></p>
+                <p class="text-xs" style="color:var(--fg3)" x-text="'খরচ ৳'+r.costBDT.toLocaleString()"></p></div>
+              <button class="btn-ghost text-xs" @click="r.open=!r.open"><i class="fa-solid fa-pen"></i></button>
+            </div>
+            <div class="grid grid-cols-4 gap-2 mt-2">
+              <div><label class="dd-label">Retail</label><input class="dd-input" type="number" x-model.number="r.ov.price"/></div>
+              <div><label class="dd-label">Sale/MRP</label><input class="dd-input" type="number" x-model.number="r.ov.oldPrice"/></div>
+              <div><label class="dd-label">Reseller</label><input class="dd-input" type="number" x-model.number="r.ov.resellerPrice"/></div>
+              <div><label class="dd-label">Market MRP</label><input class="dd-input" type="number" x-model.number="r.ov.marketPrice"/></div>
+            </div>
+            <div x-show="r.open" x-cloak class="grid grid-cols-2 gap-2 mt-2">
+              <div class="col-span-2"><label class="dd-label">Title</label><input class="dd-input" x-model="r.ov.name"/></div>
+              <div class="col-span-2"><label class="dd-label">Description</label><textarea class="dd-input" rows="3" x-model="r.ov.desc"></textarea></div>
+              <div><label class="dd-label">SKU</label><input class="dd-input" x-model="r.ov.sku"/></div>
+              <div><label class="dd-label">স্টক</label><input class="dd-input" type="number" x-model.number="r.ov.stock"/></div>
+              <div><label class="dd-label">সাইজ (কমা দিয়ে)</label><input class="dd-input" x-model="r.ov.sizes"/></div>
+              <div><label class="dd-label">কালার (কমা দিয়ে)</label><input class="dd-input" x-model="r.ov.colors"/></div>
+              <div><label class="dd-label">ট্যাগ (কমা দিয়ে)</label><input class="dd-input" x-model="r.ov.tags"/></div>
+              <div><label class="dd-label">শিপিং খরচ ৳</label><input class="dd-input" type="number" x-model.number="r.ov.shipCost"/></div>
+              <div class="col-span-2"><label class="dd-label">ছবির লিংক (প্রতি লাইনে একটা)</label><textarea class="dd-input" rows="3" x-model="r.ov.images"></textarea></div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p class="text-xs" style="color:var(--fg3)">ইমপোর্টের পর আরও এডিট করতে "পণ্য → প্রোডাক্ট লিস্ট" থেকে সাধারণ এডিটরই ব্যবহার করুন।</p>
+    </div>
+
+    <!-- ── 3. International categories ── -->
+    <div x-show="activeTab==='sup_intl'" class="space-y-4">
+      <div class="dd-card p-4">
+        <p class="font-bold text-sm mb-3">🌍 ইন্টারন্যাশনাল ক্যাটাগরি যোগ করুন</p>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+          <div class="col-span-2"><label class="dd-label">নাম</label><input class="dd-input" x-model="sup.catForm.name"/></div>
+          <div><label class="dd-label">ইমোজি</label><input class="dd-input" x-model="sup.catForm.emoji" placeholder="⌚"/></div>
+          <div><label class="dd-label">ছবি লিংক</label><input class="dd-input" x-model="sup.catForm.img"/></div>
+          <div><label class="dd-label">ক্রম</label><input class="dd-input" type="number" x-model.number="sup.catForm.order"/></div>
+        </div>
+        <button class="btn-primary text-xs mt-3" @click="supAddCat()"><i class="fa-solid fa-plus"></i> যোগ করুন</button>
+      </div>
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <template x-for="c in sup.intlCats" :key="c.fbKey">
+          <div class="dd-card p-3 text-center">
+            <div class="text-3xl" x-text="c.emoji||'📦'"></div><p class="text-xs font-bold mt-1" x-text="c.name"></p>
+            <button class="text-xs mt-1" style="color:#E11D48" @click="supDelCat(c)">মুছুন</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ── 4. Order routing queue ── -->
+    <div x-show="activeTab==='sup_orders'" class="space-y-3">
+      <p class="text-xs" style="color:var(--fg3)">অর্ডারে সাপ্লায়ার-লিংকড পণ্য থাকলে এখানে আসে। "পাঠান" চাপলে সাপ্লায়ারের API-তে অর্ডার যায় (Address, Item ID, Qty)।</p>
+      <template x-for="q in sup.queue" :key="q.fbKey">
+        <div class="dd-card p-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0"><p class="text-xs font-bold" x-text="q.supplierId.toUpperCase()+' · '+q.address.name+' · '+q.address.phone"></p>
+            <p class="text-xs" style="color:var(--fg3)" x-text="(q.items||[]).map(i=>i.name+' ×'+i.qty).join(', ')"></p>
+            <p class="text-xs" x-text="q.status+(q.supplierOrderId?' · #'+q.supplierOrderId:'')+(q.error?' · '+q.error:'')"></p></div>
+          <button x-show="q.status!=='sent'" class="btn-primary text-xs" @click="supRoute(q.orderKey)">পাঠান</button>
+        </div>
+      </template>
+    </div>
+  </div>
+
   <div x-show="activeTab==='dashboard'" class="animate-fade-in">
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট পণ্য</p><p class="font-display text-4xl" style="color:var(--fg)" x-text="fbProducts.length"></p><i class="fa-solid fa-box absolute bottom-4 right-4 text-3xl opacity-10" style="color:var(--accent)"></i></div>
@@ -1674,6 +1811,46 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
     </div>
   </div>
 
+  <!-- ══ গ্রাহক ওয়ালেট রিকোয়েস্ট (ইউজার সাইটের ওয়ালেট — টাকা যোগ / উইথড্র) ══ -->
+  <div x-show="activeTab==='custwallet'" x-cloak class="animate-fade-in">
+    <div class="grid gap-3 mb-5" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+      <div class="stat-card"><p class="text-xs" style="color:var(--fg3)">পেন্ডিং ডিপোজিট</p><p class="font-display text-2xl mt-1" style="color:#15803D" x-text="'৳'+custPendingSum('deposit').toLocaleString()"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-text="custPendingCount('deposit')+' টি রিকোয়েস্ট'"></p></div>
+      <div class="stat-card"><p class="text-xs" style="color:var(--fg3)">পেন্ডিং উইথড্র</p><p class="font-display text-2xl mt-1" style="color:#C2410C" x-text="'৳'+custPendingSum('withdraw').toLocaleString()"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-text="custPendingCount('withdraw')+' টি রিকোয়েস্ট'"></p></div>
+    </div>
+    <div class="dd-card-sm p-3 mb-4" style="border-left:4px solid var(--accent)"><p class="text-xs" style="color:var(--fg2);line-height:1.7"><i class="fa-solid fa-circle-info mr-1" style="color:var(--accent)"></i>ইউজার সাইটের ওয়ালেটে গ্রাহকরা টাকা যোগ ও উইথড্রের অনুরোধ পাঠায়। ডিপোজিট কনফার্ম করলে ব্যালেন্সে টাকা যোগ হবে। উইথড্রের টাকা অনুরোধের সময়ই ব্যালেন্স থেকে কাটা হয়; বাতিল করলে টাকা ফেরত যাবে।</p></div>
+    <div class="flex flex-wrap gap-3 mb-4 items-center">
+      <div class="pill-scroll">
+        <template x-for="k in ['সব','deposit','withdraw']" :key="k"><button @click="custKind=k" :style="custKind===k?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold" x-text="k==='সব'?'সব ধরন':k==='deposit'?'টাকা যোগ':'উইথড্র'"></button></template>
+      </div>
+      <div class="pill-scroll">
+        <template x-for="s in ['সব','pending','done']" :key="s"><button @click="custF=s" :style="custF===s?'background:var(--fg);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold" x-text="s==='সব'?'সব স্ট্যাটাস':s==='pending'?'পেন্ডিং':'সম্পন্ন/বাতিল'"></button></template>
+      </div>
+    </div>
+    <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(290px,1fr))">
+      <template x-for="r in filteredCust" :key="r.kind+r.uid+r.fbKey">
+        <div class="dd-card p-4">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" :style="r.kind==='deposit'?'background:#F0FDF4;color:#15803D':'background:#FFF7ED;color:#C2410C'"><i class="fa-solid" :class="r.kind==='deposit'?'fa-arrow-down':'fa-arrow-up'"></i></div>
+            <div class="flex-1 min-w-0"><p class="text-sm font-bold truncate" style="color:var(--fg)" x-text="r.name||'গ্রাহক'"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="r.phone||r.uid"></p></div>
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full" :style="r.status==='pending'?'background:#FFF7ED;color:#C2410C':(r.status==='approved'||r.status==='paid')?'background:#F0FDF4;color:#15803D':'background:#FEF2F2;color:#B91C1C'" x-text="r.status==='pending'?'পেন্ডিং':r.status==='approved'?'কনফার্মড':r.status==='paid'?'পরিশোধিত':'বাতিল'"></span>
+          </div>
+          <p class="font-display text-2xl mb-3" :style="r.kind==='deposit'?'color:#15803D':'color:#C2410C'" x-text="(r.kind==='deposit'?'+':'−')+'৳'+(r.amount||0).toLocaleString()"></p>
+          <div class="text-xs space-y-1.5 mb-3" style="color:var(--fg2)">
+            <div class="flex justify-between gap-2"><span style="color:var(--fg3)">মাধ্যম</span><b x-text="r.method||'—'"></b></div>
+            <div class="flex justify-between items-center gap-2"><span style="color:var(--fg3)" x-text="r.kind==='deposit'?'ট্রানজেকশন আইডি':'পাঠানোর নম্বর'"></span><span class="flex items-center gap-1.5"><b class="font-mono" x-text="(r.kind==='deposit'?r.trxId:r.account)||'—'"></b><button type="button" @click="copyTxt(r.kind==='deposit'?r.trxId:r.account)" class="w-7 h-7 rounded-lg btn-ghost !p-0 justify-center" aria-label="কপি"><i class="fa-regular fa-copy text-xs"></i></button></span></div>
+            <div class="flex justify-between gap-2"><span style="color:var(--fg3)">সময়</span><span x-text="r.requestedAt?new Date(r.requestedAt).toLocaleString('bn-BD',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'}):''"></span></div>
+          </div>
+          <div class="flex gap-2" x-show="r.status==='pending'">
+            <button @click="approveCust(r)" class="btn-success flex-1 justify-center"><i class="fa-solid fa-check"></i><span x-text="r.kind==='deposit'?'কনফার্ম করুন':'পরিশোধ করেছি'"></span></button>
+            <button @click="rejectCust(r)" class="btn-danger justify-center"><i class="fa-solid fa-xmark"></i>বাতিল</button>
+          </div>
+        </div>
+      </template>
+      <div x-show="filteredCust.length===0" class="col-span-full text-center py-14" style="color:var(--fg3)"><i class="fa-solid fa-wallet text-4xl mb-3 opacity-30"></i><p class="text-sm">কোনো গ্রাহক ওয়ালেট রিকোয়েস্ট নেই</p></div>
+    </div>
+  </div>
+
+
   <!-- ══ WITHDRAWAL REQUESTS (NEW) ══ -->
   <div x-show="activeTab==='withdrawals'" x-cloak class="animate-fade-in">
     <div class="flex flex-wrap gap-3 mb-5 items-center">
@@ -1896,13 +2073,14 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
         <div class="dd-card p-4">
           <div class="flex items-center justify-between mb-3">
             <p class="text-sm font-bold" style="color:var(--fg)" x-text="k.phone||k.uid"></p>
+          <div class="flex items-center gap-2 mb-2"><span class="text-[11px] font-bold px-2.5 py-1 rounded-full" style="background:var(--accentL);color:var(--accent)"><i class="fa-solid fa-id-card mr-1"></i><span x-text="({nid:'NID কার্ড',birth:'জন্মনিবন্ধন',student:'স্টুডেন্ট কার্ড'})[k.docType||'nid']"></span></span></div>
             <span class="text-xs font-bold px-2.5 py-1 rounded-full" :style="k.status==='approved'?'background:#F0FDF4;color:#15803D':k.status==='rejected'?'background:#FEF2F2;color:#B91C1C':k.status==='reupload'?'background:#FFFBEB;color:#B45309':'background:#FFF7ED;color:#C2410C'" x-text="k.status==='approved'?'অনুমোদিত':k.status==='rejected'?'বাতিল':k.status==='reupload'?'পুনরায় আপলোড':'পেন্ডিং'"></span>
           </div>
-          <div class="grid gap-2 mb-3" :class="k.studentId?'grid-cols-4':'grid-cols-3'">
+          <div class="grid gap-2 mb-3 grid-cols-3">
             <img :src="k.nidFront" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidFront" onerror="this.style.opacity=0.15"/>
-            <img :src="k.nidBack" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidBack" onerror="this.style.opacity=0.15"/>
+            <img x-show="k.nidBack" :src="k.nidBack" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.nidBack" onerror="this.style.opacity=0.15"/>
             <img :src="k.selfie" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.selfie" onerror="this.style.opacity=0.15"/>
-            <img x-show="k.studentId" :src="k.studentId" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.studentId" onerror="this.style.opacity=0.15"/>
+            <img x-show="k.studentId&&k.docType!=='student'" :src="k.studentId" class="rounded-lg object-cover aspect-square cursor-pointer" @click="lightboxImg=k.studentId" onerror="this.style.opacity=0.15"/>
           </div>
           <template x-if="k.fatherPhone||k.motherPhone||k.closeContact">
             <div class="text-xs space-y-0.5" style="color:var(--fg3)">
@@ -2366,8 +2544,15 @@ function Admin(){return{
   fbResellers:[],fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
   fbSavingsWallets:[],savingsF:'সব',
   fbInstallmentOrders:[],installmentF:'সব',
-  fbKyc:[],kycF:'সব',kycNoteModal:{open:false,uid:null,note:''},
-  fbVendors:[],vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeePct:0,resellerMarginPct:0,status:'active'}},
+  fbKyc:[],kycF:'সব',fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',kycNoteModal:{open:false,uid:null,note:''},
+  fbVendors:[],  sup:{url:localStorage.getItem('dd_sup_api')||'',token:sessionStorage.getItem('dd_sup_tok')||'',cur:'aliexpress',q:'',results:[],busy:false,msg:'',importCat:'',cfg:{},genericText:{},intlCats:[],queue:[],
+    catForm:{name:'',emoji:'',img:'',order:99},gm:{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},
+    list:[{id:'aliexpress',name:'AliExpress',icon:'🌏',type:'International Dropshipping',intl:true,base:'https://api-sg.aliexpress.com/sync'},
+      {id:'cj',name:'CJdropshipping',icon:'📦',type:'International Dropshipping',intl:true,base:'https://developers.cjdropshipping.com/api2.0/v1'},
+      {id:'dropoff',name:'Dropoff (DropFF)',icon:'🚚',type:'Local BD Dropshipping',intl:false,base:''},
+      {id:'resellify',name:'Resellify',icon:'🛍️',type:'Local BD Reselling',intl:false,base:''},
+      {id:'shopup',name:'ShopUp',icon:'🏬',type:'Local BD Wholesale/Reselling',intl:false,base:''}]},
+vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeePct:0,resellerMarginPct:0,status:'active'}},
   lightboxImg:'',
   resellerSearch:'',resellerStatusF:'সব',withdrawF:'সব',depositF:'সব',ticketF:'সব',
   msgModal:{open:false,resellerPhone:'',resellerName:'',text:''},
@@ -2425,12 +2610,12 @@ function Admin(){return{
     {id:'delivery',icon:'fa-solid fa-truck-fast',label:'ডেলিভারি'},
   ],
 
-  tabLabels:{
+  tabLabels:{sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
-    resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'উইথড্র রিকোয়েস্ট',deposits:'ডিপোজিট রিকোয়েস্ট',tickets:'সাপোর্ট টিকেট',
-    savings:'কিস্তি ম্যানেজার (ধাপে ধাপে জমা)',installments:'কিস্তি অর্ডার (মাসিক প্ল্যান)',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার'
+    resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
+    savings:'জমিয়ে কিনুন',installments:'মাসিক কিস্তি',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট'
   },
 
   themes:{
@@ -2542,6 +2727,106 @@ function Admin(){return{
   getSectionName(sid){if(!sid)return'';return this.allSections.find(s=>s.fbKey===sid)?.name||''},
   getSectionProdCount(s){const id=s.fbKey;return this.fbProducts.filter(p=>p.section===id||p.sectionId===id).length},
   getSectionCatCount(s){const id=s.fbKey;return this.fbCategories.filter(c=>c.section===id||c.sectionId===id).length},
+  // ══════════ মেনু / হাব (প্রতিটি সিস্টেম একবারই, গ্রুপ করা) ══════════
+  hubs:[
+    {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
+    {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
+    {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders']},
+    {id:'kisti',label:'কিস্তি ও KYC',ic:'fa-calendar-check',tabs:['installments','savings','kyc']},
+    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals']},
+    {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_orders']},
+    {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','vendors']},
+    {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
+    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']}
+  ],
+  tabIcons:{sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',installments:'fa-calendar-check',savings:'fa-piggy-bank',kyc:'fa-id-card',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette'},
+  get activeHub(){return this.hubs.find(h=>h.tabs.includes(this.activeTab))||null},
+  goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
+  goTab(t){this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
+  /* ═══ Supplier API module ═══ */
+  supInit(){
+    if(this._supInit)return;this._supInit=true;
+    window.$db.listenIntlCats(c=>{this.sup.intlCats=c.sort((a,b)=>(a.order??99)-(b.order??99))});
+    window.$db.listenSupplierQueue(q=>{this.sup.queue=q.sort((a,b)=>(b.at||0)-(a.at||0))});
+    if(this.sup.url&&this.sup.token)this.supLoad();
+  },
+  async supApi(path,opt={}){
+    if(!this.sup.url||!this.sup.token){this.showToast('Backend URL ও Admin Token দিন','error');throw new Error('no cfg')}
+    const r=await fetch(this.sup.url.replace(/\/$/,'')+'/api/admin'+path,{...opt,headers:{'Content-Type':'application/json','x-admin-token':this.sup.token}});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;
+  },
+  async supLoad(){
+    try{const d=await this.supApi('/suppliers');
+      for(const s of this.sup.list){const c=d[s.id]||{};c.markup=Object.assign({mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},c.markup||{});c.shipping=Object.assign({method:'',cost:0},c.shipping||{});
+        this.sup.genericText[s.id]=c.generic?JSON.stringify(c.generic,null,2):'';this.sup.cfg[s.id]=c}
+      this.showToast('লোড হয়েছে ✅')}catch(e){this.showToast(e.message,'error')}
+  },
+  async supSave(id){
+    try{const c={...this.sup.cfg[id]};delete c._hasKeys;
+      const gt=(this.sup.genericText[id]||'').trim();if(gt){try{c.generic=JSON.parse(gt)}catch(e){return this.showToast('JSON ম্যাপিং ভুল','error')}}
+      await this.supApi('/suppliers/'+id,{method:'PUT',body:JSON.stringify(c)});this.showToast('সেভ হয়েছে ✅')}catch(e){this.showToast(e.message,'error')}
+  },
+  async supTest(id){try{await this.supApi('/suppliers/'+id+'/test',{method:'POST'});this.showToast('কানেকশন ঠিক আছে ✅')}catch(e){this.showToast('ব্যর্থ: '+e.message,'error')}},
+  supPrice(cost,m){
+    const add=(mode,v)=>mode==='fixed'?Number(v)||0:cost*(Number(v)||0)/100;
+    const price=Math.round(cost+add(m.mode,m.value)),rp=Math.round(cost+add(m.resellerMode||m.mode,m.resellerValue));
+    return{price,oldPrice:Number(m.mrpPct)?Math.round(price*(1+m.mrpPct/100)):0,resellerPrice:Math.min(rp,price),marketPrice:price};
+  },
+  supApplyMarkup(){this.sup.results.forEach(r=>Object.assign(r.ov,this.supPrice(r.costBDT,this.sup.gm)))},
+  async supSearch(){
+    this.sup.busy=true;this.sup.msg='খোঁজা হচ্ছে...';
+    try{const d=await this.supApi('/suppliers/'+this.sup.cur+'/search?q='+encodeURIComponent(this.sup.q));
+      this.sup.results=d.map(r=>({...r,sel:false,open:false,ov:{name:r.title,desc:'',sku:'',stock:100,sizes:'',colors:'',tags:'',shipCost:0,images:(r.images||[]).join('\n'),price:r.price,oldPrice:r.oldPrice,resellerPrice:r.resellerPrice,marketPrice:r.marketPrice}}));
+      this.sup.msg=d.length+'টি পণ্য পাওয়া গেছে'}catch(e){this.sup.msg=e.message}
+    this.sup.busy=false;
+  },
+  async supImport(){
+    const sel=this.sup.results.filter(r=>r.sel);if(!sel.length)return this.showToast('পণ্য সিলেক্ট করুন','error');
+    const intl=['aliexpress','cj'].includes(this.sup.cur);
+    if(intl&&!this.sup.importCat)return this.showToast('ইন্টারন্যাশনাল ক্যাটাগরি বেছে নিন','error');
+    const csv=s=>(s||'').split(',').map(x=>x.trim()).filter(Boolean);
+    this.sup.busy=true;
+    try{const d=await this.supApi('/import',{method:'POST',body:JSON.stringify({supplierId:this.sup.cur,global:this.sup.gm,items:sel.map(r=>({supplierProductId:r.supplierProductId,overrides:{
+      name:r.ov.name,desc:r.ov.desc||undefined,sku:r.ov.sku,stock:r.ov.stock,sizes:csv(r.ov.sizes).length?csv(r.ov.sizes):undefined,colors:csv(r.ov.colors),tags:csv(r.ov.tags),
+      images:(r.ov.images||'').split('\n').map(x=>x.trim()).filter(Boolean),price:r.ov.price,oldPrice:r.ov.oldPrice,resellerPrice:r.ov.resellerPrice,marketPrice:r.ov.marketPrice,
+      shipping:{method:this.sup.cfg[this.sup.cur]?.shipping?.method||'Standard',cost:r.ov.shipCost||0},intlCat:intl?this.sup.importCat:'',category:intl?'':this.sup.importCat}}))})});
+      this.showToast(d.done.length+'টি ইমপোর্ট'+(d.failed.length?', '+d.failed.length+'টি ব্যর্থ':'')+' ✅');
+      this.sup.results=this.sup.results.filter(r=>!r.sel)}catch(e){this.showToast(e.message,'error')}
+    this.sup.busy=false;
+  },
+  async supReprice(id){if(!confirm('ইমপোর্টেড সব পণ্যের দাম বদলে যাবে। নিশ্চিত?'))return;
+    try{const d=await this.supApi('/reprice',{method:'POST',body:JSON.stringify({supplierId:id,markup:this.sup.cfg[id].markup})});this.showToast(d.updated+'টি পণ্যের দাম আপডেট ✅')}catch(e){this.showToast(e.message,'error')}},
+  async supAddCat(){const f=this.sup.catForm;if(!f.name.trim())return this.showToast('নাম দিন','error');
+    await window.$db.saveIntlCat({name:f.name.trim(),emoji:f.emoji||'',img:f.img||'',order:Number(f.order)||99,active:true});this.sup.catForm={name:'',emoji:'',img:'',order:99};this.showToast('ক্যাটাগরি যোগ হয়েছে ✅')},
+  async supDelCat(c){if(confirm(c.name+' মুছবেন?'))await window.$db.deleteIntlCat(c.fbKey)},
+  async supRoute(k){try{await this.supApi('/orders/'+k+'/route',{method:'POST'});this.showToast('সাপ্লায়ারে পাঠানো হয়েছে ✅')}catch(e){this.showToast(e.message,'error')}},
+  tabBadge(t){const m={orders:this.pendingCount,resellers:this.pendingResellers.length,withdrawals:this.pendingWithdrawals.length,deposits:this.pendingDeposits.length,savings:this.pendingSavingsContribs.length,installments:this.pendingInstallmentPayments.length,kyc:this.pendingKyc.length,tickets:this.pendingTickets.length,custwallet:this.custPendingCount('deposit')+this.custPendingCount('withdraw')};return m[t]||0},
+  hubBadge(h){return h.tabs.reduce((a,t)=>a+this.tabBadge(t),0)},
+  // ══════════ গ্রাহক ওয়ালেট ══════════
+  get filteredCust(){return [...this.fbCustDeposits,...this.fbCustWithdrawals].filter(r=>(this.custKind==='সব'||r.kind===this.custKind)&&(this.custF==='সব'||(this.custF==='pending'?r.status==='pending':r.status!=='pending'))).sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0))},
+  custPendingCount(k){return (k==='deposit'?this.fbCustDeposits:this.fbCustWithdrawals).filter(r=>r.status==='pending').length},
+  custPendingSum(k){return (k==='deposit'?this.fbCustDeposits:this.fbCustWithdrawals).filter(r=>r.status==='pending').reduce((a,r)=>a+(Number(r.amount)||0),0)},
+  copyTxt(t){t=String(t||'').trim();if(!t)return;const done=()=>this.showToast('কপি হয়েছে 📋','success');try{navigator.clipboard.writeText(t).then(done).catch(()=>{const x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();document.execCommand('copy');x.remove();done()})}catch(e){this.showToast(t,'success')}},
+  async approveCust(r){
+    if(r.status!=='pending')return;
+    if(!confirm(r.kind==='deposit'?('৳'+r.amount+' ব্যালেন্সে যোগ করে কনফার্ম করবেন?'):('৳'+r.amount+' পাঠানো হয়েছে — পরিশোধ হিসেবে মার্ক করবেন?')))return;
+    try{
+      if(r.kind==='deposit')await window.$db.custCredit(r.uid,Number(r.amount)||0);
+      if(r.txKey)await window.$db.updateCustTx(r.uid,r.txKey,{status:'done'});
+      await window.$db.updateCustReq(r.kind,r.uid,r.fbKey,{status:r.kind==='deposit'?'approved':'paid',reviewedAt:Date.now()});
+      this.showToast(r.kind==='deposit'?'ডিপোজিট কনফার্ম, ব্যালেন্স যোগ হয়েছে ✅':'উইথড্র পরিশোধ হিসেবে মার্ক হয়েছে ✅','success');
+    }catch(e){this.showToast('ব্যর্থ, আবার চেষ্টা করুন!','error')}
+  },
+  async rejectCust(r){
+    if(r.status!=='pending')return;
+    if(!confirm(r.kind==='withdraw'?'বাতিল করলে টাকা গ্রাহকের ওয়ালেটে ফেরত যাবে। নিশ্চিত?':'ডিপোজিট বাতিল করবেন?'))return;
+    try{
+      if(r.kind==='withdraw')await window.$db.custCredit(r.uid,Number(r.amount)||0,{type:'refund',note:'উইথড্র বাতিল — টাকা ফেরত'});
+      if(r.txKey)await window.$db.updateCustTx(r.uid,r.txKey,{status:'rejected'});
+      await window.$db.updateCustReq(r.kind,r.uid,r.fbKey,{status:'rejected',reviewedAt:Date.now()});
+      this.showToast('বাতিল হয়েছে','success');
+    }catch(e){this.showToast('ব্যর্থ, আবার চেষ্টা করুন!','error')}
+  },
   getPin(key){return this.fbProducts.find(p=>p.fbKey===key)},
 
   // ══════════ AUTH ══════════
@@ -2553,6 +2838,7 @@ function Admin(){return{
 
   // ══════════ BOOT ══════════
   boot(){
+    try{this.$watch('activeTab',()=>{window.scrollTo(0,0)})}catch(e){}
     if(sessionStorage.getItem('dd_admin_auth')==='1')this.authenticated=true;
     const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
@@ -2571,6 +2857,8 @@ function Admin(){return{
       window.$db.listenDeposits(ds=>this.fbDeposits=ds.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
       window.$db.listenSavingsWallets(ws=>this.fbSavingsWallets=ws.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
       window.$db.listenInstallmentOrders(ios=>this.fbInstallmentOrders=ios.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+      window.$db.listenCustReq('deposit',r=>this.fbCustDeposits=r);
+      window.$db.listenCustReq('withdraw',r=>this.fbCustWithdrawals=r);
       window.$db.listenKyc(ks=>this.fbKyc=ks.sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0)));
       window.$db.listenVendors(vs=>this.fbVendors=vs.sort((a,b)=>(a.name||'').localeCompare(b.name||'')));
       window.$db.listenSupportTickets(ts=>this.fbSupportTickets=ts.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
