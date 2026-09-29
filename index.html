@@ -60,7 +60,12 @@ const lo=document.createElement('button');lo.textContent='লগআউট';lo.st
 document.body.appendChild(ov);document.body.appendChild(lo);
 const go=()=>{const m=ov.querySelector('#al-m');m.textContent='';signInWithEmailAndPassword(auth,ov.querySelector('#al-e').value.trim(),ov.querySelector('#al-p').value).catch(()=>{m.textContent='ইমেইল বা পাসওয়ার্ড ভুল!'})};
 ov.querySelector('#al-b').onclick=go;ov.querySelector('#al-p').onkeydown=e=>{if(e.key==='Enter')go()};
-onAuthStateChanged(auth,u=>{ov.style.display=u?'none':'flex';lo.style.display=u?'block':'none'});})();
+const ADMIN_EMAIL='omor.faruk.sojol.2@gmail.com';
+onAuthStateChanged(auth,u=>{
+  const isAdmin=!!(u&&u.email===ADMIN_EMAIL);
+  ov.style.display=isAdmin?'none':'flex';lo.style.display=isAdmin?'block':'none';
+  if(u&&!isAdmin){signOut(auth);} // অন্য কেউ (যেমন রিসেলার) লগইন অবস্থায় থাকলে সাথে সাথে সাইন আউট — অ্যাডমিন প্যানেলে ঢুকতে না পারে
+});})();
 const storage=getStorage(app);
 window.$db={
   // Products
@@ -3330,6 +3335,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(r.referralCodeUsed&&!r.bonusCredited)bonus=Number(this.settings.resellSignupBonus)||0;
       const myCode=r.myReferralCode||this.generateReferralCode(r.fbKey);
       await window.$db.saveReseller({status:'approved',myReferralCode:myCode,walletBalance:(r.walletBalance||0)+bonus,bonusCredited:bonus>0?true:(r.bonusCredited||false),approvedAt:Date.now()},r.fbKey);
+      await set(ref(db,'referralCodes/'+myCode),{resellerPhone:r.fbKey}); // পাবলিক রেফারেল-কোড ইনডেক্স — সাইট থেকে পুরো resellers টেবিল না পড়েই কোড যাচাই করা যাবে
       if(bonus>0)await window.$db.pushWalletTx({resellerPhone:r.fbKey,amount:bonus,type:'bonus',note:'সাইনআপ বোনাস (প্রমো কোড ব্যবহার করে রেজিস্ট্রেশন)',timestamp:Date.now()});
       this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅','success');
     }catch{this.showToast('অ্যাপ্রুভ ব্যর্থ!','error')}
