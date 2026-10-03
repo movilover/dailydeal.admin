@@ -2746,6 +2746,8 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-truck-fast" style="color:var(--accent)"></i>কুরিয়ার ট্র্যাকিং লিংক টেমপ্লেট</p>
         <p class="text-xs" style="color:var(--fg3)">ShopBase BD-র ট্র্যাকিং লিংকের ধরন একবার বসান, <b>{id}</b> যেখানে পার্সেল ID বসবে। তারপর অর্ডারে শুধু ID দিলেই লিংক তৈরি হবে।</p>
         <input class="dd-input" x-model="settings.trackUrlTemplate" placeholder="https://courier-site.com/track?id={id}"/>
+        <p class="font-bold text-sm pt-2" style="color:var(--fg)"><i class="fa-solid fa-globe mr-2" style="color:var(--accent)"></i>সাইটের ডোমেইন (রিসেলার লিংকে বসবে)</p>
+        <input class="dd-input" x-model="settings.siteUrl" placeholder="https://dailydeal.world/"/>
         <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
       </div>
 
@@ -2854,7 +2856,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{trackUrlTemplate:'',otpEnabled:false,otpSmsUrl:'',otpSmsMethod:'GET',otpSmsBody:'',otpSmsText:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',otpEnabled:false,otpSmsUrl:'',otpSmsMethod:'GET',otpSmsBody:'',otpSmsText:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -2941,7 +2943,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   get filteredOrders(){
     return this.fbOrders
-      .filter(o=>this.oFilt==='সব'?o.status!=='রিসেলার অ্যাপ্রুভাল':o.status===this.oFilt)
+      .filter(o=>o.cancelledBy!=='reseller'&&o.status!=='রিসেলার অ্যাপ্রুভাল'&&(this.oFilt==='সব'||o.status===this.oFilt))
       .filter(o=>!this.orderSearch||o.customerName?.includes(this.orderSearch)||o.phone?.includes(this.orderSearch)||String(o.id).includes(this.orderSearch));
   },
   get pendingCount(){return this.fbOrders.filter(o=>o.status==='পেন্ডিং').length},
@@ -3051,6 +3053,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async addBlock(ph,reason){const d=this.normPh(ph||this.blkForm.phone);if(!/^01[3-9]\d{8}$/.test(d))return this.showToast('সঠিক নম্বর দিন (01XXXXXXXXX)','error');try{await window.$db.setBlock(d,{reason:(reason??this.blkForm.reason)||'',at:Date.now()});this.blkForm={phone:'',reason:''};this.showToast('ব্লক করা হয়েছে 🚫','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
   async unBlock(b){if(!confirm(b.phone+' আনব্লক করবেন?'))return;try{await window.$db.delBlock(b.phone);this.showToast('আনব্লক হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
   get suspicious(){const m={};this.fbOrders.forEach(o=>{const d=this.normPh(o.phone);if(!d)return;const r=m[d]||(m[d]={phone:d,total:0,cancelled:0});r.total++;if(o.status==='বাতিল')r.cancelled++});const bl=new Set(this.fbBlocks.map(b=>b.phone));return Object.values(m).filter(r=>r.cancelled>=2&&!bl.has(r.phone)).sort((a,b)=>b.cancelled-a.cancelled).slice(0,30)},
+  get productsMissingResell(){return (this.fbProducts||[]).filter(p=>!p.resellEnabled)},
   goTab(t){if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
   /* ═══ Supplier API module ═══ */
   supInit(){
@@ -3342,6 +3345,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   async saveCategory(){
     if(!this.catModal.form.name.trim())return this.showToast('ক্যাটাগরির নাম দিন!','error');
+    if(!this.catModal.form.section){const g=this.catModal.form.gender;const re=g==='men'?/ছেলে|পুরুষ|জেন্টস|men|boy|male/i:g==='women'?/মেয়ে|মহিলা|লেডিস|women|girl|female|ladies/i:null;const s=re&&this.fbSections.find(s=>re.test(s.name||'')&&!(g==='men'&&/মেয়ে|women/i.test(s.name||'')));if(s)this.catModal.form.section=s.fbKey}
     this.catModal.saving=true;
     const data={name:this.catModal.form.name.trim(),emoji:this.catModal.form.emoji||'📦',img:this.catModal.form.img||'',gender:this.catModal.form.gender||'both',parent:this.catModal.form.parent||'',section:this.catModal.form.section||'',sectionId:this.catModal.form.section||'',updatedAt:new Date().toISOString()};
     try{await window.$db.saveCategory(data,this.catModal.editing?.fbKey||null);this.showToast('ক্যাটাগরি সেভ! ✅','success');this.catModal.open=false;}
