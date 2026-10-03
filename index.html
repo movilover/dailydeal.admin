@@ -106,6 +106,13 @@ window.$db={
   // Resellers (NEW — MLM/Reselling system, keyed by phone number)
   saveReseller:async(data,phone)=>{await update(ref(db,'resellers/'+phone),data);return phone},
   deleteReseller:async(phone)=>remove(ref(db,'resellers/'+phone)),
+  listenSharedLinks:(cb)=>onValue(ref(db,'sharedLinks'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  updSharedLink:async(k,d)=>update(ref(db,'sharedLinks/'+k),d),
+  delSharedLink:async(k)=>remove(ref(db,'sharedLinks/'+k)),
+  setActiveLink:async(ph,d)=>set(ref(db,'resellerActiveLink/'+ph),d),
+  listenBlocklist:(cb)=>onValue(ref(db,'blocklist'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({phone:k,...d})):[])},{onlyOnce:false}),
+  setBlock:async(ph,d)=>set(ref(db,'blocklist/'+ph),d),
+  delBlock:async(ph)=>remove(ref(db,'blocklist/'+ph)),
   listenResellers:(cb)=>onValue(ref(db,'resellers'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Withdrawal requests (NEW)
   saveWithdrawal:async(data,id)=>{if(id){await update(ref(db,'withdrawals/'+id),data);return id;}const r=push(ref(db,'withdrawals'));await set(r,data);return r.key},
@@ -538,11 +545,27 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <div class="dd-card-sm p-3" x-show="viewOrder.shipping>0"><p class="dd-label">ডেলিভারি চার্জ ৳<span x-text="viewOrder.shipping"></span></p><p class="text-sm font-bold" :style="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'color:#15803D':'color:#B45309'" x-text="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'✅ অগ্রিম পেইড'+(viewOrder.trxId?' (TrxID: '+viewOrder.trxId+')':''):'⏳ ডেলিভারির সময় নিতে হবে'"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-show="viewOrder.collectAmount!=null||viewOrder.dueOnDelivery!=null">কাস্টমার থেকে আদায়: ৳<span x-text="viewOrder.collectAmount!=null?viewOrder.collectAmount:viewOrder.dueOnDelivery"></span></p></div>
           <div class="dd-card-sm p-3" x-show="viewOrder.payMethod"><p class="dd-label">পেমেন্ট মাধ্যম</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.payMethod"></p></div>
         </div>
-        <div class="dd-card-sm p-3">
-          <p class="dd-label mb-2">ট্র্যাকিং লিংক</p>
+        <div class="dd-card-sm p-3 space-y-3">
+          <p class="dd-label"><i class="fa-solid fa-truck-fast mr-1" style="color:var(--accent)"></i>কুরিয়ার ও ট্র্যাকিং</p>
+          <div class="flex flex-wrap gap-1.5"><template x-for="s in ['প্রসেসিং','পাঠানো হচ্ছে','ডেলিভার্ড']" :key="s"><button type="button" @click="updateOrderStatus(viewOrder.fbKey,s);viewOrder.status=s" class="px-3 py-1.5 rounded-full text-xs font-bold" :style="viewOrder.status===s?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:none'" x-text="s"></button></template></div>
+          <div class="grid grid-cols-2 gap-2">
+            <select class="dd-input" :value="viewOrder.courier||''" @change="trkSet('courier',$event.target.value)"><option value="">কুরিয়ার বেছে নিন</option><option>ShopBase BD</option><option>Steadfast</option><option>Pathao</option><option>RedX</option><option>Paperfly</option><option>অন্য</option></select>
+            <input class="dd-input" :value="viewOrder.trackId||''" @change="trkSet('trackId',$event.target.value.trim())" placeholder="ট্র্যাকিং/পার্সেল ID"/>
+          </div>
           <div class="flex gap-2">
-            <input :value="viewOrder.trackingLink||''" @change="updateTrackingLink(viewOrder.fbKey,$event.target.value);viewOrder.trackingLink=$event.target.value" class="dd-input flex-1" placeholder="https://tracking.com/..."/>
+            <input :value="viewOrder.trackingLink||''" @change="updateTrackingLink(viewOrder.fbKey,$event.target.value);viewOrder.trackingLink=$event.target.value" class="dd-input flex-1" placeholder="ট্র্যাকিং লিংক (ShopBase থেকে পাওয়া) https://..."/>
             <a x-show="viewOrder.trackingLink" :href="viewOrder.trackingLink" target="_blank" class="px-3 py-2 rounded-xl text-xs font-bold text-white" style="background:#16A34A"><i class="fa-solid fa-location-arrow"></i></a>
+          </div>
+          <p class="text-[11px]" style="color:var(--fg3)" x-show="settings.trackUrlTemplate&&viewOrder.trackId&&!viewOrder.trackingLink">ID দিলে লিংক নিজে তৈরি হবে (সেটিংসের টেমপ্লেট থেকে)।</p>
+          <div>
+            <p class="text-xs font-bold mb-1.5" style="color:var(--fg2)">এখন পার্সেল কোথায়? (কাস্টমারের অর্ডার পেজে দেখাবে)</p>
+            <div class="flex flex-wrap gap-1.5 mb-2"><template x-for="c in ['কুরিয়ারে হস্তান্তর করা হয়েছে','সর্টিং হাবে পৌঁছেছে','আপনার এলাকার হাবে পৌঁছেছে','ডেলিভারির জন্য বের হয়েছে','ডেলিভারি সম্পন্ন']" :key="c"><button type="button" @click="trkText=c" class="px-2.5 py-1 rounded-full text-[11px] font-semibold" style="background:var(--accentL);color:var(--accent);border:none" x-text="c"></button></template></div>
+            <div class="flex gap-2"><input class="dd-input flex-1" x-model="trkText" placeholder="যেমন: চট্টগ্রাম হাবে পৌঁছেছে"/><button type="button" @click="trkAdd()" class="px-4 py-2 rounded-xl text-xs font-bold text-white" style="background:var(--accent);border:none">যোগ</button></div>
+          </div>
+          <div x-show="(viewOrder.trackLog||[]).length>0" class="space-y-1.5">
+            <template x-for="(e,i) in [...(viewOrder.trackLog||[])].reverse()" :key="i">
+              <div class="flex items-start gap-2 text-xs"><i class="fa-solid fa-circle mt-1" style="font-size:7px;color:var(--accent)"></i><div class="flex-1"><p style="color:var(--fg)" x-text="e.text"></p><p style="color:var(--fg3);font-size:10px" x-text="new Date(e.t).toLocaleString('bn-BD')"></p></div><button type="button" @click="trkDel((viewOrder.trackLog.length-1)-i)" style="background:none;border:none;color:var(--fg3);cursor:pointer"><i class="fa-solid fa-xmark"></i></button></div>
+            </template>
           </div>
         </div>
         <div class="dd-card-sm p-3">
@@ -2222,6 +2245,74 @@ html,body{touch-action:auto!important;overflow-x:clip}
   </div>
 
   <!-- ══ KYC রিভিউ (NEW) ══ -->
+  <div x-show="activeTab==='reslinks'" x-cloak class="animate-fade-in">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <template x-for="c in [['মোট লিংক',rlStats.total,'var(--accent)'],['সক্রিয় এখন',rlStats.active,'#16A34A'],['মেয়াদ শেষ',rlStats.expired,'#B45309'],['লিংক থেকে অর্ডার',rlStats.orders,'#2563EB']]" :key="c[0]">
+        <div class="dd-card p-3 text-center" :style="'border-top:3px solid '+c[2]"><p class="font-display text-2xl" :style="'color:'+c[2]" x-text="c[1]"></p><p class="text-xs" style="color:var(--fg3)" x-text="c[0]"></p></div>
+      </template>
+    </div>
+    <div class="flex flex-wrap gap-2 mb-4 items-center">
+      <input class="dd-input" style="max-width:260px" x-model="rlQ" placeholder="রিসেলার নম্বর / শপের নাম..."/>
+      <template x-for="s in ['সব','সক্রিয়','মেয়াদ শেষ']" :key="s"><button @click="rlF=s" class="px-4 py-2 rounded-full text-xs font-bold" :style="rlF===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" x-text="s"></button></template>
+      <button @click="rlPurge()" class="px-4 py-2 rounded-full text-xs font-bold ml-auto" style="background:#FEE2E2;color:#B91C1C;border:none"><i class="fa-solid fa-broom mr-1"></i>পুরনো লিংক পরিষ্কার</button>
+    </div>
+    <p class="text-xs mb-3" style="color:var(--fg3)">মেয়াদ শেষের ২৪ ঘণ্টা পর লিংক "মোছার যোগ্য" হয়। "পরিষ্কার" বাটন সেগুলো ডাটাবেস থেকে মুছে দেয়।</p>
+    <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+      <template x-for="l in rlRows" :key="l.fbKey">
+        <div class="dd-card p-4">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-sm font-bold" x-text="(l.shopName||'—')+' · '+(l.resellerPhone||'')"></p>
+            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full" :style="rlStatus(l)==='active'?'background:#F0FDF4;color:#15803D':rlStatus(l)==='old'?'background:var(--bg2);color:var(--fg3)':'background:#FFFBEB;color:#B45309'" x-text="({active:'সক্রিয় · '+rlLeft(l),expired:'মেয়াদ শেষ',purge:'মোছার যোগ্য',old:'পুরনো (মেয়াদহীন)'})[rlStatus(l)]"></span>
+          </div>
+          <p class="text-xs" style="color:var(--fg2)" x-text="rlProd(l)"></p>
+          <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
+            <div class="rounded-lg p-2" style="background:var(--bg2)"><b x-text="'৳'+(l.price||0)"></b><p style="color:var(--fg3)">বিক্রয়মূল্য</p></div>
+            <div class="rounded-lg p-2" style="background:var(--bg2)"><b x-text="l.durationMin?l.durationMin+' মি.':'—'"></b><p style="color:var(--fg3)">সময়</p></div>
+            <div class="rounded-lg p-2" style="background:var(--bg2)"><b x-text="rlOrders(l)"></b><p style="color:var(--fg3)">অর্ডার</p></div>
+          </div>
+          <p class="text-[11px] mt-2" style="color:var(--fg3)" x-text="'তৈরি: '+new Date(l.createdAt||0).toLocaleString('bn-BD')"></p>
+          <div class="flex gap-2 mt-3">
+            <button x-show="rlStatus(l)==='active'" @click="rlKill(l)" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:#FEF3C7;color:#B45309;border:none">এখনই বন্ধ</button>
+            <button @click="addBlock(l.resellerPhone,'রিসেলার লিংক অপব্যবহার')" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:#FEE2E2;color:#B91C1C;border:none">রিসেলার ব্লক</button>
+            <button @click="rlDel(l)" class="px-3 py-2 rounded-xl text-xs font-bold" style="background:var(--bg2);color:var(--fg2);border:none"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <p class="text-center py-12 text-sm" style="color:var(--fg3)" x-show="rlRows.length===0">কোনো লিংক নেই</p>
+  </div>
+
+  <div x-show="activeTab==='blocklist'" x-cloak class="animate-fade-in">
+    <div class="dd-card p-4 mb-4 space-y-3">
+      <p class="font-bold text-sm"><i class="fa-solid fa-user-slash mr-2" style="color:#DC2626"></i>নম্বর ব্লক করুন</p>
+      <p class="text-xs" style="color:var(--fg3)">ব্লক করা নম্বর দিয়ে সাধারণ অর্ডার, কিস্তি, রিসেলার-লিংক অর্ডার ও রিসেলারের লিংক তৈরি — সবই বন্ধ হবে।</p>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <input class="dd-input" x-model="blkForm.phone" placeholder="01XXXXXXXXX" inputmode="numeric"/>
+        <input class="dd-input" x-model="blkForm.reason" placeholder="কারণ (ঐচ্ছিক)"/>
+        <button @click="addBlock()" class="btn-primary">ব্লক করুন</button>
+      </div>
+    </div>
+    <div class="dd-card p-4 mb-4" x-show="suspicious.length>0">
+      <p class="font-bold text-sm mb-2"><i class="fa-solid fa-triangle-exclamation mr-2" style="color:#B45309"></i>সন্দেহজনক নম্বর (২+ বাতিল অর্ডার)</p>
+      <template x-for="s in suspicious" :key="s.phone">
+        <div class="flex items-center justify-between py-2" style="border-top:1px solid var(--border)">
+          <p class="text-sm"><b x-text="s.phone"></b> <span class="text-xs" style="color:var(--fg3)" x-text="'· মোট '+s.total+', বাতিল '+s.cancelled"></span></p>
+          <button @click="addBlock(s.phone,'বারবার বাতিল অর্ডার')" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:#FEE2E2;color:#B91C1C;border:none">ব্লক</button>
+        </div>
+      </template>
+    </div>
+    <div class="dd-card p-4">
+      <p class="font-bold text-sm mb-2" x-text="'ব্লকলিস্ট ('+fbBlocks.length+')'"></p>
+      <template x-for="b in fbBlocks" :key="b.phone">
+        <div class="flex items-center justify-between py-2" style="border-top:1px solid var(--border)">
+          <div><p class="text-sm font-bold" x-text="b.phone"></p><p class="text-xs" style="color:var(--fg3)" x-text="(b.reason||'কারণ নেই')+' · '+new Date(b.at||0).toLocaleDateString('bn-BD')"></p></div>
+          <button @click="unBlock(b)" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:var(--bg2);color:var(--fg2);border:none">আনব্লক</button>
+        </div>
+      </template>
+      <p class="text-xs py-3 text-center" style="color:var(--fg3)" x-show="fbBlocks.length===0">কেউ ব্লক নেই</p>
+    </div>
+  </div>
+
   <div x-show="activeTab==='kyc'" x-cloak class="animate-fade-in">
     <div class="flex flex-wrap gap-3 mb-5 items-center">
       <div class="pill-scroll flex-1">
@@ -2630,6 +2721,34 @@ html,body{touch-action:auto!important;overflow-x:clip}
         </div>
       </div>
 
+      <div class="dd-card p-4 space-y-3">
+        <div class="flex items-center justify-between gap-3">
+          <div><p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-shield-halved" style="color:var(--accent)"></i>অর্ডার ফোন ভেরিফিকেশন (SMS OTP)</p>
+          <p class="text-xs" style="color:var(--fg3)">চালু থাকলে অর্ডার সাবমিটের সময় কাস্টমারের নম্বরে ৬ সংখ্যার কোড যাবে। বন্ধ থাকলে শুধু নম্বরের ফরম্যাট (01XXXXXXXXX) চেক হবে।</p></div>
+          <label style="position:relative;width:46px;height:26px;flex-shrink:0;cursor:pointer"><input type="checkbox" x-model="settings.otpEnabled" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer;z-index:2"/>
+            <span :style="'position:absolute;inset:0;border-radius:99px;transition:.2s;background:'+(settings.otpEnabled?'#16A34A':'var(--bg3)')"></span>
+            <span :style="'position:absolute;top:3px;left:'+(settings.otpEnabled?'23px':'3px')+';width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)'"></span></label>
+        </div>
+        <p class="text-xs font-bold" x-show="settings.otpEnabled&&!(settings.otpSmsUrl||'').trim()" style="color:#DC2626">⚠ চালু আছে কিন্তু SMS গেটওয়ে লিংক নেই — কোড যাবে না, অর্ডার স্বাভাবিক চলবে।</p>
+        <div x-show="settings.otpEnabled" class="space-y-3">
+          <div><label class="dd-label">SMS গেটওয়ে API লিংক</label><input class="dd-input" x-model="settings.otpSmsUrl" placeholder="https://your-sms-gateway/api?key=XXX&number={phone}&message={message}"/>
+            <p class="text-xs mt-1" style="color:var(--fg3)">ব্যবহারযোগ্য চিহ্ন: <b>{phone}</b> (01XXXXXXXXX), <b>{phone88}</b> (8801XXXXXXXXX), <b>{message}</b></p></div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div><label class="dd-label">মেথড</label><select class="dd-input" x-model="settings.otpSmsMethod"><option value="GET">GET</option><option value="POST">POST (JSON)</option></select></div>
+            <div x-show="settings.otpSmsMethod==='POST'"><label class="dd-label">POST বডি (JSON)</label><input class="dd-input" x-model="settings.otpSmsBody" placeholder='{"to":"{phone88}","message":"{message}"}'/></div>
+          </div>
+          <div><label class="dd-label">SMS টেক্সট</label><input class="dd-input" x-model="settings.otpSmsText" placeholder="{code} আপনার Daily Deal ভেরিফিকেশন কোড।"/><p class="text-xs mt-1" style="color:var(--fg3)">অবশ্যই <b>{code}</b> রাখুন।</p></div>
+        </div>
+        <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
+      </div>
+
+      <div class="dd-card p-4 space-y-2">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-truck-fast" style="color:var(--accent)"></i>কুরিয়ার ট্র্যাকিং লিংক টেমপ্লেট</p>
+        <p class="text-xs" style="color:var(--fg3)">ShopBase BD-র ট্র্যাকিং লিংকের ধরন একবার বসান, <b>{id}</b> যেখানে পার্সেল ID বসবে। তারপর অর্ডারে শুধু ID দিলেই লিংক তৈরি হবে।</p>
+        <input class="dd-input" x-model="settings.trackUrlTemplate" placeholder="https://courier-site.com/track?id={id}"/>
+        <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
+      </div>
+
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-envelope-open-text" style="color:var(--accent)"></i>ইমেইল সার্ভিস (EmailJS) — পাসওয়ার্ড রিসেট কোডের জন্য</p>
         <p class="text-xs" style="color:var(--fg3)">emailjs.com-এ ফ্রি একাউন্ট খুলে Service ID, Template ID ও Public Key বসান। টেমপ্লেটে <code>{{reset_code}}</code>, <code>{{to_email}}</code>, <code>{{site_name}}</code> ভ্যারিয়েবল ব্যবহার করুন।</p>
@@ -2703,7 +2822,7 @@ function Admin(){return{
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,bulkEnableResellOpen:false,bulkResellPct:15,
 
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
-  fbResellers:[],fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
+  fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[]},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
@@ -2735,7 +2854,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{trackUrlTemplate:'',otpEnabled:false,otpSmsUrl:'',otpSmsMethod:'GET',otpSmsBody:'',otpSmsText:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -2775,7 +2894,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'delivery',icon:'fa-solid fa-truck-fast',label:'ডেলিভারি'},
   ],
 
-  tabLabels:{sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_orders:'সাপ্লায়ার অর্ডার',
+  tabLabels:{reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
@@ -2897,18 +3016,42 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   hubs:[
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
     {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
-    {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders']},
+    {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','blocklist']},
     {id:'kisti',label:'কিস্তি ও KYC',ic:'fa-calendar-check',tabs:['installments','savings','kyc']},
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_orders']},
-    {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','vendors','recharges','services','svcorders','resellcfg']},
+    {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']}
   ],
-  tabIcons:{sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',installments:'fa-calendar-check',savings:'fa-piggy-bank',kyc:'fa-id-card',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',installments:'fa-calendar-check',savings:'fa-piggy-bank',kyc:'fa-id-card',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.hubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
-  goTab(t){this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
+  // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
+  async trkSet(f,v){const o=this.viewOrder;if(!o)return;const d={[f]:v||null};
+    if(f==='trackId'&&v&&!o.trackingLink&&(this.settings.trackUrlTemplate||'').includes('{id}')){d.trackingLink=this.settings.trackUrlTemplate.replace('{id}',encodeURIComponent(v));o.trackingLink=d.trackingLink}
+    try{await window.$db.updateOrder(o.fbKey,d);o[f]=v||null;this.showToast('সেভ ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  async trkAdd(){const o=this.viewOrder,tx=(this.trkText||'').trim();if(!o||!tx)return this.showToast('আপডেট লিখুন','error');
+    const log=[...(o.trackLog||[]),{t:Date.now(),text:tx}];
+    try{await window.$db.updateOrder(o.fbKey,{trackLog:log,trackNote:tx,trackUpdatedAt:Date.now()});o.trackLog=log;o.trackNote=tx;this.trkText='';this.showToast('কাস্টমারকে আপডেট দেখানো হবে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  async trkDel(i){const o=this.viewOrder;if(!o)return;const log=(o.trackLog||[]).filter((_,k)=>k!==i);
+    try{await window.$db.updateOrder(o.fbKey,{trackLog:log,trackNote:log.length?log[log.length-1].text:null});o.trackLog=log;o.trackNote=log.length?log[log.length-1].text:null}catch(e){this.showToast('ব্যর্থ!','error')}},
+  // ══════════ রিসেলার লিংক ও ব্লকলিস্ট ══════════
+  _tick(){if(this._tk)return;this._tk=setInterval(()=>this.nowTs=Date.now(),1000)},
+  rlStatus(l){const e=Number(l.expiresAt)||0,n=this.nowTs;if(!e)return'old';if(n<e)return'active';if(n<e+864e5)return'expired';return'purge'},
+  rlLeft(l){const s=Math.max(0,Math.ceil((Number(l.expiresAt)-this.nowTs)/1000)),m=Math.floor(s/60),c=s%60;return m+':'+String(c).padStart(2,'0')},
+  rlProd(l){const p=this.fbProducts.find(x=>(x.fbKey||x.id)===l.productKey);return p?p.name:(l.productId||'—')},
+  rlOrders(l){return this.fbOrders.filter(o=>o.linkId===l.fbKey).length},
+  get rlRows(){const q=(this.rlQ||'').trim().toLowerCase();return this.fbLinks.filter(l=>{const st=this.rlStatus(l);if(this.rlF==='সক্রিয়'&&st!=='active')return false;if(this.rlF==='মেয়াদ শেষ'&&st!=='expired'&&st!=='purge')return false;return !q||String(l.resellerPhone||'').includes(q)||String(l.shopName||'').toLowerCase().includes(q)}).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))},
+  get rlStats(){const r=this.fbLinks;return{total:r.length,active:r.filter(l=>this.rlStatus(l)==='active').length,expired:r.filter(l=>['expired','purge'].includes(this.rlStatus(l))).length,orders:this.fbOrders.filter(o=>o.linkId).length}},
+  async rlKill(l){if(!confirm('লিংকটি এখনই বন্ধ করবেন?'))return;try{await window.$db.updSharedLink(l.fbKey,{expiresAt:Date.now()});await window.$db.setActiveLink(l.resellerPhone,{id:l.fbKey,exp:Date.now()});this.showToast('লিংক বন্ধ হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  async rlDel(l){if(!confirm('লিংকটি মুছে ফেলবেন?'))return;try{await window.$db.delSharedLink(l.fbKey);this.showToast('মুছে ফেলা হয়েছে','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  async rlPurge(){const L=this.fbLinks.filter(l=>this.rlStatus(l)==='purge');if(!L.length)return this.showToast('মোছার মতো পুরনো লিংক নেই','error');if(!confirm(L.length+'টি পুরনো লিংক মুছবেন?'))return;for(const l of L){try{await window.$db.delSharedLink(l.fbKey)}catch(e){}}this.showToast(L.length+'টি লিংক মুছেছে ✅','success')},
+  normPh(raw){let d=String(raw||'').replace(/[^\d]/g,'');if(d.startsWith('880'))d=d.slice(2);if(d.length===10&&d[0]==='1')d='0'+d;return d},
+  async addBlock(ph,reason){const d=this.normPh(ph||this.blkForm.phone);if(!/^01[3-9]\d{8}$/.test(d))return this.showToast('সঠিক নম্বর দিন (01XXXXXXXXX)','error');try{await window.$db.setBlock(d,{reason:(reason??this.blkForm.reason)||'',at:Date.now()});this.blkForm={phone:'',reason:''};this.showToast('ব্লক করা হয়েছে 🚫','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  async unBlock(b){if(!confirm(b.phone+' আনব্লক করবেন?'))return;try{await window.$db.delBlock(b.phone);this.showToast('আনব্লক হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+  get suspicious(){const m={};this.fbOrders.forEach(o=>{const d=this.normPh(o.phone);if(!d)return;const r=m[d]||(m[d]={phone:d,total:0,cancelled:0});r.total++;if(o.status==='বাতিল')r.cancelled++});const bl=new Set(this.fbBlocks.map(b=>b.phone));return Object.values(m).filter(r=>r.cancelled>=2&&!bl.has(r.phone)).sort((a,b)=>b.cancelled-a.cancelled).slice(0,30)},
+  goTab(t){if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
   /* ═══ Supplier API module ═══ */
   supInit(){
     if(this._supInit)return;this._supInit=true;
@@ -3076,6 +3219,8 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
       window.$db.listenPinnedProducts(pins=>{this.fbPinned=pins});
       window.$db.listenResellers(rs=>this.fbResellers=rs);
+      window.$db.listenSharedLinks(l=>this.fbLinks=l);
+      window.$db.listenBlocklist(b=>this.fbBlocks=b.sort((x,y)=>(y.at||0)-(x.at||0)));
       window.$db.listenRecharges(rs=>this.fbRecharges=rs.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
       window.$db.listenServices(ss=>this.fbServices=ss.sort((a,b)=>(a.order||0)-(b.order||0)));
       window.$db.listenServiceOrders(os=>this.fbSvcOrders=os.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
