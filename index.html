@@ -1270,7 +1270,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
               <label class="dd-label">ক্যাটাগরি</label>
               <div class="sel-wrap"><select class="dd-input" x-model="up.cat">
                 <option value="">ক্যাটাগরি বেছে নিন</option>
-                <template x-for="c in (up.section?fbCategories.filter(c=>c.section===up.section||c.sectionId===up.section):fbCategories)" :key="c.fbKey">
+                <template x-for="c in (up.section?catsInSection(up.section):fbCategories)" :key="c.fbKey">
                   <option :value="c.name" x-text="(c.parent?c.parent+' › ':'')+c.name"></option>
                 </template>
               </select></div>
@@ -2999,6 +2999,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     ].map(s=>({...s,pct:Math.round(s.count/total*100)}));
   },
   get allCategoryNames(){return this.fbCategories.length?this.fbCategories.map(c=>c.name):[]},
+  catsInSection(sec){const all=this.fbCategories||[];if(!sec)return all;const own=c=>c.section===sec||c.sectionId===sec;const ok=(c,d)=>own(c)||(d<4&&c.parent&&(()=>{const pr=all.find(x=>x.name===c.parent);return pr?ok(pr,d+1):false})());return all.filter(c=>ok(c,0))},
   get menCategories(){return this.fbCategories.filter(c=>c.gender==='men')},
   get womenCategories(){return this.fbCategories.filter(c=>c.gender==='women')},
   get bothCategories(){return this.fbCategories.filter(c=>!c.gender||c.gender==='both')},
@@ -3555,6 +3556,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.up.saveErr='';
     if(!this.up.name.trim()){this.up.saveErr='পণ্যের নাম লিখুন!';return;}
     if(!this.up.price||this.up.price<=0){this.up.saveErr='সঠিক মূল্য দিন!';return;}
+    if(!String(this.up.cat||'').trim()){this.up.saveErr='ক্যাটাগরি বেছে নিন — নাহলে পণ্যটি কোনো ক্যাটাগরিতে দেখা যাবে না!';return;}
     if(this.up.images.some(i=>i.status==='uploading')){this.up.saveErr='আপলোড সম্পন্ন হওয়ার জন্য অপেক্ষা করুন।';return;}
     const skipDup=this.up.dupOk;this.up.dupOk=false;
     if(!skipDup){const d=this._findDup();if(d){this.dupModal={open:true,prod:d.p,why:d.why};return}}
@@ -3563,7 +3565,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       name:this.up.name.trim(),
       price:Number(this.up.price),
       oldPrice:Number(this.up.oldPrice)||0,
-      cat:this.up.cat,
+      cat:String(this.up.cat||'').trim(),
       section:this.up.section,sectionId:this.up.section,
       images:imgs,img:imgs[0]||'',
       sizes:this._szArr(this.up.sizes),colors:[],
@@ -3589,7 +3591,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       active:this.up.active,
       updatedAt:new Date().toISOString(),
     };
-    if(!this.up.editKey){data.timestamp=Date.now();data.productId=this.nextProductId;}
+    if(!this.up.editKey){data.timestamp=Date.now();data.createdAt=Date.now();data.productId=this.nextProductId;}
     this.saving=true;this.up.saving=true;
     try{
       await window.$db.saveProduct(data,this.up.editKey||null);
