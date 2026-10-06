@@ -77,6 +77,8 @@ window.$db={
   getSupplierCfg:(id)=>new Promise(r=>onValue(ref(db,'supplierKeys/'+id),s=>r(s.val()||{}),{onlyOnce:true})),
   setSupplierCfg:async(id,d)=>update(ref(db,'supplierKeys/'+id),d),
   getOrderOnce:(k)=>new Promise(r=>onValue(ref(db,'orders/'+k),s=>r(s.val()),{onlyOnce:true})),
+  getCustomerStatsAll:()=>new Promise((res,rej)=>onValue(ref(db,'customerStats'),s=>res(s.val()||{}),e=>rej(e),{onlyOnce:true})),
+  updateCustomerStats:(obj)=>update(ref(db,'customerStats'),obj),
   updateOrderRaw:async(k,d)=>update(ref(db,'orders/'+k),d),
   setSupplierQueue:async(k,d)=>set(ref(db,'supplierQueue/'+k),d),
   listenSupplierQueue:(cb)=>onValue(ref(db,'supplierQueue'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])}),
@@ -1749,6 +1751,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <button @click="oFilt=s" :style="oFilt===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s"></button>
         </template>
       </div>
+      <button type="button" x-show="suspectCount>0||orderSuspectOnly" x-cloak @click="orderSuspectOnly=!orderSuspectOnly" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" :style="orderSuspectOnly?'background:#B91C1C;color:#fff;border:1px solid #B91C1C':'background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA'"><i class="fa-solid fa-triangle-exclamation mr-1"></i><span x-text="'সন্দেহজনক ('+suspectCount+')'"></span></button>
       <div class="relative">
         <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
         <input x-model="orderSearch" class="dd-input pl-8 py-2 text-xs" style="width:180px" placeholder="নাম / ফোন / আইডি..."/>
@@ -1761,7 +1764,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <tbody>
             <template x-for="o in filteredOrders" :key="o.fbKey">
               <tr>
-                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td class="text-xs" x-text="o.district||''"></td>
                 <td><p class="text-xs" x-text="(o.items||[]).length+'টি'"></p></td>
@@ -1808,6 +1811,30 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <button @click="saveSettings()" class="text-xs px-2.5 py-2 rounded-lg font-bold text-white flex-shrink-0" style="background:var(--accent);border:none;cursor:pointer"><i class="fa-solid fa-check"></i></button>
         </div>
         <p class="text-xs mt-1.5" style="color:var(--fg3)">প্রমো কোড দিয়ে রেজিস্ট্রেশন করলে অ্যাপ্রুভের সময় এই বোনাস পাবে</p>
+      </div>
+    </div>
+
+    <!-- ══ নিরাপত্তা: পুরনো রিসেলার মাইগ্রেশন + কাস্টমার রিপোর্ট সিঙ্ক ══ -->
+    <div class="dd-card p-4 mb-5">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex-1" style="min-width:220px">
+          <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-shield-halved" style="color:var(--accent)"></i>পুরনো রিসেলার মাইগ্রেশন</p>
+          <p class="text-xs mt-1" style="color:var(--fg2)">এখনো নতুন নিরাপদ লগইনে মাইগ্রেট হয়নি: <span class="font-bold" :style="unmigratedResellers.length?'color:#B45309':'color:#16A34A'" x-text="unmigratedResellers.length"></span> জন (মোট <span x-text="fbResellers.length"></span> জনের মধ্যে)। তারা পরের বার লগইন করলেই স্বয়ংক্রিয়ভাবে মাইগ্রেট হবে।</p>
+        </div>
+        <button type="button" @click="unmigOpen=!unmigOpen" class="btn-ghost !text-xs !py-2 !px-3"><i class="fa-solid fa-list mr-1"></i><span x-text="unmigOpen?'তালিকা বন্ধ':'তালিকা দেখুন'"></span></button>
+        <button type="button" @click="rebuildCustomerStats()" :disabled="custStats.busy" class="btn-ghost !text-xs !py-2 !px-3"><i class="fa-solid mr-1" :class="custStats.busy?'fa-spinner fa-spin':'fa-rotate'"></i>কাস্টমার রিপোর্ট পুনর্গঠন</button>
+      </div>
+      <p class="text-xs mt-2 font-semibold" style="color:var(--fg2)" x-show="custStats.msg" x-text="custStats.msg"></p>
+      <div x-show="unmigOpen" x-cloak class="mt-3 overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>নাম</th><th>ফোন</th><th>স্ট্যাটাস</th><th>ওয়ালেট</th></tr></thead>
+          <tbody>
+            <template x-for="r in unmigratedResellers" :key="r.fbKey">
+              <tr><td class="text-xs font-semibold" x-text="r.name||'—'"></td><td class="font-mono text-xs" x-text="r.fbKey"></td><td class="text-xs" x-text="r.status||'—'"></td><td class="font-mono text-xs" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></td></tr>
+            </template>
+          </tbody>
+        </table>
+        <p class="text-xs text-center py-3" style="color:var(--fg3)" x-show="unmigratedResellers.length===0">সবাই মাইগ্রেট হয়েছে ✅</p>
       </div>
     </div>
 
@@ -2845,7 +2872,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
-  orderSearch:'',oFilt:'সব',
+  orderSearch:'',oFilt:'সব',orderSuspectOnly:false,custStats:{busy:false,msg:''},_ordersLoaded:false,unmigOpen:false,
   orderDetailOpen:false,viewOrder:null,
 
   assignSearch:'',draggedId:null,
@@ -2944,8 +2971,11 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   get filteredOrders(){
     return this.fbOrders
       .filter(o=>o.cancelledBy!=='reseller'&&o.status!=='রিসেলার অ্যাপ্রুভাল'&&(this.oFilt==='সব'||o.status===this.oFilt))
-      .filter(o=>!this.orderSearch||o.customerName?.includes(this.orderSearch)||o.phone?.includes(this.orderSearch)||String(o.id).includes(this.orderSearch));
+      .filter(o=>!this.orderSearch||o.customerName?.includes(this.orderSearch)||o.phone?.includes(this.orderSearch)||String(o.id).includes(this.orderSearch))
+      .filter(o=>!this.orderSuspectOnly||!!this.orderSuspect(o));
   },
+  get suspectCount(){return this.fbOrders.filter(o=>!!this.orderSuspect(o)).length},
+  get unmigratedResellers(){return this.fbResellers.filter(r=>r.authMigrated!==true)},
   get pendingCount(){return this.fbOrders.filter(o=>o.status==='পেন্ডিং').length},
   // ══ RESELLER / MLM GETTERS (NEW) ══
   get pendingResellers(){return this.fbResellers.filter(r=>r.status==='pending')},
@@ -3215,7 +3245,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
     window.addEventListener('firebase-ready',()=>{
       window.$db.listenProducts(prods=>this.fbProducts=prods);
-      window.$db.listenOrders(orders=>this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0)));
+      window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule()});
       window.$db.listenUsers(count=>this.totalUsers=count);
       window.$db.listenCategories(cats=>{this.fbCategories=cats;this.sortableCats=[...cats];this.$nextTick(()=>this.initSortable())});
       window.$db.listenSections(secs=>{this.fbSections=secs});
@@ -3623,9 +3653,94 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
 
   // ══════════ ORDER CRUD ══════════
+  // ══ কাস্টমার ডেলিভারি রিপোর্ট (customerStats) — ফোন-হ্যাশ ভিত্তিক; ঠিকানা/ব্যক্তিগত তথ্য নেই ══
+  _csState(){return window.__cs||(window.__cs={cache:null,timer:null,memo:{},busy:false})},
+  async _csHash(p11){
+    const st=this._csState();if(st.memo[p11])return st.memo[p11];
+    const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('dd-cust:'+p11));
+    const h=Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+    st.memo[p11]=h;return h;
+  },
+  _csOrderTs(o){
+    const n=Number(o.createdAt);if(n>1e12)return n;
+    const t=Date.parse(o.timestamp);if(t>0)return t;
+    const k=String(o.fbKey||''),C='-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+    if(k.length<8)return 0;let v=0;for(let i=0;i<8;i++)v=v*64+C.indexOf(k[i]);return v>1e12?v:0;
+  },
+  async _csCompute(){
+    const m={};
+    for(const o of this.fbOrders){
+      const ph=String(o.phone||'').replace(/\D/g,'').slice(-11);if(ph.length<11)continue;
+      const r=m[ph]||(m[ph]={delivered:0,cancelled:0,total:0,lastOrderAt:0});
+      r.total++;
+      if(o.status==='ডেলিভার্ড')r.delivered++;
+      else if(o.status==='বাতিল'||/রিটার্ন|ফেরত/.test(o.status||''))r.cancelled++;
+      const t=this._csOrderTs(o);if(t>r.lastOrderAt)r.lastOrderAt=t;
+    }
+    const out={};
+    for(const ph of Object.keys(m))out[await this._csHash(ph)]=m[ph];
+    return out;
+  },
+  _csSchedule(){const st=this._csState();clearTimeout(st.timer);st.timer=setTimeout(()=>this.syncCustomerStats(false),6000)},
+  // অর্ডার থেকে প্রতিবার সংখ্যা নতুন করে গুনে শুধু যা বদলেছে তা লেখা হয় — তাই ডাবল-কাউন্ট হয় না (কাস্টমার/রিসেলারের নিজে বাতিল করাও ধরা পড়ে)
+  async syncCustomerStats(force){
+    const st=this._csState();
+    if(st.busy)return null;
+    if(!this._ordersLoaded)return null;
+    if(!this.fbOrders.length&&!force)return null;
+    st.busy=true;
+    try{
+      const comp=await this._csCompute();
+      if(force||!st.cache)st.cache=await window.$db.getCustomerStatsAll();
+      const sig=v=>v?[v.delivered,v.cancelled,v.total,v.lastOrderAt].join('|'):'';
+      const upd={};let w=0,d=0;
+      for(const h of Object.keys(comp)){if(sig(st.cache[h])!==sig(comp[h])){upd[h]={...comp[h],updatedAt:Date.now()};w++}}
+      for(const h of Object.keys(st.cache)){if(!comp[h]){upd[h]=null;d++}}
+      if(w||d){
+        await window.$db.updateCustomerStats(upd);
+        for(const h of Object.keys(upd)){if(upd[h]===null)delete st.cache[h];else st.cache[h]=upd[h]}
+      }
+      return {written:w,removed:d,total:Object.keys(comp).length};
+    }catch(e){console.warn('customerStats sync',e);return {error:String((e&&e.message)||e)}}
+    finally{st.busy=false}
+  },
+  async rebuildCustomerStats(){
+    if(this.custStats.busy)return;
+    this.custStats.busy=true;this.custStats.msg='';
+    try{
+      const r=await this.syncCustomerStats(true);
+      if(!r)this.custStats.msg='অর্ডার এখনো লোড হয়নি, একটু পরে চেষ্টা করুন।';
+      else if(r.error)this.custStats.msg='ব্যর্থ: '+r.error;
+      else this.custStats.msg='সম্পন্ন ✅ — মোট '+r.total+'টি কাস্টমার, নতুন/বদলানো '+r.written+'টি, মুছে ফেলা '+r.removed+'টি';
+    }finally{this.custStats.busy=false}
+  },
+  // ══ সন্দেহজনক অর্ডার ফ্ল্যাগ (রুলস যা নিশ্চিত করতে পারে না — আইটেম-যোগফল ও আসল পণ্যমূল্যের সাথে মিলিয়ে দেখা) ══
+  orderSuspect(o){
+    try{
+      if(!o||o.orderType==='savings')return '';
+      if(o.status!=='পেন্ডিং'&&o.status!=='প্রসেসিং')return '';   // শুধু যেসব অর্ডারে এখনো সিদ্ধান্ত নেওয়ার সুযোগ আছে
+      const n=v=>Number(v)||0,why=[];
+      const items=Array.isArray(o.items)?o.items:Object.values(o.items||{});
+      if(o.subtotal!=null){
+        const sum=items.reduce((a,it)=>a+n(it.resellerSellPrice!=null?it.resellerSellPrice:it.price)*n(it.qty),0);
+        if(Math.abs(sum-n(o.subtotal))>1)why.push('আইটেমের যোগফল ('+sum+') ≠ সাবটোটাল ('+n(o.subtotal)+')');
+        const exp=n(o.subtotal)+n(o.shipping)+n(o.codExtraCharge)-n(o.prepaidDiscount)-n(o.advanceShipDiscount)-n(o.promoDiscount);
+        if(Math.abs(Math.max(0,exp)-n(o.total))>1)why.push('মোট ('+n(o.total)+') হিসাবের ('+Math.max(0,exp)+') সাথে মেলে না');
+        if(o.shipping!=null&&n(o.shipping)!==80&&n(o.shipping)!==150)why.push('শিপিং চার্জ অস্বাভাবিক ('+n(o.shipping)+')');
+      }
+      items.forEach(it=>{
+        if(n(it.qty)<1||n(it.qty)>1000)why.push('অস্বাভাবিক পরিমাণ ('+n(it.qty)+')');
+        const p=(this.fbProducts||[]).find(x=>String(x.fbKey)===String(it.id)||String(x.id)===String(it.id));
+        if(p&&it.resellerSellPrice==null&&n(it.price)<n(p.price)-0.5)why.push('"'+(it.name||'পণ্য')+'" বর্তমান দামের (৳'+n(p.price)+') চেয়ে কম (৳'+n(it.price)+')');
+      });
+      return why.slice(0,3).join(' · ');
+    }catch(e){return ''}
+  },
+
   async updateOrderStatus(key,status){
     try{
       await window.$db.updateOrder(key,{status});
+      this._csSchedule();
       if(status==='ডেলিভার্ড'){
         const order=this.fbOrders.find(o=>o.fbKey===key);
         if(order)await this.creditReferralCommissions(order,key);
