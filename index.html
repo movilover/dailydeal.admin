@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-<title>Daily Deal — অ্যাডমিন প্যানেল v9.0 (Unified)</title>
+<title>Daily Deal — অ্যাডমিন প্যানেল v10.0 (Unified)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config={
@@ -536,13 +536,13 @@ html,body{touch-action:auto!important;overflow-x:clip}
     <template x-if="viewOrder">
       <div class="space-y-4">
         <div class="grid grid-cols-2 gap-3">
-          <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p></div>
+          <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p><p class="text-xs font-bold mt-1" style="color:#0F8F7A" x-show="viewOrder.linkOrder"><i class="fa-solid fa-link"></i> রিসেলার লিংক অর্ডার<span x-show="viewOrder.resellerShopName" x-text="' — '+viewOrder.resellerShopName"></span></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">স্ট্যাটাস</p>
             <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-outfordelivery':viewOrder.status==='পাঠানো হচ্ছে','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}" x-text="viewOrder.status"></span>
           </div>
           <div class="dd-card-sm p-3"><p class="dd-label">গ্রাহক</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.phone"></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">ঠিকানা</p><p class="text-xs font-semibold" style="color:var(--fg)" x-text="(viewOrder.district||'')+', '+(viewOrder.division||'')"></p></div>
-          <div class="dd-card-sm p-3" x-show="viewOrder.shipping>0"><p class="dd-label">ডেলিভারি চার্জ ৳<span x-text="viewOrder.shipping"></span></p><p class="text-sm font-bold" :style="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'color:#15803D':'color:#B45309'" x-text="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'✅ অগ্রিম পেইড'+(viewOrder.trxId?' (TrxID: '+viewOrder.trxId+')':''):'⏳ ডেলিভারির সময় নিতে হবে'"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-show="viewOrder.collectAmount!=null||viewOrder.dueOnDelivery!=null">কাস্টমার থেকে আদায়: ৳<span x-text="viewOrder.collectAmount!=null?viewOrder.collectAmount:viewOrder.dueOnDelivery"></span></p></div>
+          <div class="dd-card-sm p-3" x-show="viewOrder.shipping>0"><p class="dd-label">ডেলিভারি চার্জ ৳<span x-text="viewOrder.shipping"></span></p><p class="text-sm font-bold" :style="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'color:#15803D':'color:#B45309'" x-text="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'✅ অগ্রিম পেইড'+(viewOrder.trxId?' (TrxID: '+viewOrder.trxId+')':'')+(viewOrder.advanceClaimedByCustomer?' — কাস্টমারের দাবি, রিসেলারের কাছে যাচাইকৃত':''):'⏳ ডেলিভারির সময় নিতে হবে'"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-show="viewOrder.collectAmount!=null||viewOrder.dueOnDelivery!=null">কাস্টমার থেকে আদায়: ৳<span x-text="viewOrder.collectAmount!=null?viewOrder.collectAmount:viewOrder.dueOnDelivery"></span></p></div>
           <div class="dd-card-sm p-3" x-show="viewOrder.payMethod"><p class="dd-label">পেমেন্ট মাধ্যম</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.payMethod"></p></div>
         </div>
         <div class="dd-card-sm p-3 space-y-3">
