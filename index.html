@@ -51,6 +51,9 @@ const cfg={
   databaseURL:"https://daily-deal-online-shopping-default-rtdb.firebaseio.com"
 };
 const app=initializeApp(cfg);
+/* App Check (reCAPTCHA v3, ফ্রি) — সাইট-কী বসালেই চালু; খালি থাকলে আগের মতোই চলে। */
+const APPCHECK_SITE_KEY='';   // ← আপনার reCAPTCHA v3 সাইট-কী এখানে বসান
+if(APPCHECK_SITE_KEY){try{const ac=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true})}catch(e){console.warn('AppCheck init failed',e)}}
 const db=getDatabase(app);
 const auth=getAuth(app);
 (function(){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0F0D0A;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Hind Siliguri,sans-serif';
@@ -108,6 +111,9 @@ window.$db={
   // Resellers (NEW — MLM/Reselling system, keyed by phone number)
   saveReseller:async(data,phone)=>{await update(ref(db,'resellers/'+phone),data);return phone},
   deleteReseller:async(phone)=>remove(ref(db,'resellers/'+phone)),
+  getOnceVal:(path)=>new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),e=>rej(e),{onlyOnce:true})),
+  updatePath:async(path,obj)=>update(ref(db,path),obj),
+  removePath:async(path)=>remove(ref(db,path)),
   listenSharedLinks:(cb)=>onValue(ref(db,'sharedLinks'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   updSharedLink:async(k,d)=>update(ref(db,'sharedLinks/'+k),d),
   delSharedLink:async(k)=>remove(ref(db,'sharedLinks/'+k)),
@@ -1764,7 +1770,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <tbody>
             <template x-for="o in filteredOrders" :key="o.fbKey">
               <tr>
-                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td class="text-xs" x-text="o.district||''"></td>
                 <td><p class="text-xs" x-text="(o.items||[]).length+'টি'"></p></td>
@@ -1825,6 +1831,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <button type="button" @click="rebuildCustomerStats()" :disabled="custStats.busy" class="btn-ghost !text-xs !py-2 !px-3"><i class="fa-solid mr-1" :class="custStats.busy?'fa-spinner fa-spin':'fa-rotate'"></i>কাস্টমার রিপোর্ট পুনর্গঠন</button>
       </div>
       <p class="text-xs mt-2 font-semibold" style="color:var(--fg2)" x-show="custStats.msg" x-text="custStats.msg"></p>
+      <p class="text-xs mt-1" style="color:var(--fg3)" x-show="custStats.last" x-text="'শেষ সিঙ্ক: '+new Date(custStats.last).toLocaleString('bn-BD')"></p>
       <div x-show="unmigOpen" x-cloak class="mt-3 overflow-x-auto">
         <table class="dd-table">
           <thead><tr><th>নাম</th><th>ফোন</th><th>স্ট্যাটাস</th><th>ওয়ালেট</th></tr></thead>
@@ -2053,12 +2060,113 @@ html,body{touch-action:auto!important;overflow-x:clip}
       </div>
     </template>
     <div class="dd-card p-4 space-y-3">
-      <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-video mr-1" style="color:var(--accent)"></i> লার্নিং ভিডিও</p><button @click="rcfg.learning.push({title:'',url:''})" class="btn-ghost text-xs">+ যোগ করুন</button></div>
-      <template x-for="(v,i) in rcfg.learning" :key="i"><div class="flex gap-2"><input class="dd-input" x-model="v.title" placeholder="ভিডিওর নাম"/><input class="dd-input" x-model="v.url" placeholder="ইউটিউব লিংক"/><button @click="rcfg.learning.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div></template>
+      <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-video mr-1" style="color:var(--accent)"></i> লার্নিং ভিডিও</p><button @click="rcfg.learning.push({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new'})" class="btn-ghost text-xs">+ যোগ করুন</button></div>
+      <template x-for="(v,i) in rcfg.learning" :key="i"><div class="space-y-2 pb-3" style="border-bottom:1px dashed var(--border)"><div class="flex gap-2"><input class="dd-input" x-model="v.title" placeholder="ভিডিওর নাম"/><input class="dd-input" x-model="v.url" placeholder="ইউটিউব ভিডিও/প্লেলিস্ট লিংক"/><button @click="openLink(v.url)" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button><button @click="rcfg.learning.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div>
+<div class="grid grid-cols-2 md:grid-cols-5 gap-2 items-center"><input class="dd-input" x-model="v.cat" placeholder="ক্যাটাগরি"/><input type="number" class="dd-input" x-model.number="v.order" placeholder="ক্রম"/><select class="dd-input" x-model="v.openIn"><option value="new">বাইরে খুলবে</option><option value="app">অ্যাপের ভেতরে চলবে</option></select><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="v.active"/> চালু</label><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="v.isNew"/> "নতুন" ব্যাজ</label></div></div></template>
     </div>
     <div class="dd-card p-4 space-y-3">
       <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-circle-question mr-1" style="color:var(--accent)"></i> সাধারণ জিজ্ঞাসা (FAQ)</p><button @click="rcfg.faq.push({q:'',a:''})" class="btn-ghost text-xs">+ যোগ করুন</button></div>
       <template x-for="(f,i) in rcfg.faq" :key="i"><div class="space-y-2 pb-3" style="border-bottom:1px dashed var(--border)"><div class="flex gap-2"><input class="dd-input" x-model="f.q" placeholder="প্রশ্ন"/><button @click="rcfg.faq.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div><textarea class="dd-input" rows="2" x-model="f.a" placeholder="উত্তর"></textarea></div></template>
+    </div>
+    <!-- ══ নতুন: যোগাযোগ ও হেল্পলাইন ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-phone-volume mr-1" style="color:var(--accent)"></i> যোগাযোগ ও হেল্পলাইন</p><button @click="addHelpline()" class="btn-ghost text-xs">+ হেল্পলাইন</button></div>
+      <p class="text-xs" style="color:var(--fg3)">প্রথম সক্রিয় হেল্পলাইন কল/হোয়াটসঅ্যাপ বাটনে ব্যবহার হবে; না থাকলে আগের "সাপোর্ট নম্বর", তারপর দোকানের নম্বর।</p>
+      <template x-for="(h,i) in rcfg.contact.helplines" :key="i"><div class="flex gap-2 flex-wrap items-center"><input class="dd-input flex-1" style="min-width:120px" x-model="h.label" placeholder="নাম (বিক্রয়/একাউন্টস/টেকনিক্যাল)"/><input class="dd-input flex-1" style="min-width:120px" x-model="h.number" placeholder="কল নম্বর"/><input class="dd-input flex-1" style="min-width:120px" x-model="h.whatsapp" placeholder="হোয়াটসঅ্যাপ (8801…)"/><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="h.active"/> চালু</label><button @click="rcfg.contact.helplines.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div></template>
+      <div class="grid md:grid-cols-2 gap-3">
+        <div><label class="dd-label">সময়সূচি</label><input class="dd-input" x-model="rcfg.contact.hours" placeholder="সকাল ১০টা – রাত ৮টা"/></div>
+        <div><label class="dd-label">ইমেইল</label><input class="dd-input" type="email" x-model="rcfg.contact.email"/></div>
+        <div class="md:col-span-2"><label class="dd-label">অফলাইন বার্তা</label><textarea class="dd-input" rows="2" x-model="rcfg.contact.offlineMsg" placeholder="অফিস সময়ের বাইরে হলে যা দেখাবে"></textarea></div>
+        <template x-for="f in [['facebookGroup','ফেইসবুক গ্রুপ (কুইক টাইলেও যাবে)'],['facebookPage','ফেইসবুক পেজ'],['messenger','মেসেঞ্জার'],['instagram','ইনস্টাগ্রাম'],['tiktok','টিকটক'],['website','ডেমো/ওয়েবসাইট'],['appLink','রিসেলার অ্যাপ ডাউনলোড']]" :key="f[0]"><div><label class="dd-label" x-text="f[1]"></label><div class="flex gap-1"><input class="dd-input" x-model="rcfg.contact[f[0]]" placeholder="https://..."/><button @click="openLink(rcfg.contact[f[0]])" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button></div></div></template>
+      </div>
+    </div>
+
+    <!-- ══ নতুন: মডিউল সুইচ ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <p class="font-bold text-sm"><i class="fa-solid fa-toggle-on mr-1" style="color:var(--accent)"></i> মডিউল সুইচ</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <template x-for="f in [['freelance','ফ্রিল্যান্সিং'],['referral','রেফারেল/প্যাসিভ ইনকাম'],['withdraw','উইথড্র'],['deposit','ডিপোজিট'],['print','কাস্টমাইজ প্রিন্ট'],['ecom','ই-কমার্স ওয়েবসাইট'],['recharge','মোবাইল রিচার্জ']]" :key="f[0]"><label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="rcfg.features[f[0]]"/><span x-text="f[1]"></span></label></template>
+      </div>
+      <div><label class="dd-label">বন্ধ থাকলে যে বার্তা দেখাবে</label><input class="dd-input" x-model="rcfg.features.maintenanceMsg" placeholder="এই সার্ভিসটি সাময়িকভাবে বন্ধ আছে"/></div>
+      <p class="text-xs" style="color:var(--fg3)">বন্ধ মডিউলের বাটন লুকাবে এবং Rules-ও সেই মডিউলের নতুন রিকোয়েস্ট (উইথড্র/ডিপোজিট/রিচার্জ/সার্ভিস অর্ডার) আটকাবে।</p>
+    </div>
+
+    <!-- ══ নতুন: উইথড্র / ডিপোজিট / রেফারেল ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <p class="font-bold text-sm"><i class="fa-solid fa-money-bill-transfer mr-1" style="color:var(--accent)"></i> উইথড্র নীতি</p>
+      <div class="grid grid-cols-3 gap-3">
+        <div><label class="dd-label">সর্বনিম্ন (৳)</label><input type="number" class="dd-input" x-model.number="rcfg.withdraw.min"/></div>
+        <div><label class="dd-label">সর্বোচ্চ (৳)</label><input type="number" class="dd-input" x-model.number="rcfg.withdraw.max"/></div>
+        <div><label class="dd-label">ফি %</label><input type="number" step="0.1" class="dd-input" x-model.number="rcfg.withdraw.feePct"/></div>
+      </div>
+      <div><label class="dd-label">মেথড তালিকা (কমা দিয়ে; খালি = bKash, Nagad)</label><input class="dd-input" x-model="rcfg.withdraw.methodsText" placeholder="বিকাশ, নগদ, রকেট, ব্যাংক"/></div>
+      <div><label class="dd-label">নোটিশ</label><textarea class="dd-input" rows="2" x-model="rcfg.withdraw.notice"></textarea></div>
+      <p class="font-bold text-sm pt-2"><i class="fa-solid fa-wallet mr-1" style="color:var(--accent)"></i> ডিপোজিট নীতি</p>
+      <div class="grid grid-cols-2 gap-3"><div><label class="dd-label">সর্বনিম্ন (৳)</label><input type="number" class="dd-input" x-model.number="rcfg.deposit.min"/></div></div>
+      <div class="flex items-center justify-between"><p class="text-xs font-bold">ডিপোজিট নম্বর (খালি = সাধারণ সেটিংসের bKash/Nagad)</p><button @click="addDepositMethod()" class="btn-ghost text-xs">+ যোগ করুন</button></div>
+      <template x-for="(m,i) in rcfg.deposit.methods" :key="i"><div class="flex gap-2"><input class="dd-input" x-model="m.name" placeholder="মেথড (বিকাশ)"/><input class="dd-input" x-model="m.number" placeholder="নম্বর"/><input class="dd-input" x-model="m.type" placeholder="Personal/Agent"/><button @click="rcfg.deposit.methods.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div></template>
+      <div><label class="dd-label">ডিপোজিট নোটিশ</label><textarea class="dd-input" rows="2" x-model="rcfg.deposit.notice"></textarea></div>
+      <p class="font-bold text-sm pt-2"><i class="fa-solid fa-user-plus mr-1" style="color:var(--accent)"></i> রেফারেল/প্যাসিভ ইনকাম বর্ণনা</p>
+      <textarea class="dd-input" rows="3" x-model="rcfg.referral.text" placeholder="শর্ত ও বর্ণনা (রিসেলারের প্যাসিভ ইনকাম পেজে দেখাবে)। কমিশনের হিসাব পণ্যভিত্তিক (১ম/২য়/৩য় জেনারেশন) — প্রোডাক্ট এডিটে বদলান।"></textarea>
+    </div>
+
+    <!-- ══ নতুন: ঘোষণা ও পপআপ ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <p class="font-bold text-sm"><i class="fa-solid fa-bullhorn mr-1" style="color:var(--accent)"></i> ঘোষণা ও পপআপ ব্যানার</p>
+      <div><label class="dd-label">রিসেলার-নির্দিষ্ট মার্কি (খালি = সাধারণ মার্কি)</label><input class="dd-input" x-model="rcfg.announce.marquee"/></div>
+      <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="rcfg.announce.popup.active"/> পপআপ চালু</label>
+      <div class="grid md:grid-cols-2 gap-3">
+        <div><label class="dd-label">টাইটেল</label><input class="dd-input" x-model="rcfg.announce.popup.title"/></div>
+        <div><label class="dd-label">ছবির লিংক (ঐচ্ছিক)</label><input class="dd-input" x-model="rcfg.announce.popup.image" placeholder="https://..."/></div>
+        <div class="md:col-span-2"><label class="dd-label">লেখা</label><textarea class="dd-input" rows="3" x-model="rcfg.announce.popup.body"></textarea></div>
+        <div><label class="dd-label">বাটনের লেখা</label><input class="dd-input" x-model="rcfg.announce.popup.btnText"/></div>
+        <div><label class="dd-label">বাটনের লিংক</label><div class="flex gap-1"><input class="dd-input" x-model="rcfg.announce.popup.btnLink" placeholder="https://..."/><button @click="openLink(rcfg.announce.popup.btnLink)" class="btn-ghost"><i class="fa-solid fa-arrow-up-right-from-square"></i></button></div></div>
+        <div><label class="dd-label">মেয়াদ শেষ (খালি = সীমাহীন)</label><input type="datetime-local" class="dd-input" x-model="rcfg.announce.popup.expiresAtStr"/></div>
+        <label class="text-xs font-bold flex items-center gap-2 pt-6"><input type="checkbox" x-model="rcfg.announce.popup.showOnce"/> একবারই দেখাবে (লেখা বদলালে আবার দেখাবে)</label>
+      </div>
+    </div>
+
+    <!-- ══ নতুন: কাস্টম বাটন ম্যানেজার ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-table-cells-large mr-1" style="color:var(--accent)"></i> কাস্টম বাটন (সর্বোচ্চ ৫০)</p><button @click="addCustomButton()" class="btn-ghost text-xs">+ নতুন বাটন</button></div>
+      <p class="text-xs" style="color:var(--fg3)">জোন: হোম গ্রিড / সাইডবার / কুইক টাইল। টাইপ: লিংক, ফোন, হোয়াটসঅ্যাপ, কাস্টম পেজ (টার্গেট = পেজ আইডি), বিল্ট-ইন (টার্গেট = youtube, support ইত্যাদি), শীঘ্রই আসছে।</p>
+      <template x-for="(b,i) in rcfg.buttons" :key="b.id||i"><div class="p-3 rounded-xl space-y-2" style="background:var(--bg2)">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <select class="dd-input" x-model="b.zone"><option value="home">হোম গ্রিড</option><option value="sidebar">সাইডবার</option><option value="quick">কুইক টাইল</option></select>
+          <input class="dd-input" x-model="b.label" placeholder="বাটনের নাম"/>
+          <input class="dd-input" x-model="b.icon" placeholder="fa-solid fa-link"/>
+          <input type="number" class="dd-input" x-model.number="b.order" placeholder="ক্রম"/>
+          <input class="dd-input" x-model="b.bg" placeholder="ব্যাকগ্রাউন্ড #E0F2FE"/>
+          <input class="dd-input" x-model="b.color" placeholder="আইকন রঙ #0369A1"/>
+          <select class="dd-input" x-model="b.type"><option value="link">লিংক</option><option value="tel">ফোন</option><option value="whatsapp">হোয়াটসঅ্যাপ</option><option value="page">কাস্টম পেজ</option><option value="builtin">বিল্ট-ইন</option><option value="soon">শীঘ্রই আসছে</option></select>
+          <select class="dd-input" x-model="b.openIn"><option value="new">নতুন ট্যাব</option><option value="same">একই ট্যাব</option></select>
+        </div>
+        <div class="flex gap-2 items-center"><input class="dd-input" x-model="b.target" placeholder="লিংক / নম্বর / পেজ আইডি / বিল্ট-ইন নাম"/><button @click="openLink(b.target)" x-show="b.type==='link'" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="b.active"/> চালু</label><button @click="rcfg.buttons.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div>
+      </div></template>
+      <details class="pt-2"><summary class="text-xs font-bold cursor-pointer" style="color:var(--accent)">বিল্ট-ইন বাটন/মেনু সাজান (লুকান, নাম, ক্রম, আইকন, "শীঘ্রই আসছে"-তে লিংক বসান)</summary>
+        <template x-for="grp in [['হোম বাটন',_biHome],['সাইডবার মেনু',_biSide],['কুইক টাইল',_biQuick]]" :key="grp[0]"><div class="mt-3"><p class="text-xs font-bold mb-1" x-text="grp[0]"></p>
+          <template x-for="b in grp[1]" :key="b.id"><div class="grid grid-cols-12 gap-1 items-center py-1" style="border-bottom:1px dashed var(--border)">
+            <span class="text-xs col-span-3" x-text="b.label"></span>
+            <label class="text-xs flex items-center gap-1 col-span-1"><input type="checkbox" x-model="rcfg.builtinOverrides[b.id].hide"/>লুকান</label>
+            <input class="dd-input col-span-3" style="padding:4px 6px" x-model="rcfg.builtinOverrides[b.id].label" placeholder="নতুন নাম"/>
+            <input class="dd-input col-span-1" style="padding:4px 6px" type="number" x-model="rcfg.builtinOverrides[b.id].order" placeholder="ক্রম"/>
+            <input class="dd-input col-span-2" style="padding:4px 6px" x-model="rcfg.builtinOverrides[b.id].icon" placeholder="আইকন"/>
+            <select class="dd-input col-span-2" style="padding:4px 6px" x-model="rcfg.builtinOverrides[b.id].type"><option value="">আগের মতো</option><option value="link">লিংক</option><option value="tel">ফোন</option><option value="whatsapp">হোয়াটসঅ্যাপ</option><option value="page">পেজ</option></select>
+            <input class="dd-input col-span-12" style="padding:4px 6px" x-show="rcfg.builtinOverrides[b.id].type" x-model="rcfg.builtinOverrides[b.id].target" placeholder="লিংক / নম্বর / পেজ আইডি"/>
+          </div></template></div></template>
+      </details>
+    </div>
+
+    <!-- ══ নতুন: কাস্টম পেজ ══ -->
+    <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-file-lines mr-1" style="color:var(--accent)"></i> কাস্টম পেজ (শর্তাবলী, পলিসি…)</p><button @click="addCustomPage()" class="btn-ghost text-xs">+ নতুন পেজ</button></div>
+      <p class="text-xs" style="color:var(--fg3)">পেজ বানিয়ে উপরের "কাস্টম বাটন"-এ টাইপ = কাস্টম পেজ, টার্গেট = পেজ আইডি দিন।</p>
+      <template x-for="k in customPageKeys" :key="k"><div class="space-y-2 pb-3" style="border-bottom:1px dashed var(--border)">
+        <div class="flex items-center justify-between"><span class="text-xs font-bold">আইডি: <code x-text="k"></code></span><button @click="delCustomPage(k)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div>
+        <input class="dd-input" x-model="rcfg.pages[k].title" placeholder="টাইটেল"/>
+        <textarea class="dd-input" rows="5" x-model="rcfg.pages[k].body" placeholder="বিস্তারিত লেখা"></textarea>
+        <div class="grid grid-cols-2 gap-3"><input class="dd-input" x-model="rcfg.pages[k].btnText" placeholder="বাটনের লেখা (ঐচ্ছিক)"/><input class="dd-input" x-model="rcfg.pages[k].btnLink" placeholder="বাটনের লিংক"/></div>
+      </div></template>
     </div>
     <button @click="saveRcfg()" class="btn-primary"><i class="fa-solid fa-floppy-disk mr-1"></i> সব সেভ করুন</button>
   </div>
@@ -2123,7 +2231,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="getResellerName(d.resellerPhone)"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="d.resellerPhone"></p></td>
                 <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(d.amount||0).toLocaleString()"></span></td>
                 <td class="text-xs" x-text="d.method||'—'"></td>
-                <td class="font-mono text-xs" x-text="d.trxId||'—'"></td>
+                <td class="font-mono text-xs"><span x-text="d.trxId||'—'"></span><template x-if="d.trxId&&trxDup(d.trxId)"><span class="text-xs font-bold px-2 py-0.5 rounded-full ml-1" style="background:#FEF2F2;color:#B91C1C">⚠ ডুপ্লিকেট</span></template></td>
                 <td class="text-xs" style="color:var(--fg3)" x-text="d.requestedAt?new Date(d.requestedAt).toLocaleDateString('bn-BD'):''"></td>
                 <td>
                   <span class="text-xs font-bold px-2 py-1 rounded-full" :style="d.status==='pending'?'background:#FFF7ED;color:#C2410C':d.status==='approved'?'background:#F0FDF4;color:#15803D':'background:#FEF2F2;color:#B91C1C'" x-text="d.status==='pending'?'পেন্ডিং':d.status==='approved'?'কনফার্মড':'বাতিল'"></span>
@@ -2748,27 +2856,6 @@ html,body{touch-action:auto!important;overflow-x:clip}
         </div>
       </div>
 
-      <div class="dd-card p-4 space-y-3">
-        <div class="flex items-center justify-between gap-3">
-          <div><p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-shield-halved" style="color:var(--accent)"></i>অর্ডার ফোন ভেরিফিকেশন (SMS OTP)</p>
-          <p class="text-xs" style="color:var(--fg3)">চালু থাকলে অর্ডার সাবমিটের সময় কাস্টমারের নম্বরে ৬ সংখ্যার কোড যাবে। বন্ধ থাকলে শুধু নম্বরের ফরম্যাট (01XXXXXXXXX) চেক হবে।</p></div>
-          <label style="position:relative;width:46px;height:26px;flex-shrink:0;cursor:pointer"><input type="checkbox" x-model="settings.otpEnabled" style="opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer;z-index:2"/>
-            <span :style="'position:absolute;inset:0;border-radius:99px;transition:.2s;background:'+(settings.otpEnabled?'#16A34A':'var(--bg3)')"></span>
-            <span :style="'position:absolute;top:3px;left:'+(settings.otpEnabled?'23px':'3px')+';width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.3)'"></span></label>
-        </div>
-        <p class="text-xs font-bold" x-show="settings.otpEnabled&&!(settings.otpSmsUrl||'').trim()" style="color:#DC2626">⚠ চালু আছে কিন্তু SMS গেটওয়ে লিংক নেই — কোড যাবে না, অর্ডার স্বাভাবিক চলবে।</p>
-        <div x-show="settings.otpEnabled" class="space-y-3">
-          <div><label class="dd-label">SMS গেটওয়ে API লিংক</label><input class="dd-input" x-model="settings.otpSmsUrl" placeholder="https://your-sms-gateway/api?key=XXX&number={phone}&message={message}"/>
-            <p class="text-xs mt-1" style="color:var(--fg3)">ব্যবহারযোগ্য চিহ্ন: <b>{phone}</b> (01XXXXXXXXX), <b>{phone88}</b> (8801XXXXXXXXX), <b>{message}</b></p></div>
-          <div class="grid sm:grid-cols-2 gap-3">
-            <div><label class="dd-label">মেথড</label><select class="dd-input" x-model="settings.otpSmsMethod"><option value="GET">GET</option><option value="POST">POST (JSON)</option></select></div>
-            <div x-show="settings.otpSmsMethod==='POST'"><label class="dd-label">POST বডি (JSON)</label><input class="dd-input" x-model="settings.otpSmsBody" placeholder='{"to":"{phone88}","message":"{message}"}'/></div>
-          </div>
-          <div><label class="dd-label">SMS টেক্সট</label><input class="dd-input" x-model="settings.otpSmsText" placeholder="{code} আপনার Daily Deal ভেরিফিকেশন কোড।"/><p class="text-xs mt-1" style="color:var(--fg3)">অবশ্যই <b>{code}</b> রাখুন।</p></div>
-        </div>
-        <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
-      </div>
-
       <div class="dd-card p-4 space-y-2">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-truck-fast" style="color:var(--accent)"></i>কুরিয়ার ট্র্যাকিং লিংক টেমপ্লেট</p>
         <p class="text-xs" style="color:var(--fg3)">ShopBase BD-র ট্র্যাকিং লিংকের ধরন একবার বসান, <b>{id}</b> যেখানে পার্সেল ID বসবে। তারপর অর্ডারে শুধু ID দিলেই লিংক তৈরি হবে।</p>
@@ -2778,17 +2865,53 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
       </div>
 
-      <div class="dd-card p-5 space-y-4">
-        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-envelope-open-text" style="color:var(--accent)"></i>ইমেইল সার্ভিস (EmailJS) — পাসওয়ার্ড রিসেট কোডের জন্য</p>
-        <p class="text-xs" style="color:var(--fg3)">emailjs.com-এ ফ্রি একাউন্ট খুলে Service ID, Template ID ও Public Key বসান। টেমপ্লেটে <code>{{reset_code}}</code>, <code>{{to_email}}</code>, <code>{{site_name}}</code> ভ্যারিয়েবল ব্যবহার করুন।</p>
-        <div class="grid sm:grid-cols-3 gap-3">
-          <div><label class="dd-label">Service ID</label><input class="dd-input" x-model="settings.emailService.serviceId" placeholder="service_xxxx"/></div>
-          <div><label class="dd-label">Template ID</label><input class="dd-input" x-model="settings.emailService.templateId" placeholder="template_xxxx"/></div>
-          <div><label class="dd-label">Public Key</label><input class="dd-input" x-model="settings.emailService.publicKey" placeholder="public key"/></div>
+      <div class="dd-card p-4 space-y-3">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-truck" style="color:var(--accent)"></i>শিপিং চার্জ</p>
+        <p class="text-xs" style="color:var(--fg3)">ইউজার সাইট ও Rules এই দুই মান থেকে চার্জ নেয়। খালি/অসম্ভব হলে ফলব্যাক ৮০/১৫০। <b>সেভ করার আগে ইউজার সাইট আপডেট করা থাকতে হবে</b> (Rules আপডেটের ক্রম: ডিপ্লয় গাইড দেখুন)।</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="dd-label">ঢাকার ভেতরে (৳)</label><input type="number" min="0" class="dd-input" x-model.number="settings.shipping.dhaka"/></div>
+          <div><label class="dd-label">ঢাকার বাইরে (৳)</label><input type="number" min="0" class="dd-input" x-model.number="settings.shipping.outside"/></div>
         </div>
-        <div class="flex items-center gap-2 flex-wrap pt-1">
-          <input class="dd-input flex-1" style="min-width:160px" type="email" x-model="testEmailAddr" placeholder="টেস্ট ইমেইল ঠিকানা"/>
-          <button @click="sendTestEmail()" :disabled="testEmailSending" class="btn-primary text-xs py-2.5 px-4"><i class="fa-solid fa-paper-plane mr-1"></i><span x-text="testEmailSending?'পাঠানো হচ্ছে...':'টেস্ট মেইল পাঠান'"></span></button>
+        <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
+      </div>
+
+      <div class="dd-card p-4 space-y-3">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-user-shield" style="color:var(--accent)"></i>নিরাপত্তা ও ডেটা পরিষ্কার</p>
+        <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="settings.orderRateLimit"/> অর্ডার-ফ্লাড ব্রেক (২০ সেকেন্ডে ১টি অর্ডার; App Check Enforce হলে কার্যকর)</label>
+        <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="settings.forcePinChange"/> দুর্বল (৪ ডিজিট) PIN-ধারী রিসেলারকে PIN বদল বাধ্যতামূলক করুন</label>
+        <button @click="saveSettings()" class="btn-primary text-xs">সুইচ সেভ করুন</button>
+        <p class="text-xs" style="color:var(--fg3)">PIN-রেকর্ড এখনো পরিষ্কার হয়নি এমন রিসেলার: <b x-text="fbResellers.filter(r=>r.pin).length"></b> জন (PIN-এর দৈর্ঘ্য হ্যাশ থেকে জানা যায় না; লগইন করলে তাদের pin নিজে মুছে যায়)।</p>
+
+        <div class="pt-2" style="border-top:1px dashed var(--border)">
+          <p class="text-xs font-bold mb-2" style="color:var(--fg)">পাবলিক settings-এ গোপন ফিল্ড আছে কিনা</p>
+          <div class="flex gap-2 flex-wrap">
+            <button @click="runSecCheck()" :disabled="secBox.checking" class="btn-ghost text-xs">নিরাপত্তা চেক চালান</button>
+            <button @click="purgeLegacySecrets()" class="btn-danger text-xs">পুরনো গোপন ফিল্ড মুছুন</button>
+          </div>
+          <p class="text-xs font-bold mt-2" x-show="secBox.found&&secBox.found.length" style="color:#DC2626" x-text="'⚠ পাবলিক settings-এ নিষিদ্ধ ফিল্ড: '+(secBox.found||[]).join(', ')+' — মুছুন, আর SMS/ইমেইল প্রোভাইডারের পুরনো API কী বাতিল করুন।'"></p>
+          <p class="text-xs font-bold mt-2" x-show="secBox.found&&secBox.found.length===0" style="color:#16A34A">✅ কোনো গোপন-নামের ফিল্ড পাওয়া যায়নি।</p>
+        </div>
+
+        <div class="pt-2" style="border-top:1px dashed var(--border)">
+          <p class="text-xs font-bold mb-1" style="color:var(--fg)">ownerUid-বিহীন পুরনো কাস্টমার রেকর্ড</p>
+          <p class="text-xs mb-2" style="color:var(--fg3)">এগুলো এখন শুধু অ্যাডমিন পড়তে পারে। আগে CSV নামিয়ে রাখুন, তারপর দরকারে মুছুন। (বাটন চাপলে একবার ডেটা আনা হয়)</p>
+          <div class="flex gap-2 flex-wrap">
+            <button @click="scanUsers()" :disabled="secBox.usersBusy" class="btn-ghost text-xs">স্ক্যান করুন</button>
+            <button x-show="secBox.usersInfo&&secBox.usersInfo.orphan>0" @click="exportOrphansCsv()" class="btn-ghost text-xs">CSV এক্সপোর্ট</button>
+            <button x-show="secBox.usersInfo&&secBox.usersInfo.orphan>0" @click="deleteOrphans()" class="btn-danger text-xs">মুছে ফেলুন</button>
+            <button x-show="secBox.usersInfo&&secBox.usersInfo.hash>0" @click="purgePasswordHash()" class="btn-danger text-xs">passwordHash মুছুন</button>
+          </div>
+          <p class="text-xs mt-2" x-show="secBox.usersInfo" style="color:var(--fg2)" x-text="secBox.usersInfo?('মোট '+secBox.usersInfo.total+' · ownerUid-বিহীন '+secBox.usersInfo.orphan+' · passwordHash আছে '+secBox.usersInfo.hash):''"></p>
+        </div>
+
+        <div class="pt-2" style="border-top:1px dashed var(--border)">
+          <p class="text-xs font-bold mb-2" style="color:var(--fg)">আটকে যাওয়া লক মুক্ত করুন</p>
+          <div class="flex gap-2 flex-wrap items-center">
+            <input class="dd-input flex-1" style="min-width:140px" x-model="secBox.trxDel" placeholder="TrxID"/><button @click="clearTrxLock()" class="btn-ghost text-xs">TrxID লক মুছুন</button>
+          </div>
+          <div class="flex gap-2 flex-wrap items-center mt-2">
+            <input class="dd-input flex-1" style="min-width:140px" x-model="secBox.lockPhone" placeholder="রিসেলার ফোন (01XXXXXXXXX)"/><button @click="clearDebitLock()" class="btn-ghost text-xs">উইথড্র/রিচার্জ লক মুছুন</button>
+          </div>
         </div>
       </div>
     </div>
@@ -2853,7 +2976,7 @@ function Admin(){return{
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
   fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
-  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[]},
+  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
   fbSavingsWallets:[],savingsF:'সব',
   fbInstallmentOrders:[],installmentF:'সব',
@@ -2872,7 +2995,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
-  orderSearch:'',oFilt:'সব',orderSuspectOnly:false,custStats:{busy:false,msg:''},_ordersLoaded:false,unmigOpen:false,
+  orderSearch:'',oFilt:'সব',orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
   orderDetailOpen:false,viewOrder:null,
 
   assignSearch:'',draggedId:null,
@@ -2883,7 +3006,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',otpEnabled:false,otpSmsUrl:'',otpSmsMethod:'GET',otpSmsBody:'',otpSmsText:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,kycThreshold:5000,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -2895,9 +3018,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     codSettings:{extraCharge:0,discountOnAdvance:0},
     checkoutPromoBanners:[],
     supportPhone:'',telegramLink:'',
-    emailService:{provider:'emailjs',serviceId:'',templateId:'',publicKey:''},
+    shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,
   },
-  testEmailAddr:'',testEmailSending:false,
+  secBox:{checking:false,found:null,usersBusy:false,usersInfo:null,trxDel:'',lockPhone:''},
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
     {title:'',sub:'সেরা পণ্য · সেরা দাম · দ্রুত ডেলিভারি',img:'',badge:'🔥 হট ডিল'},
@@ -3258,7 +3381,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenRecharges(rs=>this.fbRecharges=rs.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
       window.$db.listenServices(ss=>this.fbServices=ss.sort((a,b)=>(a.order||0)-(b.order||0)));
       window.$db.listenServiceOrders(os=>this.fbSvcOrders=os.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
-      window.$db.listenResellerConfig(c=>{const d=this.rcfg;const arr=x=>Array.isArray(x)?x:(x&&typeof x==='object'?Object.values(x):[]);this.rcfg={...d,...c,pages:{ecom:{...d.pages.ecom,...((c.pages||{}).ecom||{})},print:{...d.pages.print,...((c.pages||{}).print||{})},guideline:{...d.pages.guideline,...((c.pages||{}).guideline||{})}},learning:arr(c.learning),faq:arr(c.faq)}});
+      window.$db.listenResellerConfig(c=>this._loadRcfg(c||{}));
       window.$db.listenWithdrawals(ws=>this.fbWithdrawals=ws.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
       window.$db.listenWalletTx(txs=>this.fbWalletTx=txs.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
       window.$db.listenDeposits(ds=>this.fbDeposits=ds.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
@@ -3700,6 +3823,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
         await window.$db.updateCustomerStats(upd);
         for(const h of Object.keys(upd)){if(upd[h]===null)delete st.cache[h];else st.cache[h]=upd[h]}
       }
+      this.custStats.last=Date.now();
       return {written:w,removed:d,total:Object.keys(comp).length};
     }catch(e){console.warn('customerStats sync',e);return {error:String((e&&e.message)||e)}}
     finally{st.busy=false}
@@ -3726,13 +3850,19 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
         if(Math.abs(sum-n(o.subtotal))>1)why.push('আইটেমের যোগফল ('+sum+') ≠ সাবটোটাল ('+n(o.subtotal)+')');
         const exp=n(o.subtotal)+n(o.shipping)+n(o.codExtraCharge)-n(o.prepaidDiscount)-n(o.advanceShipDiscount)-n(o.promoDiscount);
         if(Math.abs(Math.max(0,exp)-n(o.total))>1)why.push('মোট ('+n(o.total)+') হিসাবের ('+Math.max(0,exp)+') সাথে মেলে না');
-        if(o.shipping!=null&&n(o.shipping)!==80&&n(o.shipping)!==150)why.push('শিপিং চার্জ অস্বাভাবিক ('+n(o.shipping)+')');
+        const _sh=this.settings.shipping||{},_d=(_sh.dhaka!=null&&_sh.dhaka!=='')?n(_sh.dhaka):80,_o=(_sh.outside!=null&&_sh.outside!=='')?n(_sh.outside):150;
+        if(o.shipping!=null&&n(o.shipping)!==_d&&n(o.shipping)!==_o)why.push('শিপিং চার্জ অস্বাভাবিক ('+n(o.shipping)+')');
       }
       items.forEach(it=>{
         if(n(it.qty)<1||n(it.qty)>1000)why.push('অস্বাভাবিক পরিমাণ ('+n(it.qty)+')');
         const p=(this.fbProducts||[]).find(x=>String(x.fbKey)===String(it.id)||String(x.id)===String(it.id));
         if(p&&it.resellerSellPrice==null&&n(it.price)<n(p.price)-0.5)why.push('"'+(it.name||'পণ্য')+'" বর্তমান দামের (৳'+n(p.price)+') চেয়ে কম (৳'+n(it.price)+')');
       });
+      if(o.orderType==='reseller'){
+        items.forEach(it=>{if(it.resellerSellPrice!=null&&it.resellerPrice!=null&&n(it.resellerSellPrice)<n(it.resellerPrice))why.push('বিক্রয়মূল্য (৳'+n(it.resellerSellPrice)+') < রিসেলার প্রাইস (৳'+n(it.resellerPrice)+')');});
+        if(o.collectAmount!=null&&o.subtotal!=null&&(n(o.collectAmount)<n(o.subtotal)-1||n(o.collectAmount)>n(o.total)+1))why.push('কালেক্ট অ্যামাউন্ট (৳'+n(o.collectAmount)+') সীমার বাইরে');
+      }
+      if(o.trxId&&this.trxDup(o.trxId))why.push('ডুপ্লিকেট TrxID');
       return why.slice(0,3).join(' · ');
     }catch(e){return ''}
   },
@@ -3813,12 +3943,13 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       const bal=r?.walletBalance||0;
       if(bal<w.amount){this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error');return;}
       await window.$db.saveReseller({walletBalance:bal-w.amount},w.resellerPhone);
-      await window.$db.pushWalletTx({resellerPhone:w.resellerPhone,amount:-w.amount,type:'withdrawal',note:'উইথড্র পরিশোধ ('+(w.method||'')+' '+(w.number||'')+')',timestamp:Date.now()});
+      await window.$db.pushWalletTx({resellerPhone:w.resellerPhone,amount:-w.amount,type:'withdrawal',note:'উইথড্র পরিশোধ ('+(w.method||'')+' '+(w.number||'')+')'+(w.fee?(' — ফি ৳'+w.fee+', নেট ৳'+w.netAmount):''),timestamp:Date.now()});
       await window.$db.saveWithdrawal({status:'paid',paidAt:Date.now()},w.fbKey);
+      try{await window.$db.removePath('pendingDebit/'+w.resellerPhone)}catch(e){}
       this.showToast('উইথড্র পরিশোধ সম্পন্ন! ✅','success');
     }catch{this.showToast('ব্যর্থ!','error')}
   },
-  async rejectWithdrawal(w){if(!confirm('রিকোয়েস্ট বাতিল করবেন?'))return;try{await window.$db.saveWithdrawal({status:'rejected'},w.fbKey);this.showToast('বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  async rejectWithdrawal(w){if(!confirm('রিকোয়েস্ট বাতিল করবেন?'))return;try{await window.$db.saveWithdrawal({status:'rejected'},w.fbKey);try{await window.$db.removePath('pendingDebit/'+w.resellerPhone)}catch(e){}this.showToast('বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
   // ══════════ মোবাইল রিচার্জ ══════════
   async approveRecharge(r){
     try{
@@ -3832,12 +3963,13 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       await window.$db.pushWalletTx({resellerPhone:r.resellerPhone,amount:-r.amount,type:'recharge',note:'মোবাইল রিচার্জ — '+r.number+' ('+(r.operatorLabel||'')+')',timestamp:Date.now()});
       if(comm>0)await window.$db.pushWalletTx({resellerPhone:r.resellerPhone,amount:comm,type:'recharge_commission',note:'রিচার্জ কমিশন — '+r.number,timestamp:Date.now()});
       await window.$db.updateRecharge(r.fbKey,{status:'done',commission:comm,doneAt:Date.now()});
+      try{await window.$db.removePath('pendingDebit/'+r.resellerPhone)}catch(e){}
       this.showToast('রিচার্জ সম্পন্ন হিসেবে মার্ক হয়েছে ✅','success');
     }catch(e){this.showToast('ব্যর্থ!','error')}
   },
   async rejectRecharge(r){
     const why=prompt('বাতিলের কারণ (ঐচ্ছিক):','');if(why===null)return;
-    try{await window.$db.updateRecharge(r.fbKey,{status:'rejected',note:why||'',doneAt:Date.now()});this.showToast('বাতিল হয়েছে','success')}catch(e){this.showToast('ব্যর্থ!','error')}
+    try{await window.$db.updateRecharge(r.fbKey,{status:'rejected',note:why||'',doneAt:Date.now()});try{await window.$db.removePath('pendingDebit/'+r.resellerPhone)}catch(e){}this.showToast('বাতিল হয়েছে','success')}catch(e){this.showToast('ব্যর্থ!','error')}
   },
   get filteredRecharges(){return this.fbRecharges.filter(r=>this.rechargeF==='সব'||r.status===this.rechargeF)},
   // ══════════ ফ্রিল্যান্সিং সার্ভিস ══════════
@@ -3888,7 +4020,173 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     }catch(e){this.showToast('ব্যর্থ!','error')}
   },
   // ══════════ রিসেলার কনটেন্ট ══════════
-  async saveRcfg(){try{await window.$db.saveResellerConfig(JSON.parse(JSON.stringify(this.rcfg)));this.showToast('সেভ হয়েছে ✅','success')}catch(e){this.showToast('সেভ ব্যর্থ!','error')}},
+  // ══════════ নিরাপত্তা সরঞ্জাম (Spark-সামঞ্জস্যপূর্ণ, বাটন চাপলে একবার get) ══════════
+  _FORBID:/^otp|^emailService$|[Ss]ecret|[Tt]oken|[Pp]assword|[Kk]ey$/,
+  async runSecCheck(){
+    this.secBox.checking=true;
+    try{
+      const v=(await window.$db.getOnceVal('settings'))||{},f=[];
+      Object.keys(v).forEach(k=>{if(this._FORBID.test(k))f.push('settings/'+k)});
+      Object.keys(v.settings||{}).forEach(k=>{if(this._FORBID.test(k))f.push('settings/settings/'+k)});
+      this.secBox.found=f;
+    }catch(e){this.showToast('চেক ব্যর্থ!','error')}
+    this.secBox.checking=false;
+  },
+  async purgeLegacySecrets(){
+    if(!confirm('পুরনো OTP/SMS/ইমেইল-সার্ভিস ফিল্ড settings থেকে মুছে ফেলবেন?'))return;
+    try{
+      const keys=['otpEnabled','otpSmsUrl','otpSmsMethod','otpSmsBody','otpSmsText','emailService'];
+      const u={};
+      keys.forEach(k=>{u[k]=null;u['settings/'+k]=null});
+      (this.secBox.found||[]).forEach(p=>{u[p.replace(/^settings\//,'')]=null});
+      await window.$db.updatePath('settings',u);
+      const names=new Set(keys.concat(Object.keys(u).map(x=>x.split('/').pop())));
+      names.forEach(k=>{delete this.settings[k]});   // নইলে পরের "সেভ"-এ আবার লেখা হবে
+      this.secBox.found=[];
+      this.showToast('গোপন ফিল্ড মুছে গেছে ✅','success');
+    }catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  async scanUsers(){
+    this.secBox.usersBusy=true;
+    try{
+      const v=(await window.$db.getOnceVal('users'))||{};window.__usersCache=v;
+      const ids=Object.keys(v);
+      this.secBox.usersInfo={total:ids.length,orphan:ids.filter(k=>!(v[k]&&v[k].ownerUid)).length,hash:ids.filter(k=>v[k]&&v[k].passwordHash).length};
+    }catch(e){this.showToast('স্ক্যান ব্যর্থ!','error')}
+    this.secBox.usersBusy=false;
+  },
+  _orphanIds(){const v=window.__usersCache||{};return Object.keys(v).filter(k=>!(v[k]&&v[k].ownerUid))},
+  exportOrphansCsv(){
+    const v=window.__usersCache||{},q=x=>'"'+String(x==null?'':x).replace(/"/g,'""')+'"';
+    const rows=[['id','name','phone','email','address','division','district','lastOrderAt'].join(',')];
+    this._orphanIds().forEach(k=>{const r=v[k]||{};rows.push([k,r.name,r.phone,r.email,r.address,r.division,r.district,r.lastOrderAt].map(q).join(','))});
+    const b=new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='orphan-users.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  },
+  async _usersBatch(map){
+    const keys=Object.keys(map);
+    for(let i=0;i<keys.length;i+=300){const part={};keys.slice(i,i+300).forEach(k=>part[k]=null);await window.$db.updatePath('users',part)}
+  },
+  async deleteOrphans(){
+    const ids=this._orphanIds();if(!ids.length)return;
+    if(!confirm(ids.length+'টি পুরনো কাস্টমার রেকর্ড মুছে ফেলবেন? আগে CSV নামিয়ে রেখেছেন তো? এটি ফেরানো যাবে না।'))return;
+    try{const m={};ids.forEach(k=>m[k]=1);await this._usersBatch(m);this.showToast('মুছে ফেলা হয়েছে ✅','success');await this.scanUsers()}catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  async purgePasswordHash(){
+    const v=window.__usersCache||{},ids=Object.keys(v).filter(k=>v[k]&&v[k].passwordHash);if(!ids.length)return;
+    if(!confirm(ids.length+'টি রেকর্ড থেকে passwordHash মুছবেন?'))return;
+    try{const m={};ids.forEach(k=>m[k+'/passwordHash']=1);await this._usersBatch(m);this.showToast('passwordHash মুছে গেছে ✅','success');await this.scanUsers()}catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  async clearTrxLock(){
+    const k=String(this.secBox.trxDel||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(k.length<6)return this.showToast('সঠিক TrxID দিন','error');
+    if(!confirm('"'+k+'" লক মুছে ফেলবেন? এরপর এই TrxID আবার ব্যবহার করা যাবে।'))return;
+    try{await window.$db.removePath('usedTrx/'+k);this.secBox.trxDel='';this.showToast('লক মুছে গেছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  async clearDebitLock(){
+    const p=String(this.secBox.lockPhone||'').replace(/\D/g,'');
+    if(!/^01\d{9}$/.test(p))return this.showToast('সঠিক ফোন নম্বর দিন','error');
+    try{await window.$db.removePath('pendingDebit/'+p);this.secBox.lockPhone='';this.showToast('লক মুছে গেছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  // ── ডুপ্লিকেট TrxID (পুরনো রেকর্ডসহ নরমালাইজ করে মেলানো; ক্যাশড) ──
+  _trxN(t){return String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'')},
+  _trxMap(){
+    const key=[this.fbOrders.length,this.fbDeposits.length,(this.fbCustDeposits||[]).length,this.fbSavingsWallets.length,this.fbInstallmentOrders.length].join('|');
+    const c=window.__trxc||(window.__trxc={key:'',map:{}});
+    if(c.key===key)return c.map;
+    const m={},add=t=>{const k=this._trxN(t);if(k.length>=6)m[k]=(m[k]||0)+1};
+    this.fbOrders.forEach(o=>add(o.trxId));this.fbDeposits.forEach(d=>add(d.trxId));(this.fbCustDeposits||[]).forEach(d=>add(d.trxId));
+    this.fbSavingsWallets.forEach(w=>(w.contributions||[]).forEach(x=>add(x.trxId)));
+    this.fbInstallmentOrders.forEach(o=>{(o.schedule||[]).forEach(s=>add(s.trxId));(o.payments||[]).forEach(p=>add(p.trxId))});
+    c.key=key;c.map=m;return m;
+  },
+  trxDup(t){const k=this._trxN(t);return k.length>=6&&(this._trxMap()[k]||0)>1},
+  // ── লিংক স্যানিটাইজ (S10) ──
+  safeUrl(u){
+    u=String(u==null?'':u).trim();if(!u)return '';
+    if(/^(javascript|data|vbscript|file|blob|about):/i.test(u))return '';
+    if(/^https:\/\//i.test(u))return u;
+    if(/^http:\/\//i.test(u))return 'https://'+u.slice(7);
+    if(/^tel:\+?[0-9][0-9\-\s()]{2,19}$/i.test(u))return u.replace(/\s+/g,'');
+    if(/^[a-z][a-z0-9+.-]*:/i.test(u))return '';
+    if(/^(wa\.me|t\.me)\//i.test(u)||/^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(\/\S*)?$/i.test(u))return 'https://'+u;
+    return '';
+  },
+  openLink(u){const s=this.safeUrl(u);if(!s)return this.showToast('লিংকটি সঠিক/নিরাপদ নয়','error');window.open(s,'_blank','noopener')},
+  // ══════════ রিসেলার কনফিগ (খ.২ ডেটা মডেল) ══════════
+  _biHome:[['allproducts','সকল প্রোডাক্টস'],['newproducts','নতুন প্রোডাক্টস'],['boosting','বুস্টিং প্রোডাক্টস'],['search','সার্চ প্রোডাক্টস'],['topselling','টপ সেলিং প্রোডাক্টস'],['print','কাস্টমাইজ প্রিন্ট'],['guideline','সেলস গাইডলাইন'],['learning','লার্নিং ভিডিও'],['freelance','ফ্রিল্যান্সিং মার্কেটপ্লেস'],['recharge','মোবাইল রিচার্জ'],['ecom','ই-কমার্স ওয়েবসাইট'],['referral','প্যাসিভ ইনকাম'],['orders','অর্ডার লিস্ট'],['activeorders','অ্যাক্টিভ অর্ডারস'],['dashboard','সেলস ড্যাশবোর্ড'],['walletstatement','ব্যালেন্স স্টেটমেন্ট'],['faq','সাধারণ জিজ্ঞাসা'],['youtube','ইউটিউব চ্যানেল'],['telegram','টেলিগ্রাম সাপোর্ট গ্রুপ'],['support','সাপোর্ট সেন্টার']].map(x=>({id:'h_'+x[0],label:x[1]})),
+  _biSide:['রিসেলার হোম','ইউজার সাইটে ফিরে যান','প্রোফাইল','নতুন পোস্ট','সকল প্রোডাক্ট','প্রোডাক্টের ভিডিও (শীঘ্রই)','ফেভরিট প্রোডাক্ট (শীঘ্রই)','স্টকআউট প্রোডাক্ট (শীঘ্রই)','অর্ডার লিস্ট','অ্যাক্টিভ অর্ডার','কার্ট লিস্ট','সেলস ও প্রফিট','ব্যালেন্স স্টেটমেন্ট','অ্যাড একাউন্ট','টাকা উত্তোলন','প্যাসিভ ইন.প্যানেল','সেলার ইনফরমেশন','সাপোর্ট টিকেট'].map((l,i)=>({id:'s'+i,label:l})),
+  _biQuick:[{id:'q_call',label:'কুইক: কল সেন্টার'},{id:'q_fb',label:'কুইক: ফেইসবুক'},{id:'q_yt',label:'কুইক: ইউটিউব'},{id:'q_tg',label:'কুইক: টেলিগ্রাম'}],
+  _rcDefaults(){return{
+    contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},
+    buttons:[],builtinOverrides:{},
+    announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},
+    features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},
+    withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},
+    deposit:{min:0,methods:[],notice:''},
+    referral:{text:''},
+  }},
+  _popSig(p){return [p.title,p.body,p.image].join('|')},
+  _toLocalDT(ms){if(!(Number(ms)>0))return '';const d=new Date(Number(ms)),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes())},
+  _loadRcfg(c){
+    const d=this.rcfg,def=this._rcDefaults();
+    const arr=x=>Array.isArray(x)?x:(x&&typeof x==='object'?Object.values(x):[]);
+    const pages={...(c.pages||{})};
+    ['ecom','print','guideline'].forEach(k=>{pages[k]={title:'',body:'',btnText:'',btnLink:'',...(d.pages&&d.pages[k]||{}),...(pages[k]||{})}});
+    const ov={...(c.builtinOverrides||{})};
+    [...this._biHome,...this._biSide,...this._biQuick].forEach(b=>{const o={...(ov[b.id]||{})};o.hide=o.active===false;ov[b.id]=o});
+    const contact={...def.contact,...(c.contact||{})};contact.helplines=arr(contact.helplines).map(h=>({active:true,label:'',number:'',whatsapp:'',...h}));
+    const announce={...def.announce,...(c.announce||{})};announce.popup={...def.announce.popup,...(announce.popup||{})};announce.popup.expiresAtStr=this._toLocalDT(announce.popup.expiresAt);
+    const features={...def.features,...(c.features||{})};
+    const withdraw={...def.withdraw,...(c.withdraw||{})};withdraw.methods=arr(withdraw.methods);withdraw.methodsText=withdraw.methods.join(', ');
+    const deposit={...def.deposit,...(c.deposit||{})};deposit.methods=arr(deposit.methods).map(m=>({name:'',number:'',type:'',...m}));
+    this.rcfg={...d,...c,pages,learning:arr(c.learning).map(v=>({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new',...v})),faq:arr(c.faq),buttons:arr(c.buttons).map(b=>({...b})),builtinOverrides:ov,contact,announce,features,withdraw,deposit,referral:{...def.referral,...(c.referral||{})}};
+    window.__popSig=this._popSig(announce.popup);window.__popUpd=Number(announce.popup.updatedAt)||0;
+  },
+  addHelpline(){this.rcfg.contact.helplines.push({label:'',number:'',whatsapp:'',active:true})},
+  addCustomButton(){if(this.rcfg.buttons.length>=50)return this.showToast('সর্বোচ্চ ৫০টি বাটন','error');this.rcfg.buttons.push({id:'b'+Date.now().toString(36),zone:'home',label:'',icon:'fa-solid fa-link',bg:'#E0F2FE',color:'#0369A1',order:100,active:true,type:'link',target:'',openIn:'new'})},
+  addDepositMethod(){this.rcfg.deposit.methods.push({name:'',number:'',type:'Personal'})},
+  addCustomPage(){
+    const id=(prompt('পেজের আইডি (ইংরেজি ছোট হাতের অক্ষর/সংখ্যা, যেমন terms):','')||'').trim().toLowerCase();
+    if(!/^[a-z][a-z0-9_]{1,24}$/.test(id))return this.showToast('আইডি সঠিক নয়','error');
+    if(this.rcfg.pages[id])return this.showToast('এই আইডি আগেই আছে','error');
+    this.rcfg.pages[id]={title:'',body:'',btnText:'',btnLink:'',custom:true};
+  },
+  delCustomPage(k){if(!confirm('"'+k+'" পেজ মুছবেন? এই পেজে লিংক করা বাটনগুলোও ঠিক করে নিন।'))return;delete this.rcfg.pages[k]},
+  get customPageKeys(){return Object.keys(this.rcfg.pages||{}).filter(k=>this.rcfg.pages[k]&&this.rcfg.pages[k].custom)},
+  _cleanRcfg(c){
+    const bad=[];
+    const fix=(o,k,label)=>{if(o&&o[k]){const s=this.safeUrl(o[k]);if(!s)bad.push(label);else o[k]=s}};
+    ['supportTelegram','telegramGroup','youtubeLink'].forEach(k=>fix(c,k,k));
+    ['facebookGroup','facebookPage','messenger','instagram','tiktok','website','appLink'].forEach(k=>fix(c.contact,k,'contact.'+k));
+    fix(c.announce.popup,'btnLink','পপআপ বাটন লিংক');fix(c.announce.popup,'image','পপআপ ছবি');
+    Object.keys(c.pages||{}).forEach(k=>fix(c.pages[k],'btnLink','পেজ '+k+' বাটন লিংক'));
+    (c.learning||[]).forEach((v,i)=>fix(v,'url','ভিডিও #'+(i+1)+' লিংক'));
+    (c.buttons||[]).forEach((b,i)=>{if(b.type==='link')fix(b,'target','বাটন "'+(b.label||i+1)+'" লিংক');else if(b.type==='whatsapp'||b.type==='tel')b.target=String(b.target||'').replace(/[^\d+]/g,'')});
+    if(bad.length)return 'লিংক সঠিক/নিরাপদ নয়: '+bad.slice(0,3).join(', ');
+    // মডেল পরিষ্কার
+    c.buttons=(c.buttons||[]).filter(b=>b&&b.label).slice(0,50).map(b=>({...b,order:Number(b.order)||0}));
+    const ov={};Object.keys(c.builtinOverrides||{}).forEach(id=>{const o=c.builtinOverrides[id]||{},r={};
+      if(o.hide)r.active=false;['label','icon','bg','color','type','target'].forEach(k=>{if(o[k])r[k]=o[k]});
+      if(o.order!==undefined&&o.order!==''&&o.order!==null&&!isNaN(Number(o.order)))r.order=Number(o.order);
+      if(Object.keys(r).length)ov[id]=r});
+    c.builtinOverrides=ov;
+    c.contact.helplines=(c.contact.helplines||[]).filter(h=>h&&(h.number||h.whatsapp)).map(h=>({label:h.label||'',number:String(h.number||'').replace(/[^\d+]/g,''),whatsapp:String(h.whatsapp||'').replace(/[^\d]/g,''),active:h.active!==false}));
+    const p=c.announce.popup;p.expiresAt=p.expiresAtStr?(new Date(p.expiresAtStr).getTime()||0):0;delete p.expiresAtStr;
+    p.updatedAt=(this._popSig(p)!==window.__popSig)?Date.now():(window.__popUpd||0);
+    const w=c.withdraw;w.methods=String(w.methodsText||'').split(',').map(x=>x.trim()).filter(Boolean);delete w.methodsText;
+    ['min','max','feePct'].forEach(k=>w[k]=Number(w[k])||0);
+    c.deposit.min=Number(c.deposit.min)||0;c.deposit.methods=(c.deposit.methods||[]).filter(m=>m&&m.name&&m.number).map(m=>({name:m.name,number:String(m.number),type:m.type||''}));
+    (c.learning||[]).forEach(v=>{v.order=Number(v.order)||0});
+    return '';
+  },
+  async saveRcfg(){
+    try{
+      const c=JSON.parse(JSON.stringify(this.rcfg));
+      const err=this._cleanRcfg(c);if(err)return this.showToast(err,'error');
+      await window.$db.saveResellerConfig(c);this.showToast('সেভ হয়েছে ✅','success');
+    }catch(e){this.showToast('সেভ ব্যর্থ!','error')}
+  },
   // ══════════ DEPOSITS (NEW) ══════════
   async approveDeposit(d){
     try{
@@ -4138,23 +4436,6 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       this.showToast('সেটিংস সেভ! ✅','success');
     }catch{this.showToast('সেভ ব্যর্থ!','error')}
   },
-  async sendTestEmail(){
-    const es=this.settings.emailService||{};
-    if(!this.testEmailAddr)return this.showToast('একটি টেস্ট ইমেইল ঠিকানা দিন!','error');
-    if(!es.serviceId||!es.templateId||!es.publicKey)return this.showToast('আগে Service ID, Template ID ও Public Key পূরণ করুন!','error');
-    this.testEmailSending=true;
-    try{
-      const res=await fetch('https://api.emailjs.com/api/v1.0/email/send',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({service_id:es.serviceId,template_id:es.templateId,user_id:es.publicKey,
-          template_params:{to_email:this.testEmailAddr,reset_code:'123456',site_name:this.settings.siteName||'Daily Deal'}})
-      });
-      this.testEmailSending=false;
-      if(res.ok)this.showToast('টেস্ট মেইল পাঠানো হয়েছে! ইনবক্স চেক করুন ✅','success');
-      else this.showToast('মেইল পাঠাতে ব্যর্থ — EmailJS তথ্য যাচাই করুন।','error');
-    }catch(e){this.testEmailSending=false;this.showToast('মেইল পাঠাতে ব্যর্থ — ইন্টারনেট/কনফিগ চেক করুন।','error')}
-  },
-
   showToast(msg,type='success'){this.toast={show:true,msg,type};setTimeout(()=>this.toast.show=false,3500)},
 }}
 </script>
