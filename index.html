@@ -38,7 +38,7 @@ tailwind.config={
 <!-- Firebase (merged: products, orders, categories, sections, notifications, custom buttons, pinned products, settings, storage) -->
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,push,set,onValue,update,remove,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,push,set,get,onValue,update,remove,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 const cfg={
@@ -113,6 +113,8 @@ window.$db={
   listenUsers:(cb)=>onValue(ref(db,'users'),s=>{const v=s.val();cb(v?Object.keys(v).length:0)},{onlyOnce:false}),
   // Resellers (NEW — MLM/Reselling system, keyed by phone number)
   saveReseller:async(data,phone)=>{await update(ref(db,'resellers/'+phone),data);return phone},
+  getReferralIndex:async()=>{const s=await get(ref(db,'referralCodes'));return s.val()||{}},
+  setReferralIndex:async(code,phone)=>set(ref(db,'referralCodes/'+code),{resellerPhone:phone}),
   deleteReseller:async(phone)=>remove(ref(db,'resellers/'+phone)),
   getOnceVal:(path)=>new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),e=>rej(e),{onlyOnce:true})),
   updatePath:async(path,obj)=>update(ref(db,path),obj),
@@ -1891,6 +1893,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
 
   <!-- ══ RESELLER MANAGEMENT (NEW) ══ -->
   <div x-show="activeTab==='resellers'" x-cloak class="animate-fade-in">
+    <div class="mb-3"><button @click="repairReferralIndex(false)" class="btn-ghost text-xs"><i class="fa-solid fa-screwdriver-wrench"></i> রেফার কোড মেরামত (সব অ্যাপ্রুভড রিসেলার)</button></div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
       <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট রিসেলার</p><p class="font-display text-3xl" style="color:var(--fg)" x-text="approvedResellers.length"></p><i class="fa-solid fa-store absolute bottom-4 right-4 text-2xl opacity-10" style="color:var(--accent)"></i></div>
       <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">পেন্ডিং আবেদন</p><p class="font-display text-3xl" style="color:#EA580C" x-text="pendingResellers.length"></p><i class="fa-solid fa-hourglass-half absolute bottom-4 right-4 text-2xl opacity-10" style="color:#EA580C"></i></div>
@@ -3509,7 +3512,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenNotifications(notifs=>this.fbNotifications=notifs.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)));
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
       window.$db.listenPinnedProducts(pins=>{this.fbPinned=pins});
-      window.$db.listenResellers(rs=>this.fbResellers=rs);
+      window.$db.listenResellers(rs=>{this.fbResellers=rs;if(!this._rrAuto&&rs.length){this._rrAuto=true;setTimeout(()=>this.repairReferralIndex(true),2500)}});
       window.$db.listenSharedLinks(l=>this.fbLinks=l);
       window.$db.listenBlocklist(b=>this.fbBlocks=b.sort((x,y)=>(y.at||0)-(x.at||0)));
       window.$db.listenRecharges(rs=>this.fbRecharges=rs.sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0)));
@@ -4031,13 +4034,28 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   // ══════════ RESELLER / MLM SYSTEM (NEW) ══════════
   generateReferralCode(phone){return 'RS'+String(phone).slice(-6)+Math.random().toString(36).slice(2,4).toUpperCase()},
+  // রেফার কোড মেরামত: অ্যাপ্রুভড সব রিসেলারের কোড থাকা ও পাবলিক ইনডেক্সে (referralCodes) তোলা নিশ্চিত করে
+  async repairReferralIndex(silent){
+    if(this._rrBusy)return;this._rrBusy=true;
+    try{
+      const idx=await window.$db.getReferralIndex();let made=0,fixed=0;
+      for(const r of this.fbResellers.filter(x=>x.status==='approved')){
+        let code=r.myReferralCode;
+        if(!code){code=this.generateReferralCode(r.fbKey);await window.$db.saveReseller({myReferralCode:code},r.fbKey);made++}
+        const cur=idx[code];
+        if(!cur||cur.resellerPhone!==r.fbKey){await window.$db.setReferralIndex(code,r.fbKey);fixed++;idx[code]={resellerPhone:r.fbKey}}
+      }
+      if(!silent||made||fixed)this.showToast('রেফার কোড ঠিক আছে ✅ (নতুন কোড '+made+', ইনডেক্সে যোগ '+fixed+')','success');
+    }catch(e){if(!silent)this.showToast('মেরামত ব্যর্থ — রুলস আপডেট করা আছে কি?','error')}
+    this._rrBusy=false;
+  },
   async approveReseller(r){
     try{
       let bonus=0;
       if(r.referralCodeUsed&&!r.bonusCredited)bonus=Number(this.settings.resellSignupBonus)||0;
       const myCode=r.myReferralCode||this.generateReferralCode(r.fbKey);
       await window.$db.saveReseller({status:'approved',myReferralCode:myCode,walletBalance:(r.walletBalance||0)+bonus,bonusCredited:bonus>0?true:(r.bonusCredited||false),approvedAt:Date.now()},r.fbKey);
-      await set(ref(db,'referralCodes/'+myCode),{resellerPhone:r.fbKey}); // পাবলিক রেফারেল-কোড ইনডেক্স — সাইট থেকে পুরো resellers টেবিল না পড়েই কোড যাচাই করা যাবে
+      try{await window.$db.setReferralIndex(myCode,r.fbKey)}catch(ie){this.showToast('অ্যাপ্রুভ হয়েছে, কিন্তু রেফার-কোড ইনডেক্স লেখা যায়নি — রুলস পাবলিশ করে "রেফার কোড মেরামত" চাপুন','error')}
       if(bonus>0)await window.$db.pushWalletTx({resellerPhone:r.fbKey,amount:bonus,type:'bonus',note:'সাইনআপ বোনাস (প্রমো কোড ব্যবহার করে রেজিস্ট্রেশন)',timestamp:Date.now()});
       this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅','success');
     }catch{this.showToast('অ্যাপ্রুভ ব্যর্থ!','error')}
