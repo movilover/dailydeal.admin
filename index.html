@@ -4093,7 +4093,13 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   async updateOrderStatus(key,status){
     try{
-      await window.$db.updateOrder(key,{status});
+      const d={status};
+      // স্ট্যাটাস বদলালে কাস্টমারের কাছে স্বয়ংক্রিয় আপডেট (ট্র্যাকিং লগ → পপআপ/নোটিফিকেশন)
+      const _auto={'প্রসেসিং':'✅ আপনার অর্ডার গ্রহণ করা হয়েছে — পণ্য এখন প্যাকিং করা হচ্ছে। (এখন বাতিল/পরিবর্তনের জন্য সাপোর্টে যোগাযোগ করুন)','পাঠানো হচ্ছে':'📦 আপনার পণ্য প্যাক করে কুরিয়ারের কাছে হস্তান্তর করা হয়েছে।','ডেলিভার্ড':'🎉 ডেলিভারি সম্পন্ন হয়েছে — ধন্যবাদ!'}[status];
+      const _cur=(this.fbOrders||[]).find(o=>o.fbKey===key);
+      if(_auto&&_cur&&_cur.status!==status){const _l=Array.isArray(_cur.trackLog)?_cur.trackLog:Object.values(_cur.trackLog||{});Object.assign(d,{trackLog:[..._l,{t:Date.now(),text:_auto}],trackNote:_auto,trackUpdatedAt:Date.now()})}
+      await window.$db.updateOrder(key,d);
+      if(this.viewOrder&&this.viewOrder.fbKey===key)Object.assign(this.viewOrder,d);
       this._csSchedule();
       if(status==='ডেলিভার্ড'){
         const order=this.fbOrders.find(o=>o.fbKey===key);
