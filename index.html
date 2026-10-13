@@ -313,6 +313,7 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 .gender-pill{padding:8px 18px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:var(--bg2);color:var(--fg3);font-family:'Hind Siliguri',sans-serif;transition:all .2s}
 .gender-pill.active-men{background:#EFF6FF;border-color:#3B82F6;color:#1D4ED8}
 .gender-pill.active-women{background:#FFF0F5;border-color:#EC4899;color:#DB2777}
+.gender-pill.active-kids{background:#ECFDF5;border-color:#10B981;color:#047857}
 .gender-pill.active-both{background:var(--accentL);border-color:var(--accent);color:var(--accent)}
 /* Mode tabs (System A / System B upload) */
 .mode-tabs{display:flex;background:var(--bg2);border-radius:10px;padding:3px;gap:2px}
@@ -450,9 +451,10 @@ html,body{touch-action:auto!important;overflow-x:clip}
     </div>
     <div class="mb-4">
       <label class="dd-label">ক্যাটাগরি টাইপ (লিঙ্গ)</label>
-      <div class="grid grid-cols-3 gap-2 mt-1">
+      <div class="grid grid-cols-2 gap-2 mt-1">
         <button @click="catModal.form.gender='men'" :style="catModal.form.gender==='men'?'background:var(--accent);color:#fff;border-color:var(--accent)':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'" class="py-2 rounded-xl text-xs font-bold border transition-all">👔 পুরুষ</button>
         <button @click="catModal.form.gender='women'" :style="catModal.form.gender==='women'?'background:var(--accent);color:#fff;border-color:var(--accent)':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'" class="py-2 rounded-xl text-xs font-bold border transition-all">👗 মহিলা</button>
+        <button @click="catModal.form.gender='kids'" :style="catModal.form.gender==='kids'?'background:var(--accent);color:#fff;border-color:var(--accent)':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'" class="py-2 rounded-xl text-xs font-bold border transition-all">👶 বাচ্চাদের</button>
         <button @click="catModal.form.gender='both'" :style="catModal.form.gender==='both'?'background:var(--accent);color:#fff;border-color:var(--accent)':'background:var(--bg2);color:var(--fg2);border:1px solid var(--border)'" class="py-2 rounded-xl text-xs font-bold border transition-all">🛍️ উভয়</button>
       </div>
     </div>
@@ -1408,6 +1410,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
             <div class="flex gap-2 flex-wrap mt-1.5">
               <button @click="up.gender='men'" type="button" :class="up.gender==='men'?'gender-pill active-men':'gender-pill'">👔 পুরুষ</button>
               <button @click="up.gender='women'" type="button" :class="up.gender==='women'?'gender-pill active-women':'gender-pill'">👗 মহিলা</button>
+              <button @click="up.gender='kids';if(!up.section){const ks=fbSections.find(x=>/বাচ্চা|শিশু|কিডস|kids/i.test(x.name||''));if(ks)up.section=ks.fbKey}" type="button" :class="up.gender==='kids'?'gender-pill active-kids':'gender-pill'">👶 বাচ্চাদের</button>
               <button @click="up.gender='both'" type="button" :class="up.gender==='both'?'gender-pill active-both':'gender-pill'">🛍️ উভয়</button>
               <button x-show="up.gender" @click="up.gender=''" type="button" class="gender-pill text-xs" style="opacity:.6">✕ ক্লিয়ার</button>
             </div>
@@ -1654,6 +1657,28 @@ html,body{touch-action:auto!important;overflow-x:clip}
         </div>
       </div>
     </div>
+    <!-- Kids section -->
+    <div class="dd-card p-4 mb-5">
+      <p class="font-bold text-sm mb-3 flex items-center gap-2" style="color:var(--fg)"><span class="text-lg">👶</span> বাচ্চাদের (Kids) ক্যাটাগরি</p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+        <template x-for="c in kidsCategories" :key="c.fbKey">
+          <div class="dd-card p-3 text-center group relative">
+            <div class="cat-circle-admin mx-auto mb-2" @click="openCatModal(c)">
+              <template x-if="c.img"><img :src="c.img" onerror="this.style.display='none'"/></template>
+              <div class="cat-icon-admin" :style="c.img?'display:none':''"><span x-text="c.emoji||'📦'"></span></div>
+            </div>
+            <p class="text-xs font-bold truncate" style="color:var(--fg)" x-text="c.name"></p>
+            <p class="text-xs mt-0.5 font-mono" style="color:var(--fg3)" x-text="fbProducts.filter(p=>p.cat===c.name).length+'টি'"></p>
+            <p x-show="getSectionName(c.section||c.sectionId)" class="text-xs mt-1 px-2 py-0.5 rounded-full inline-block font-semibold" style="background:var(--accentL);color:var(--accent)" x-text="getSectionName(c.section||c.sectionId)"></p>
+            <button @click="deleteCategory(c.fbKey)" class="absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer"><i class="fa-solid fa-xmark text-xs"></i></button>
+          </div>
+        </template>
+        <div class="dd-card p-3 flex flex-col items-center justify-center cursor-pointer min-h-28 hover:scale-105 transition-transform" style="border:2px dashed var(--border)" @click="catModal.form.gender='kids';openCatModal()">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center mb-1.5" style="background:var(--accentL)"><i class="fa-solid fa-plus" style="color:var(--accent)"></i></div>
+          <p class="text-xs font-bold" style="color:var(--accent)">নতুন</p>
+        </div>
+      </div>
+    </div>
     <!-- Both/General -->
     <div class="dd-card p-4 mb-5" x-show="bothCategories.length>0">
       <p class="font-bold text-sm mb-3 flex items-center gap-2" style="color:var(--fg)"><span class="text-lg">🛍️</span> সাধারণ ক্যাটাগরি</p>
@@ -1701,7 +1726,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
     </div>
     <div class="flex items-center justify-between mb-4">
       <p class="text-sm" style="color:var(--fg3)" x-text="allSections.length+' টি সেকশন'"></p>
-      <button @click="openSecModal()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন সেকশন</button>
+      <div class="flex gap-2 flex-wrap"><button x-show="!fbSections.some(x=>/বাচ্চা|শিশু|কিডস|kids/i.test(x.name||''))" @click="quickKidsSection()" class="btn-ghost text-xs"><i class="fa-solid fa-child"></i>👶 বাচ্চাদের সেকশন বানান</button><button @click="openSecModal()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন সেকশন</button></div>
     </div>
     <div class="space-y-3">
       <template x-for="s in allSections" :key="s.fbKey">
@@ -1727,9 +1752,9 @@ html,body{touch-action:auto!important;overflow-x:clip}
   <div x-show="activeTab==='assignment'" class="animate-fade-in">
     <div class="dd-card p-4 mb-5" style="border-left:4px solid var(--accent)">
       <p class="font-bold text-sm" style="color:var(--fg)"><i class="fa-solid fa-arrows-up-down-left-right mr-2" style="color:var(--accent)"></i>Drag & Drop পণ্য অ্যাসাইনমেন্ট</p>
-      <p class="text-xs mt-1" style="color:var(--fg2)">পণ্যগুলো টেনে ক্যাটাগরিতে অ্যাসাইন করুন। পুরুষ বা মহিলা বিভাগে সরান।</p>
+      <p class="text-xs mt-1" style="color:var(--fg2)">পণ্যগুলো টেনে ক্যাটাগরিতে অ্যাসাইন করুন। পুরুষ, মহিলা বা বাচ্চাদের বিভাগে সরান।</p>
     </div>
-    <div class="grid md:grid-cols-2 gap-4 mb-5">
+    <div class="grid md:grid-cols-3 gap-4 mb-5">
       <div class="dd-card p-4" style="border-top:3px solid #1D4ED8">
         <p class="font-bold text-sm mb-3 flex items-center gap-2" style="color:var(--fg)">👔 পুরুষ পণ্য
           <span class="ml-auto text-xs px-2 py-0.5 rounded-full font-bold" style="background:#EFF6FF;color:#1D4ED8" x-text="fbProducts.filter(p=>p.gender==='men').length+'টি'"></span>
@@ -1767,6 +1792,26 @@ html,body{touch-action:auto!important;overflow-x:clip}
           </template>
           <div x-show="fbProducts.filter(p=>p.gender==='women').length===0" class="text-center py-6 text-xs" style="color:var(--fg3)">
             <i class="fa-solid fa-arrow-down text-xl mb-2 opacity-30"></i><p>মহিলা পণ্য এখানে টানুন</p>
+          </div>
+        </div>
+      </div>
+      <div class="dd-card p-4" style="border-top:3px solid #10B981">
+        <p class="font-bold text-sm mb-3 flex items-center gap-2" style="color:var(--fg)">👶 বাচ্চাদের পণ্য
+          <span class="ml-auto text-xs px-2 py-0.5 rounded-full font-bold" style="background:#ECFDF5;color:#047857" x-text="fbProducts.filter(p=>p.gender==='kids').length+'টি'"></span>
+        </p>
+        <div class="drop-zone space-y-2"
+          @dragover.prevent="$el.classList.add('drag-over')"
+          @dragleave="$el.classList.remove('drag-over')"
+          @drop.prevent="handleGenderDrop($event,'kids')">
+          <template x-for="p in fbProducts.filter(p=>p.gender==='kids')" :key="p.fbKey">
+            <div class="product-drag-item assigned" :data-id="p.fbKey" draggable="true" @dragstart="dragStart($event,p.fbKey)">
+              <img :src="p.images?.[0]||p.img||''" class="w-8 h-8 rounded-lg object-cover flex-shrink-0" style="background:var(--bg2)" onerror="this.onerror=null;this.src='https://placehold.co/32x32'"/>
+              <p class="text-xs font-semibold truncate flex-1" style="color:var(--fg)" x-text="p.name"></p>
+              <button @click="removeGender(p)" class="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer;font-size:8px"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+          </template>
+          <div x-show="fbProducts.filter(p=>p.gender==='kids').length===0" class="text-center py-6 text-xs" style="color:var(--fg3)">
+            <i class="fa-solid fa-arrow-down text-xl mb-2 opacity-30"></i><p>বাচ্চাদের পণ্য এখানে টানুন</p>
           </div>
         </div>
       </div>
@@ -3279,6 +3324,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   catsInSection(sec){const all=this.fbCategories||[];if(!sec)return all;const own=c=>c.section===sec||c.sectionId===sec;const ok=(c,d)=>own(c)||(d<4&&c.parent&&(()=>{const pr=all.find(x=>x.name===c.parent);return pr?ok(pr,d+1):false})());return all.filter(c=>ok(c,0))},
   get menCategories(){return this.fbCategories.filter(c=>c.gender==='men')},
   get womenCategories(){return this.fbCategories.filter(c=>c.gender==='women')},
+  get kidsCategories(){return this.fbCategories.filter(c=>c.gender==='kids')},
   get bothCategories(){return this.fbCategories.filter(c=>!c.gender||c.gender==='both')},
   get unassignedGenderProds(){return this.fbProducts.filter(p=>!p.gender||p.gender==='both')},
   get filteredUnassignedGender(){return this.unassignedGenderProds.filter(p=>(p.name||'').toLowerCase().includes(this.assignSearch.toLowerCase()))},
@@ -3644,7 +3690,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const prod=this.fbProducts.find(p=>p.fbKey===id);
     if(!prod)return;
     const data={...prod,gender};delete data.fbKey;
-    try{await window.$db.saveProduct(data,id);this.showToast(gender==='men'?'পুরুষ বিভাগে যোগ! ✅':'মহিলা বিভাগে যোগ! ✅','success')}
+    try{await window.$db.saveProduct(data,id);this.showToast(gender==='men'?'পুরুষ বিভাগে যোগ! ✅':gender==='kids'?'বাচ্চাদের বিভাগে যোগ! ✅':'মহিলা বিভাগে যোগ! ✅','success')}
     catch{this.showToast('আপডেট ব্যর্থ!','error')}
     this.draggedId=null;
   },
@@ -3723,7 +3769,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   async saveCategory(){
     if(!this.catModal.form.name.trim())return this.showToast('ক্যাটাগরির নাম দিন!','error');
-    if(!this.catModal.form.section){const g=this.catModal.form.gender;const re=g==='men'?/ছেলে|পুরুষ|জেন্টস|men|boy|male/i:g==='women'?/মেয়ে|মহিলা|লেডিস|women|girl|female|ladies/i:null;const s=re&&this.fbSections.find(s=>re.test(s.name||'')&&!(g==='men'&&/মেয়ে|women/i.test(s.name||'')));if(s)this.catModal.form.section=s.fbKey}
+    if(!this.catModal.form.section){const g=this.catModal.form.gender;const re=g==='men'?/ছেলে|পুরুষ|জেন্টস|men|boy|male/i:g==='women'?/মেয়ে|মহিলা|লেডিস|women|girl|female|ladies/i:g==='kids'?/বাচ্চা|শিশু|কিডস|kids/i:null;const s=re&&this.fbSections.find(s=>re.test(s.name||'')&&!(g==='men'&&/মেয়ে|women|বাচ্চা|কিডস|kids/i.test(s.name||''))&&!(g==='women'&&/বাচ্চা|কিডস|kids/i.test(s.name||'')));if(s)this.catModal.form.section=s.fbKey}
     this.catModal.saving=true;
     const data={name:this.catModal.form.name.trim(),emoji:this.catModal.form.emoji||'📦',img:this.catModal.form.img||'',gender:this.catModal.form.gender||'both',parent:this.catModal.form.parent||'',section:this.catModal.form.section||'',sectionId:this.catModal.form.section||'',updatedAt:new Date().toISOString()};
     try{await window.$db.saveCategory(data,this.catModal.editing?.fbKey||null);this.showToast('ক্যাটাগরি সেভ! ✅','success');this.catModal.open=false;}
@@ -3733,6 +3779,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async deleteCategory(key){if(!confirm('মুছবেন?'))return;try{await window.$db.deleteCategory(key);this.showToast('মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
 
   // ══════════ SECTIONS (NEW) ══════════
+  quickKidsSection(){this.openSecModal();Object.assign(this.secModal.form,{name:'বাচ্চাদের পণ্য',icon:'👶',color:'#059669',color2:'#34D399',order:3})},
   openSecModal(s){
     if(s){this.secModal.editing=s;this.secModal.form={name:s.name||'',icon:s.icon||'🛍️',color:s.color||'#6B7280',color2:s.color2||'#9CA3AF',order:s.order??99,active:s.active!==false,img:s.img||''};}
     else{this.secModal.editing=null;this.secModal.form={name:'',icon:'🛍️',color:'#6B7280',color2:'#9CA3AF',order:99,active:true,img:''};}
