@@ -190,7 +190,9 @@ window.$db={
     });
   }
 };
-window.dispatchEvent(new Event('firebase-ready'));
+// অ্যাডমিন Firebase-এ সাইন-ইন সম্পন্ন হওয়ার পরেই লিসেনার চালু (আগে চালু হলে রুলস পড়তে দেয় না ও লিসেনার বাতিল হয়ে যায়)
+{let _fired=false;const _fire=()=>{if(_fired)return;_fired=true;window.__fbReady=true;window.dispatchEvent(new Event('firebase-ready'))};
+onAuthStateChanged(auth,u=>{if(u&&u.email==='omor.faruk.sojol.2@gmail.com')_fire()});}
 </script>
 
 <style>
@@ -3570,7 +3572,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     if(sessionStorage.getItem('dd_admin_auth')==='1')this.authenticated=true;
     const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
+    setTimeout(()=>{if(window.__fbReady&&!window.__fbBooted)window.dispatchEvent(new Event('firebase-ready'))},0);
     window.addEventListener('firebase-ready',()=>{
+      if(window.__fbBooted)return;window.__fbBooted=true;
       window.$db.listenProducts(prods=>this.fbProducts=prods);
       window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule()});
       window.$db.listenUsers(count=>this.totalUsers=count);
