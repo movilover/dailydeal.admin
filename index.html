@@ -557,6 +557,19 @@ html,body{touch-action:auto!important;overflow-x:clip}
     </div>
     <template x-if="viewOrder">
       <div class="space-y-4">
+        <div class="dd-card-sm p-3" style="border:1.5px solid var(--accent);background:var(--accentL)">
+          <div class="flex items-center justify-between mb-2"><p class="dd-label" style="margin:0"><i class="fa-solid fa-id-card"></i> কাস্টমার ডিটেইলস</p>
+            <button @click="copyTxt(orderCopyText(viewOrder))" class="text-xs font-bold px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5" style="background:var(--accent);color:#fff;border:none;cursor:pointer"><i class="fa-regular fa-copy"></i> কপি</button></div>
+          <div class="text-xs space-y-1" style="color:var(--fg)">
+            <p><b>নাম:</b> <span x-text="viewOrder.customerName||'—'"></span></p>
+            <p><b>ফোন:</b> <span class="font-mono" x-text="viewOrder.phone||'—'"></span></p>
+            <p><b>ঠিকানা:</b> <span x-text="viewOrder.address||'—'"></span></p>
+            <p x-show="viewOrder.upazila"><b>উপজেলা/থানা:</b> <span x-text="viewOrder.upazila"></span></p>
+            <p><b>জেলা:</b> <span x-text="viewOrder.district||'—'"></span> &nbsp; <b>বিভাগ:</b> <span x-text="viewOrder.division||'—'"></span></p>
+            <p x-show="viewOrder.intlDest"><b>বিদেশ:</b> <span x-text="(viewOrder.intlDest&&viewOrder.intlDest.countryName)+' · '+(viewOrder.intlDest&&viewOrder.intlDest.city)+' · প্রাপক '+(viewOrder.intlDest&&viewOrder.intlDest.name)+' '+(viewOrder.intlDest&&viewOrder.intlDest.phone)"></span></p>
+            <p><b>পেমেন্ট:</b> <span x-text="(viewOrder.payMethod||'')+(viewOrder.payType==='cod'?' — ডেলিভারিতে ৳'+Number(viewOrder.dueOnDelivery!==undefined?viewOrder.dueOnDelivery:(viewOrder.total||0)).toLocaleString():'')"></span></p>
+          </div>
+        </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p><p class="text-xs font-bold mt-1" style="color:#0F8F7A" x-show="viewOrder.linkOrder"><i class="fa-solid fa-link"></i> রিসেলার লিংক অর্ডার<span x-show="viewOrder.resellerShopName" x-text="' — '+viewOrder.resellerShopName"></span></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">স্ট্যাটাস</p>
@@ -602,6 +615,21 @@ html,body{touch-action:auto!important;overflow-x:clip}
           </template>
           <div class="flex justify-between pt-2 font-bold text-sm"><span style="color:var(--fg)">মোট</span><span style="color:var(--accent)" x-text="'৳'+(viewOrder.total||0).toLocaleString()"></span></div>
         </div>
+        <template x-if="viewOrder.status!=='বাতিল'&&viewOrder.orderType!=='reseller'&&!viewOrder.linkOrder">
+        <div class="dd-card-sm p-3" style="border:1.5px dashed #F59E0B">
+          <p class="dd-label mb-2"><i class="fa-solid fa-scale-balanced"></i> মূল্য সমন্বয় (কাস্টমারকে মেসেজ যাবে)</p>
+          <div class="grid grid-cols-2 gap-2">
+            <select class="dd-input" x-model="adj.kind"><option value="product">পণ্যের দাম</option><option value="delivery">ডেলিভারি চার্জ</option></select>
+            <select class="dd-input" x-model="adj.sign"><option value="-">− কমান</option><option value="+">+ বাড়ান</option></select>
+          </div>
+          <input class="dd-input mt-2" type="number" min="1" x-model.number="adj.amount" placeholder="টাকার পরিমাণ (৳)"/>
+          <input class="dd-input mt-2" x-model="adj.reason" maxlength="150" placeholder="কারণ (কাস্টমার দেখবে) — যেমন: ডিসকাউন্ট / দূরের এলাকা"/>
+          <button @click="applyAdjust()" :disabled="adj.busy" class="btn-primary w-full mt-2" style="justify-content:center"><i class="fa-solid fa-check"></i> প্রয়োগ করুন</button>
+          <div class="mt-2 space-y-1" x-show="(viewOrder.adjustments||[]).length>0">
+            <template x-for="(e,i) in (viewOrder.adjustments||[])" :key="'ad'+i"><div class="flex justify-between text-xs"><span style="color:var(--fg2)" x-text="(e.kind==='delivery'?'ডেলিভারি':'পণ্য')+(e.reason?' — '+e.reason:'')"></span><b class="font-mono" :style="e.amount<0?'color:#16A34A':'color:#DC2626'" x-text="(e.amount<0?'−৳':'+৳')+Math.abs(e.amount)"></b></div></template>
+            <p class="text-xs font-bold" style="color:var(--fg)" x-text="'আগের মোট ৳'+Number(viewOrder.origTotal||0).toLocaleString()+' → এখন ৳'+Number(viewOrder.total||0).toLocaleString()"></p>
+          </div>
+        </div></template>
         <button @click="deleteOrder(viewOrder.fbKey);orderDetailOpen=false" class="btn-danger w-full" style="justify-content:center"><i class="fa-solid fa-trash"></i> অর্ডার মুছুন</button>
       </div>
     </template>
@@ -1860,7 +1888,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
               <tr>
                 <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
-                <td class="text-xs" x-text="o.district||''"></td>
+                <td class="text-xs" x-text="(o.upazila?o.upazila+', ':'')+(o.district||'')"></td>
                 <td><p class="text-xs" x-text="(o.items||[]).length+'টি'"></p></td>
                 <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(o.total||0).toLocaleString()"></span></td>
                 <td class="text-xs" style="color:var(--fg3)" x-text="o.payMethod||'—'"></td>
@@ -3090,7 +3118,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
   orderSearch:'',oFilt:'সব',orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
-  orderDetailOpen:false,viewOrder:null,
+  orderDetailOpen:false,viewOrder:null,adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
 
   assignSearch:'',draggedId:null,
   eidSearch:'',
@@ -3278,6 +3306,32 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   get activeHub(){return this.hubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
+  orderCopyText(o){if(!o)return'';const L=[];L.push('অর্ডার #'+(o.id||''));L.push('নাম: '+(o.customerName||''));L.push('ফোন: '+(o.phone||''));L.push('ঠিকানা: '+(o.address||''));if(o.upazila)L.push('উপজেলা/থানা: '+o.upazila);L.push('জেলা: '+(o.district||''));L.push('বিভাগ: '+(o.division||''));
+    if(o.intlDest)L.push('বিদেশ: '+(o.intlDest.countryName||'')+', '+(o.intlDest.city||'')+', প্রাপক: '+(o.intlDest.name||'')+' '+(o.intlDest.phone||''));
+    L.push('পণ্য: '+(o.items||[]).map(i=>i.name+' ×'+i.qty+(i.size?' ('+i.size+')':'')).join(', '));
+    L.push('মোট: ৳'+Number(o.total||0)+(o.payType==='cod'?' (ডেলিভারিতে ৳'+Number(o.dueOnDelivery!==undefined?o.dueOnDelivery:(o.total||0))+')':' — '+(o.payMethod||'প্রি-পেইড')));
+    if(o.location&&o.location.lat)L.push('ম্যাপ: https://www.google.com/maps?q='+o.location.lat+','+o.location.lng);return L.join('\n')},
+  async applyAdjust(){
+    const o=this.viewOrder,a=this.adj;if(!o||a.busy)return;
+    const amt=Math.round(Number(a.amount)||0);
+    if(amt<=0)return this.showToast('টাকার পরিমাণ দিন','error');
+    if(!String(a.reason||'').trim())return this.showToast('কারণ লিখুন (কাস্টমার দেখবে)','error');
+    const signed=a.sign==='-'?-amt:amt,cur=Number(o.total)||0,nt=cur+signed;
+    if(nt<0)return this.showToast('মোট ০-এর নিচে যাবে — কম দিন','error');
+    if(nt>10000000)return this.showToast('পরিমাণ অনেক বেশি','error');
+    const entry={t:Date.now(),kind:a.kind==='delivery'?'delivery':'product',amount:signed,reason:String(a.reason).trim().slice(0,150),from:cur,to:nt};
+    const list=[...(o.adjustments||[]),entry];
+    const sum=k=>list.filter(x=>x.kind===k).reduce((s,x)=>s+x.amount,0);
+    const d={total:nt,adjustments:list,adjProduct:sum('product'),adjDelivery:sum('delivery'),origTotal:(o.origTotal!==undefined&&o.origTotal!==null)?o.origTotal:cur,adjAt:Date.now()};
+    const paid=Number(o.advancePaid)||0;
+    if(o.payType==='prepaid'){d.dueOnDelivery=Math.max(0,nt-paid);d.refundDue=Math.max(0,paid-nt)}else{d.dueOnDelivery=nt;d.refundDue=0}
+    const msg='💰 '+(entry.kind==='delivery'?'ডেলিভারি চার্জ':'পণ্যের দাম')+' ৳'+amt+(signed<0?' কমানো':' বাড়ানো')+' হয়েছে — '+entry.reason+'। নতুন মোট ৳'+nt;
+    const log=[...(o.trackLog||[]),{t:Date.now(),text:msg}];
+    d.trackLog=log;d.trackNote=msg;d.trackUpdatedAt=Date.now();
+    a.busy=true;
+    try{await window.$db.updateOrder(o.fbKey,d);Object.assign(o,d);this.adj={kind:a.kind,sign:a.sign,amount:'',reason:'',busy:false};this.showToast('সমন্বয় সেভ — কাস্টমারকে মেসেজ দেখানো হবে ✅','success')}
+    catch(e){a.busy=false;this.showToast('ব্যর্থ! রুলস আপডেট/ইন্টারনেট দেখুন','error')}
+  },
   async trkSet(f,v){const o=this.viewOrder;if(!o)return;const d={[f]:v||null};
     if(f==='trackId'&&v&&!o.trackingLink&&(this.settings.trackUrlTemplate||'').includes('{id}')){d.trackingLink=this.settings.trackUrlTemplate.replace('{id}',encodeURIComponent(v));o.trackingLink=d.trackingLink}
     try{await window.$db.updateOrder(o.fbKey,d);o[f]=v||null;this.showToast('সেভ ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
@@ -3301,6 +3355,18 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async addBlock(ph,reason){const d=this.normPh(ph||this.blkForm.phone);if(!/^01[3-9]\d{8}$/.test(d))return this.showToast('সঠিক নম্বর দিন (01XXXXXXXXX)','error');try{await window.$db.setBlock(d,{reason:(reason??this.blkForm.reason)||'',at:Date.now()});this.blkForm={phone:'',reason:''};this.showToast('ব্লক করা হয়েছে 🚫','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
   async unBlock(b){if(!confirm(b.phone+' আনব্লক করবেন?'))return;try{await window.$db.delBlock(b.phone);this.showToast('আনব্লক হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
   get suspicious(){const m={};this.fbOrders.forEach(o=>{const d=this.normPh(o.phone);if(!d)return;const r=m[d]||(m[d]={phone:d,total:0,cancelled:0});r.total++;if(o.status==='বাতিল')r.cancelled++});const bl=new Set(this.fbBlocks.map(b=>b.phone));return Object.values(m).filter(r=>r.cancelled>=2&&!bl.has(r.phone)).sort((a,b)=>b.cancelled-a.cancelled).slice(0,30)},
+  async bulkEnableReselling(pct){
+    const p=Math.min(99,Math.max(0,Number(pct)||0)),list=this.productsMissingResell;
+    if(!list.length){this.bulkEnableResellOpen=false;return this.showToast('সব পণ্যে রিসেলিং আগে থেকেই চালু','success')}
+    if(!confirm(list.length+'টি পণ্যে রিসেলিং চালু হবে ('+p+'% ছাড়ে রিসেলার প্রাইস)। নিশ্চিত?'))return;
+    this.saving=true;let ok=0,bad=0;
+    for(const x of list){
+      const price=Number(x.price)||0;if(price<=0){continue}
+      try{await window.$db.saveProduct({resellEnabled:true,resellerPrice:Math.round(price*(100-p)/100)},x.fbKey);ok++}catch(e){bad++}
+    }
+    this.saving=false;this.bulkEnableResellOpen=false;
+    this.showToast(ok+'টি পণ্যে রিসেলিং চালু ✅'+(bad?' ('+bad+'টি ব্যর্থ)':''),bad?'error':'success');
+  },
   get productsMissingResell(){return (this.fbProducts||[]).filter(p=>!p.resellEnabled)},
   goTab(t){if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
   /* ═══ Supplier API module ═══ */
@@ -4002,10 +4068,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(o.subtotal!=null){
         const sum=items.reduce((a,it)=>a+n(it.resellerSellPrice!=null?it.resellerSellPrice:it.price)*n(it.qty),0);
         if(Math.abs(sum-n(o.subtotal))>1)why.push('আইটেমের যোগফল ('+sum+') ≠ সাবটোটাল ('+n(o.subtotal)+')');
-        const exp=n(o.subtotal)+n(o.shipping)+n(o.codExtraCharge)-n(o.prepaidDiscount)-n(o.advanceShipDiscount)-n(o.promoDiscount);
+        const exp=n(o.subtotal)+n(o.shipping)+n(o.codExtraCharge)-n(o.prepaidDiscount)-n(o.advanceShipDiscount)-n(o.promoDiscount)+n(o.adjProduct)+n(o.adjDelivery);   // অ্যাডমিন মূল্য সমন্বয়সহ
         if(Math.abs(Math.max(0,exp)-n(o.total))>1)why.push('মোট ('+n(o.total)+') হিসাবের ('+Math.max(0,exp)+') সাথে মেলে না');
         const _sh=this.settings.shipping||{},_d=(_sh.dhaka!=null&&_sh.dhaka!=='')?n(_sh.dhaka):80,_o=(_sh.outside!=null&&_sh.outside!=='')?n(_sh.outside):150;
-        if(o.shipping!=null&&n(o.shipping)!==_d&&n(o.shipping)!==_o)why.push('শিপিং চার্জ অস্বাভাবিক ('+n(o.shipping)+')');
+        if(o.shipping!=null&&!o.intlDest&&n(o.shipping)!==_d&&n(o.shipping)!==_o)why.push('শিপিং চার্জ অস্বাভাবিক ('+n(o.shipping)+')');
       }
       items.forEach(it=>{
         if(n(it.qty)<1||n(it.qty)>1000)why.push('অস্বাভাবিক পরিমাণ ('+n(it.qty)+')');
