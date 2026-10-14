@@ -4599,7 +4599,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       this.closeMsgModal();
     }catch{this.showToast('ব্যর্থ!','error')}
   },
-  async updateTrackingLink(key,link){try{await window.$db.updateOrder(key,{trackingLink:link||null});if(link)this.showToast('ট্র্যাকিং লিংক সেভ! ✅','success');}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
+  async updateTrackingLink(key,link){link=String(link||'').trim();const _m=link.match(/https?:\/\/[^\s"'<>]+/i);if(_m)link=_m[0];try{await window.$db.updateOrder(key,{trackingLink:link||null});if(link)this.showToast('ট্র্যাকিং লিংক সেভ! ✅','success');}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
   async deleteOrder(key){if(!confirm('মুছবেন?'))return;try{await window.$db.deleteOrder(key);this.showToast('অর্ডার মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
 
   // ══════════ PINNED PRODUCTS (NEW) ══════════
