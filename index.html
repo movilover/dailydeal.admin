@@ -181,6 +181,7 @@ window.$db={
   // ব্যালেন্স সমন্বয় — অ্যাটমিক ট্রানজ্যাকশন (একসাথে দুই জায়গা থেকে বদলালেও ভুল হয় না)
   adjustResellerWallet:async(phone,delta)=>{const path='resellers/'+phone+'/walletBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
   adjustCustWallet:async(uid,delta)=>{const path='customerWallets/'+uid+'/balance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
+  setWalletExact:async(kind,id,target)=>{const path=(kind==='reseller'?'resellers/'+id+'/walletBalance':'customerWallets/'+id+'/balance');let oldV=0;const r=await runTransaction(ref(db,path),cur=>{oldV=Number(cur)||0;const n=Math.round(Number(target)*100)/100;if(!(n>=0)||n>100000000)return;return n});if(!r.committed)throw new Error('invalid');return {old:oldV,nb:r.snapshot.val()}},
   pushCustTx:async(uid,tx)=>{const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{at:Date.now(),status:'done',...tx});return r.key},
   custCredit:async(uid,delta,tx)=>{await runTransaction(ref(db,'customerWallets/'+uid+'/balance'),cur=>(Number(cur)||0)+delta);if(tx){const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{amount:delta,at:Date.now(),status:'done',...tx});}},
   // Storage (System A — direct Firebase upload)
@@ -2142,10 +2143,11 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <div class="flex gap-2 mb-3">
           <button type="button" @click="adj.mode='add'" :style="adj.mode==='add'?'background:#16A34A;color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2.5 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-plus mr-1"></i> টাকা যোগ</button>
           <button type="button" @click="adj.mode='sub'" :style="adj.mode==='sub'?'background:#DC2626;color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2.5 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-minus mr-1"></i> টাকা বিয়োগ</button>
+          <button type="button" @click="adj.mode='set'" :style="adj.mode==='set'?'background:#2563EB;color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2.5 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-equals mr-1"></i> সেট করুন</button>
         </div>
-        <input x-model="adj.amount" type="number" inputmode="numeric" min="1" placeholder="পরিমাণ (৳)" class="dd-input w-full mb-2"/>
+        <div class="flex gap-2 mb-2"><input x-model="adj.amount" type="number" inputmode="decimal" min="0" :placeholder="adj.mode==='set'?'নতুন ব্যালেন্স (৳) — ০ দিলে শূন্য':'পরিমাণ (৳)'" class="dd-input flex-1"/><button type="button" x-show="adj.mode==='set'" @click="adj.amount='0'" class="px-3 rounded-xl text-xs font-bold" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">০ করুন</button></div>
         <input x-model="adj.note" maxlength="120" placeholder="কারণ (বাধ্যতামূলক) — যেমন: বোনাস / ভুল কর্তন সংশোধন" class="dd-input w-full mb-3"/>
-        <button type="button" @click="adjSubmit()" :disabled="adj.busy" class="btn-primary w-full justify-center"><i class="fa-solid" :class="adj.busy?'fa-spinner fa-spin':'fa-check'"></i> <span x-text="adj.busy?'প্রসেস হচ্ছে...':(adj.mode==='add'?'ব্যালেন্সে যোগ করুন':'ব্যালেন্স থেকে কাটুন')"></span></button>
+        <button type="button" @click="adjSubmit()" :disabled="adj.busy" class="btn-primary w-full justify-center"><i class="fa-solid" :class="adj.busy?'fa-spinner fa-spin':'fa-check'"></i> <span x-text="adj.busy?'প্রসেস হচ্ছে...':(adj.mode==='add'?'ব্যালেন্সে যোগ করুন':(adj.mode==='sub'?'ব্যালেন্স থেকে কাটুন':'ব্যালেন্স সেট করুন'))"></span></button>
       </div>
     </div>
     <div class="dd-card p-4 mt-4">
@@ -4285,16 +4287,24 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const a=this.adj,s=a.sel;
     if(!s)return this.showToast('আগে অ্যাকাউন্ট বেছে নিন','error');
     const amt=Math.round(Number(a.amount)*100)/100;
-    if(!(amt>0)||amt>10000000)return this.showToast('সঠিক পরিমাণ দিন','error');
+    const isSet=a.mode==='set';
+    if(a.amount===''||a.amount==null||isNaN(amt)||amt<0||amt>10000000||(!isSet&&amt<=0))return this.showToast('সঠিক পরিমাণ দিন','error');
     const note=String(a.note||'').trim();
     if(note.length<3)return this.showToast('কারণ লিখুন (কমপক্ষে ৩ অক্ষর)','error');
-    const delta=a.mode==='add'?amt:-amt;
+    let delta=a.mode==='add'?amt:-amt;
     if(a.mode==='sub'&&amt>this.adjBal())return this.showToast('ব্যালেন্সের চেয়ে বেশি কাটা যাবে না','error');
-    if(!confirm((s.name||s.id)+' — '+(delta>0?'৳'+amt+' যোগ':'৳'+amt+' বিয়োগ')+' করবেন?\nকারণ: '+note))return;
+    if(!confirm((s.name||s.id)+' — '+(isSet?'ব্যালেন্স ৳'+amt+' এ সেট':(delta>0?'৳'+amt+' যোগ':'৳'+amt+' বিয়োগ'))+' করবেন?\nকারণ: '+note))return;
     a.busy=true;
     try{
       let nb;
-      if(s.kind==='reseller'){
+      if(isSet){
+        const r=await window.$db.setWalletExact(s.kind,s.id,amt);nb=r.nb;delta=Math.round((r.nb-r.old)*100)/100;
+        if(delta!==0){
+          if(s.kind==='reseller')await window.$db.pushWalletTx({resellerPhone:s.id,amount:delta,type:'admin_adjust',note:'অ্যাডমিন সমন্বয় (সেট): '+note,timestamp:Date.now()});
+          else await window.$db.pushCustTx(s.id,{amount:delta,type:'adjust',note:'অ্যাডমিন সমন্বয় (সেট): '+note});
+        }
+        if(s.kind==='customer'){s.bal=nb;const d=a.cres.find(x=>x.uid===s.id);if(d)d.bal=nb}
+      }else if(s.kind==='reseller'){
         nb=await window.$db.adjustResellerWallet(s.id,delta);
         await window.$db.pushWalletTx({resellerPhone:s.id,amount:delta,type:'admin_adjust',note:'অ্যাডমিন সমন্বয়: '+note,timestamp:Date.now()});
       }else{
