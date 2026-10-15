@@ -178,6 +178,10 @@ window.$db={
   listenCustReq:(kind,cb)=>onValue(ref(db,kind==='withdraw'?'customerWithdrawals':'customerDeposits'),s=>{const v=s.val();const out=[];if(v)Object.entries(v).forEach(([uid,reqs])=>Object.entries(reqs||{}).forEach(([k,d])=>out.push({...d,fbKey:k,uid,kind})));cb(out)},{onlyOnce:false}),
   updateCustReq:async(kind,uid,key,data)=>update(ref(db,(kind==='withdraw'?'customerWithdrawals/':'customerDeposits/')+uid+'/'+key),data),
   updateCustTx:async(uid,key,data)=>update(ref(db,'customerWalletTx/'+uid+'/'+key),data),
+  // ব্যালেন্স সমন্বয় — অ্যাটমিক ট্রানজ্যাকশন (একসাথে দুই জায়গা থেকে বদলালেও ভুল হয় না)
+  adjustResellerWallet:async(phone,delta)=>{const path='resellers/'+phone+'/walletBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
+  adjustCustWallet:async(uid,delta)=>{const path='customerWallets/'+uid+'/balance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
+  pushCustTx:async(uid,tx)=>{const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{at:Date.now(),status:'done',...tx});return r.key},
   custCredit:async(uid,delta,tx)=>{await runTransaction(ref(db,'customerWallets/'+uid+'/balance'),cur=>(Number(cur)||0)+delta);if(tx){const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{amount:delta,at:Date.now(),status:'done',...tx});}},
   // Storage (System A — direct Firebase upload)
   uploadImage:async(file,path,onProgress)=>{
@@ -2096,6 +2100,63 @@ html,body{touch-action:auto!important;overflow-x:clip}
   </div>
 
 
+  <!-- ══ ব্যালেন্স সমন্বয় (অ্যাডমিন: রিসেলার/গ্রাহকের ব্যালেন্সে টাকা যোগ বা বিয়োগ) ══ -->
+  <div x-show="activeTab==='baladj'" x-cloak class="animate-fade-in">
+    <div class="dd-card-sm p-3 mb-4" style="border-left:4px solid var(--accent)"><p class="text-xs" style="color:var(--fg2);line-height:1.7"><i class="fa-solid fa-circle-info mr-1" style="color:var(--accent)"></i>অ্যাকাউন্ট বেছে নিয়ে টাকা যোগ বা বিয়োগ করুন। কারণ লেখা বাধ্যতামূলক — এটি ইউজারের ওয়ালেট হিস্ট্রিতে "অ্যাডমিন সমন্বয়" হিসেবে দেখাবে। ব্যালেন্স রিয়েলটাইমে আপডেট হয়, মাইনাসে নামবে না।</p></div>
+    <div class="grid gap-4" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+      <div class="dd-card p-4">
+        <div class="flex gap-2 mb-3">
+          <button @click="adj.kind='reseller';adj.sel=null" :style="adj.kind==='reseller'?'background:var(--accent);color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-store mr-1"></i> রিসেলার</button>
+          <button @click="adj.kind='customer';adj.sel=null" :style="adj.kind==='customer'?'background:var(--accent);color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-user mr-1"></i> গ্রাহক</button>
+        </div>
+        <div x-show="adj.kind==='reseller'">
+          <input x-model="adj.q" type="search" placeholder="নাম / ফোন / শপের নাম খুঁজুন" class="dd-input w-full mb-2"/>
+          <div class="space-y-1.5">
+            <template x-for="r in adjResellerList()" :key="r.fbKey">
+              <button type="button" @click="adj.sel={kind:'reseller',id:r.fbKey,name:r.name||r.shopName||r.fbKey,phone:r.fbKey}" class="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl text-left" :style="adj.sel&&adj.sel.id===r.fbKey?'background:var(--accentL);border:1.5px solid var(--accent)':'background:var(--bg2);border:1.5px solid transparent'" style="cursor:pointer">
+                <span class="min-w-0"><span class="block text-xs font-bold truncate" style="color:var(--fg)" x-text="r.name||'—'"></span><span class="block text-[11px] font-mono" style="color:var(--fg3)" x-text="r.fbKey+(r.shopName?' · '+r.shopName:'')"></span></span>
+                <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span>
+              </button>
+            </template>
+            <p x-show="adjResellerList().length===0" class="text-xs text-center py-3" style="color:var(--fg3)">কোনো রিসেলার পাওয়া যায়নি</p>
+          </div>
+        </div>
+        <div x-show="adj.kind==='customer'">
+          <div class="flex gap-2 mb-2"><input x-model="adj.cq" @keydown.enter.prevent="adjFindCust()" placeholder="নাম / ফোন / UID" class="dd-input flex-1"/><button type="button" @click="adjFindCust()" :disabled="adj.cbusy" class="btn-primary !px-4"><i class="fa-solid" :class="adj.cbusy?'fa-spinner fa-spin':'fa-magnifying-glass'"></i></button></div>
+          <div class="space-y-1.5">
+            <template x-for="d in adj.cres" :key="d.uid">
+              <button type="button" @click="adj.sel={kind:'customer',id:d.uid,name:d.name||d.uid,phone:d.phone,bal:d.bal}" class="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl text-left" :style="adj.sel&&adj.sel.id===d.uid?'background:var(--accentL);border:1.5px solid var(--accent)':'background:var(--bg2);border:1.5px solid transparent'" style="cursor:pointer">
+                <span class="min-w-0"><span class="block text-xs font-bold truncate" style="color:var(--fg)" x-text="d.name||'গ্রাহক'"></span><span class="block text-[11px] font-mono truncate" style="color:var(--fg3)" x-text="(d.phone||'')+' · '+d.uid"></span></span>
+                <span class="font-mono text-xs font-bold flex-shrink-0" style="color:#16A34A" x-text="d.bal==null?'—':'৳'+d.bal.toLocaleString()"></span>
+              </button>
+            </template>
+            <p x-show="adj.cres.length===0" class="text-xs text-center py-3" style="color:var(--fg3)">নাম/ফোন লিখে খুঁজুন (ওয়ালেট রিকোয়েস্ট করেছেন এমন গ্রাহক বা UID সরাসরি)</p>
+          </div>
+        </div>
+      </div>
+      <div class="dd-card p-4" x-show="adj.sel" x-cloak>
+        <p class="text-xs font-bold mb-0.5" style="color:var(--fg3)">নির্বাচিত অ্যাকাউন্ট</p>
+        <p class="text-sm font-bold" style="color:var(--fg)" x-text="adj.sel&&adj.sel.name"></p>
+        <p class="text-[11px] font-mono mb-2" style="color:var(--fg3)" x-text="adj.sel&&(adj.sel.phone||adj.sel.id)"></p>
+        <div class="rounded-2xl p-3 mb-3 text-center" style="background:var(--bg2)"><p class="text-[11px]" style="color:var(--fg3)">বর্তমান ব্যালেন্স</p><p class="font-display text-2xl" style="color:#16A34A" x-text="'৳'+adjBal().toLocaleString()"></p></div>
+        <div class="flex gap-2 mb-3">
+          <button type="button" @click="adj.mode='add'" :style="adj.mode==='add'?'background:#16A34A;color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2.5 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-plus mr-1"></i> টাকা যোগ</button>
+          <button type="button" @click="adj.mode='sub'" :style="adj.mode==='sub'?'background:#DC2626;color:#fff':'background:var(--bg2);color:var(--fg2)'" class="flex-1 py-2.5 rounded-xl text-xs font-bold" style="border:none;cursor:pointer"><i class="fa-solid fa-minus mr-1"></i> টাকা বিয়োগ</button>
+        </div>
+        <input x-model="adj.amount" type="number" inputmode="numeric" min="1" placeholder="পরিমাণ (৳)" class="dd-input w-full mb-2"/>
+        <input x-model="adj.note" maxlength="120" placeholder="কারণ (বাধ্যতামূলক) — যেমন: বোনাস / ভুল কর্তন সংশোধন" class="dd-input w-full mb-3"/>
+        <button type="button" @click="adjSubmit()" :disabled="adj.busy" class="btn-primary w-full justify-center"><i class="fa-solid" :class="adj.busy?'fa-spinner fa-spin':'fa-check'"></i> <span x-text="adj.busy?'প্রসেস হচ্ছে...':(adj.mode==='add'?'ব্যালেন্সে যোগ করুন':'ব্যালেন্স থেকে কাটুন')"></span></button>
+      </div>
+    </div>
+    <div class="dd-card p-4 mt-4">
+      <p class="font-bold text-sm mb-3" style="color:var(--fg)"><i class="fa-solid fa-clock-rotate-left mr-1" style="color:var(--accent)"></i> সাম্প্রতিক রিসেলার সমন্বয়</p>
+      <template x-for="t in fbWalletTx.filter(x=>x.type==='admin_adjust').slice(0,12)" :key="t.fbKey">
+        <div class="flex items-center justify-between gap-2 py-2" style="border-top:1px solid var(--border)"><div class="min-w-0"><p class="text-xs font-bold truncate" style="color:var(--fg)" x-text="getResellerName(t.resellerPhone)+' · '+t.resellerPhone"></p><p class="text-[11px] truncate" style="color:var(--fg3)" x-text="t.note"></p></div><span class="font-mono text-xs font-bold flex-shrink-0" :style="t.amount>=0?'color:#16A34A':'color:#DC2626'" x-text="(t.amount>=0?'+':'−')+'৳'+Math.abs(t.amount).toLocaleString()"></span></div>
+      </template>
+      <p x-show="fbWalletTx.filter(x=>x.type==='admin_adjust').length===0" class="text-xs text-center py-3" style="color:var(--fg3)">এখনো কোনো সমন্বয় হয়নি</p>
+    </div>
+  </div>
+
   <!-- ══ MOBILE RECHARGE REQUESTS ══ -->
   <div x-show="activeTab==='recharges'" x-cloak class="animate-fade-in">
     <div class="pill-scroll mb-5">
@@ -3140,7 +3201,7 @@ function Admin(){return{
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,bulkEnableResellOpen:false,bulkResellPct:15,
 
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
-  fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],fbDeposits:[],fbSupportTickets:[],
+  fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],adj:{kind:'reseller',q:'',cq:'',cres:[],sel:null,mode:'add',amount:'',note:'',busy:false,cbusy:false},fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
@@ -3220,7 +3281,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
-    savings:'জমিয়ে কিনুন',installments:'মাসিক কিস্তি',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',
+    savings:'জমিয়ে কিনুন',installments:'মাসিক কিস্তি',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
     recharges:'মোবাইল রিচার্জ',services:'ফ্রিল্যান্সিং সার্ভিস',svcorders:'সার্ভিস অর্ডার',resellcfg:'রিসেলার কনটেন্ট'
   },
 
@@ -3344,7 +3405,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','blocklist']},
     {id:'kisti',label:'কিস্তি ও KYC',ic:'fa-calendar-check',tabs:['installments','savings','kyc']},
-    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals']},
+    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
@@ -4178,7 +4239,8 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       let bonus=0;
       if(r.referralCodeUsed&&!r.bonusCredited)bonus=Number(this.settings.resellSignupBonus)||0;
       const myCode=r.myReferralCode||this.generateReferralCode(r.fbKey);
-      await window.$db.saveReseller({status:'approved',myReferralCode:myCode,walletBalance:(r.walletBalance||0)+bonus,bonusCredited:bonus>0?true:(r.bonusCredited||false),approvedAt:Date.now()},r.fbKey);
+      await window.$db.saveReseller({status:'approved',myReferralCode:myCode,bonusCredited:bonus>0?true:(r.bonusCredited||false),approvedAt:Date.now()},r.fbKey);
+      if(bonus>0)await this._bal(r.fbKey,bonus);
       try{await window.$db.setReferralIndex(myCode,r.fbKey)}catch(ie){this.showToast('অ্যাপ্রুভ হয়েছে, কিন্তু রেফার-কোড ইনডেক্স লেখা যায়নি — রুলস পাবলিশ করে "রেফার কোড মেরামত" চাপুন','error')}
       if(bonus>0)await window.$db.pushWalletTx({resellerPhone:r.fbKey,amount:bonus,type:'bonus',note:'সাইনআপ বোনাস (প্রমো কোড ব্যবহার করে রেজিস্ট্রেশন)',timestamp:Date.now()});
       this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅','success');
@@ -4199,12 +4261,62 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     }
     return chain;
   },
+  // ══════════ ব্যালেন্স সমন্বয় ══════════
+  adjResellerList(){const q=String(this.adj.q||'').trim().toLowerCase();return this.fbResellers.filter(r=>!q||String(r.name||'').toLowerCase().includes(q)||String(r.fbKey).includes(q)||String(r.shopName||'').toLowerCase().includes(q)).slice(0,8)},
+  adjBal(){const s=this.adj.sel;if(!s)return 0;if(s.kind==='reseller'){const r=this.fbResellers.find(x=>x.fbKey===s.id);return Number(r&&r.walletBalance)||0}return Number(s.bal)||0},
+  async adjFindCust(){
+    const q=String(this.adj.cq||'').trim();if(!q)return;
+    this.adj.cbusy=true;
+    try{
+      if(!window.__usersCache){try{window.__usersCache=(await window.$db.getOnceVal('users'))||{}}catch(e){window.__usersCache={}}}
+      const dir=new Map();
+      [...this.fbCustDeposits,...this.fbCustWithdrawals].forEach(r=>{if(r.uid&&!dir.has(r.uid))dir.set(r.uid,{uid:r.uid,name:r.name||'',phone:r.phone||''})});
+      Object.entries(window.__usersCache).forEach(([k,v])=>{const u=v&&(v.uid||v.id);if(u&&!dir.has(u))dir.set(u,{uid:u,name:v.name||v.fullName||'',phone:v.phone||k})});
+      const ql=q.toLowerCase();
+      let res=[...dir.values()].filter(d=>d.uid===q||String(d.phone).includes(q)||String(d.name).toLowerCase().includes(ql)).slice(0,8);
+      if(!res.length&&q.length>=6&&/^[A-Za-z0-9_-]+$/.test(q))res=[{uid:q,name:'(সরাসরি UID)',phone:''}];
+      for(const d of res){try{d.bal=Number(await window.$db.getOnceVal('customerWallets/'+d.uid+'/balance'))||0}catch(e){d.bal=null}}
+      this.adj.cres=res;
+      if(!res.length)this.showToast('কোনো গ্রাহক পাওয়া যায়নি','error');
+    }catch(e){this.showToast('খুঁজতে ব্যর্থ!','error')}
+    this.adj.cbusy=false;
+  },
+  async adjSubmit(){
+    const a=this.adj,s=a.sel;
+    if(!s)return this.showToast('আগে অ্যাকাউন্ট বেছে নিন','error');
+    const amt=Math.round(Number(a.amount)*100)/100;
+    if(!(amt>0)||amt>10000000)return this.showToast('সঠিক পরিমাণ দিন','error');
+    const note=String(a.note||'').trim();
+    if(note.length<3)return this.showToast('কারণ লিখুন (কমপক্ষে ৩ অক্ষর)','error');
+    const delta=a.mode==='add'?amt:-amt;
+    if(a.mode==='sub'&&amt>this.adjBal())return this.showToast('ব্যালেন্সের চেয়ে বেশি কাটা যাবে না','error');
+    if(!confirm((s.name||s.id)+' — '+(delta>0?'৳'+amt+' যোগ':'৳'+amt+' বিয়োগ')+' করবেন?\nকারণ: '+note))return;
+    a.busy=true;
+    try{
+      let nb;
+      if(s.kind==='reseller'){
+        nb=await window.$db.adjustResellerWallet(s.id,delta);
+        await window.$db.pushWalletTx({resellerPhone:s.id,amount:delta,type:'admin_adjust',note:'অ্যাডমিন সমন্বয়: '+note,timestamp:Date.now()});
+      }else{
+        nb=await window.$db.adjustCustWallet(s.id,delta);
+        await window.$db.pushCustTx(s.id,{amount:delta,type:'adjust',note:'অ্যাডমিন সমন্বয়: '+note});
+        s.bal=nb;const d=a.cres.find(x=>x.uid===s.id);if(d)d.bal=nb;
+      }
+      this.showToast('সমন্বয় সম্পন্ন ✅ নতুন ব্যালেন্স ৳'+Number(nb).toLocaleString(),'success');
+      a.amount='';a.note='';
+    }catch(e){
+      const c=String((e&&(e.code||e.message))||'');
+      this.showToast(/insufficient/.test(c)?'ব্যালেন্স অপর্যাপ্ত — বিয়োগ করা যায়নি':(/permission/i.test(c)?'অনুমতি নেই — অ্যাডমিন হিসেবে লগইন আছে কিনা ও Firebase রুলস দেখুন':'সমন্বয় ব্যর্থ! '+c),'error');
+    }
+    a.busy=false;
+  },
+  // অ্যাটমিক ডেল্টা (পুরোনো read-modify-write রেস কন্ডিশন দূর করতে)
+  async _bal(phone,delta){try{return await window.$db.adjustResellerWallet(phone,delta)}catch(e){if(e&&e.message==='insufficient')setTimeout(()=>this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error'),60);throw e}},
   async creditWallet(phone,amount,type,note,orderId){
     if(!phone||!amount)return;
     const r=this.fbResellers.find(x=>x.fbKey===phone);
     if(!r||r.status==='blocked'||r.status==='rejected')return;
-    const newBal=(r.walletBalance||0)+amount;
-    await window.$db.saveReseller({walletBalance:newBal},phone);
+    await this._bal(phone,amount);
     await window.$db.pushWalletTx({resellerPhone:phone,amount,type,note,orderId:orderId||null,timestamp:Date.now()});
   },
   async creditReferralCommissions(order,key){
@@ -4234,7 +4346,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       const r=this.fbResellers.find(x=>x.fbKey===w.resellerPhone);
       const bal=r?.walletBalance||0;
       if(bal<w.amount){this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error');return;}
-      await window.$db.saveReseller({walletBalance:bal-w.amount},w.resellerPhone);
+      await this._bal(w.resellerPhone,-w.amount);
       await window.$db.pushWalletTx({resellerPhone:w.resellerPhone,amount:-w.amount,type:'withdrawal',note:'উইথড্র পরিশোধ ('+(w.method||'')+' '+(w.number||'')+')'+(w.fee?(' — ফি ৳'+w.fee+', নেট ৳'+w.netAmount):''),timestamp:Date.now()});
       await window.$db.saveWithdrawal({status:'paid',paidAt:Date.now()},w.fbKey);
       try{await window.$db.removePath('pendingDebit/'+w.resellerPhone)}catch(e){}
@@ -4251,7 +4363,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(!confirm(r.number+' নম্বরে ৳'+r.amount+' রিচার্জ করেছেন? কনফার্ম করলে রিসেলারের ব্যালেন্স থেকে টাকা কাটা হবে।'))return;
       const pct=Number(this.rcfg.rechargeCommissionPct)||0;
       const comm=Math.round(r.amount*pct)/100;
-      await window.$db.saveReseller({walletBalance:Math.round((bal-r.amount+comm)*100)/100},r.resellerPhone);
+      await this._bal(r.resellerPhone,Math.round((-r.amount+comm)*100)/100);
       await window.$db.pushWalletTx({resellerPhone:r.resellerPhone,amount:-r.amount,type:'recharge',note:'মোবাইল রিচার্জ — '+r.number+' ('+(r.operatorLabel||'')+')',timestamp:Date.now()});
       if(comm>0)await window.$db.pushWalletTx({resellerPhone:r.resellerPhone,amount:comm,type:'recharge_commission',note:'রিচার্জ কমিশন — '+r.number,timestamp:Date.now()});
       await window.$db.updateRecharge(r.fbKey,{status:'done',commission:comm,doneAt:Date.now()});
@@ -4292,7 +4404,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       const res=this.fbResellers.find(x=>x.fbKey===o.resellerPhone);const bal=res?.walletBalance||0;
       if(bal<o.total){this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error');return}
       if(!confirm('৳'+o.total+' কেটে অর্ডারটি প্রসেসিং-এ নেবেন?'))return;
-      await window.$db.saveReseller({walletBalance:bal-o.total},o.resellerPhone);
+      await this._bal(o.resellerPhone,-o.total);
       await window.$db.pushWalletTx({resellerPhone:o.resellerPhone,amount:-o.total,type:'service',note:'সার্ভিস অর্ডার — '+o.title,timestamp:Date.now()});
       await window.$db.updateServiceOrder(o.fbKey,{status:'processing',paidAt:Date.now()});
       this.showToast('অর্ডার প্রসেসিং-এ গেছে ✅','success');
@@ -4304,7 +4416,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     try{
       if(o.status==='processing'){
         const res=this.fbResellers.find(x=>x.fbKey===o.resellerPhone);
-        await window.$db.saveReseller({walletBalance:(res?.walletBalance||0)+o.total},o.resellerPhone);
+        await this._bal(o.resellerPhone,o.total);
         await window.$db.pushWalletTx({resellerPhone:o.resellerPhone,amount:o.total,type:'refund',note:'সার্ভিস অর্ডার রিফান্ড — '+o.title,timestamp:Date.now()});
       }
       await window.$db.updateServiceOrder(o.fbKey,{status:'rejected',note:why||'',doneAt:Date.now()});
@@ -4483,8 +4595,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async approveDeposit(d){
     try{
       const r=this.fbResellers.find(x=>x.fbKey===d.resellerPhone);
-      const bal=(r?.walletBalance||0)+d.amount;
-      await window.$db.saveReseller({walletBalance:bal},d.resellerPhone);
+      await this._bal(d.resellerPhone,d.amount);
       await window.$db.pushWalletTx({resellerPhone:d.resellerPhone,amount:d.amount,type:'deposit',note:'ডিপোজিট কনফার্মড ('+(d.method||'')+' — TrxID: '+(d.trxId||'')+')',timestamp:Date.now()});
       await window.$db.saveDeposit({status:'approved',approvedAt:Date.now()},d.fbKey);
       this.showToast('ডিপোজিট কনফার্ম হয়েছে! ✅','success');
