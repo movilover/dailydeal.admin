@@ -1918,10 +1918,11 @@ html,body{touch-action:auto!important;overflow-x:clip}
     </div>
   </div>
   <!-- ══ ORDERS ══ -->
-  <div x-show="activeTab==='orders'" class="animate-fade-in">
+  <div x-show="['orders','delivered','cancelled'].includes(activeTab)" class="animate-fade-in">
     <div class="flex flex-wrap gap-3 mb-5 items-center">
-      <div class="pill-scroll flex-1">
-        <template x-for="s in ['সব','পেন্ডিং','প্রসেসিং','ডেলিভার্ড','বাতিল']" :key="s">
+      <div class="flex-1 text-sm font-bold" x-show="activeTab!=='orders'" style="color:var(--fg2)" x-text="ordTabSummary()"></div>
+      <div class="pill-scroll flex-1" x-show="activeTab==='orders'">
+        <template x-for="s in ['সব','পেন্ডিং','প্রসেসিং','পাঠানো হচ্ছে']" :key="s">
           <button @click="oFilt=s" :style="oFilt===s?'background:var(--accent);color:#fff':'background:var(--card);color:var(--fg2);border:1px solid var(--border)'" class="flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all" x-text="s"></button>
         </template>
       </div>
@@ -1938,7 +1939,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <tbody>
             <template x-for="o in filteredOrders" :key="o.fbKey">
               <tr>
-                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.userHidden"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA">🗑 ইউজার ডিলিট করেছে</span></div></template><template x-if="o.cancelledBy==='reseller'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">রিসেলার বাতিল</span></div></template><template x-if="o.orderType==='reseller'||o.orderType==='referral'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" x-text="'রিসেলার: '+getResellerName(o.resellerPhone)"></span></div></template><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td class="text-xs" x-text="(o.upazila?o.upazila+', ':'')+(o.district||'')"></td>
                 <td><p class="text-xs" x-text="(o.items||[]).length+'টি'"></p></td>
@@ -1972,7 +1973,135 @@ html,body{touch-action:auto!important;overflow-x:clip}
     </div>
   </div>
 
-  <!-- ══ RESELLER MANAGEMENT (NEW) ══ -->
+    <!-- ══ গ্রাহক ইতিহাস (সুরক্ষিত আর্কাইভ) ══ -->
+  <div x-show="activeTab==='history'" x-cloak class="animate-fade-in space-y-4">
+    <div class="dd-card p-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex-1" style="min-width:220px">
+          <p class="font-bold text-sm" style="color:var(--fg)"><i class="fa-solid fa-vault mr-1" style="color:var(--accent)"></i>সুরক্ষিত অর্ডার আর্কাইভ</p>
+          <p class="text-xs mt-1" style="color:var(--fg2)" x-text="archSummary()"></p>
+          <p class="text-xs mt-1 font-semibold" style="color:#B91C1C" x-show="arch.denied">⚠ আর্কাইভ লেখা যাচ্ছে না — Firebase রুলসে <b>orderArchive</b> ও <b>resellerArchive</b> যোগ করে পাবলিশ করুন।</p>
+        </div>
+        <button type="button" @click="archiveSync(true)" class="btn-ghost !text-xs"><i class="fa-solid fa-rotate"></i> এখনই সিঙ্ক</button>
+        <button type="button" @click="exportOrders('csv')" class="btn-ghost !text-xs"><i class="fa-solid fa-file-csv"></i> CSV ব্যাকআপ</button>
+        <button type="button" @click="exportOrders('json')" class="btn-ghost !text-xs"><i class="fa-solid fa-file-code"></i> JSON ব্যাকআপ</button>
+      </div>
+    </div>
+    <div class="dd-card p-4">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
+        <input x-model="histQ" @input="histSel=''" class="dd-input pl-8" placeholder="গ্রাহকের ফোন নম্বর / নাম / অর্ডার আইডি লিখে সার্চ করুন..."/>
+      </div>
+      <p class="text-xs mt-2" style="color:var(--fg3)">ইউজার অর্ডার ডিলিট করে দিলেও এখানে সব অর্ডার, ডেলিভারি ও বাতিলের হিসাব পাওয়া যাবে।</p>
+    </div>
+    <template x-if="!histCur()">
+      <div class="dd-card p-4">
+        <p class="font-bold text-sm mb-3" style="color:var(--fg)" x-text="histQ.trim().length>=2?('ফলাফল: '+histResults().length+' জন'):'⚠ বেশি বাতিল করা গ্রাহক (শীর্ষ ১০)'"></p>
+        <div class="overflow-x-auto"><table class="dd-table">
+          <thead><tr><th>ফোন</th><th>নাম</th><th>মোট</th><th>ডেলিভার্ড</th><th>বাতিল</th><th>চলমান</th><th></th></tr></thead>
+          <tbody><template x-for="g in histResults()" :key="g.phone">
+            <tr><td class="font-mono text-xs font-bold" x-text="g.phone"></td><td class="text-xs" x-text="g.names.join(', ')||'—'"></td>
+              <td class="font-mono text-xs" x-text="g.total"></td><td class="font-mono text-xs" style="color:#15803D" x-text="g.delivered"></td>
+              <td class="font-mono text-xs" style="color:#B91C1C" x-text="g.cancelled"></td><td class="font-mono text-xs" x-text="g.active+g.approval"></td>
+              <td><button type="button" @click="histSel=g.phone" class="text-xs px-2 py-1.5 rounded-lg font-bold" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer">বিস্তারিত</button></td></tr>
+          </template></tbody></table></div>
+        <p x-show="histResults().length===0" class="text-center text-xs py-6" style="color:var(--fg3)">কিছু পাওয়া যায়নি</p>
+      </div>
+    </template>
+    <template x-if="histCur()">
+      <div class="space-y-3">
+        <div class="dd-card p-4">
+          <div class="flex flex-wrap items-start gap-3 justify-between">
+            <div><p class="font-display text-xl" style="color:var(--fg)" x-text="histCur().names.join(', ')||'নাম নেই'"></p>
+              <p class="font-mono text-sm" style="color:var(--fg2)" x-text="histCur().phone"></p>
+              <p class="text-xs mt-1" style="color:var(--fg3)" x-text="'শেষ অর্ডার: '+_hd(histCur().last)"></p></div>
+            <button type="button" @click="histSel='';histQ=''" class="btn-ghost !text-xs"><i class="fa-solid fa-arrow-left"></i> ফিরে যান</button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" x-text="histCur().total"></p><p class="text-xs" style="color:var(--fg3)">মোট অর্ডার</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#15803D" x-text="histCur().delivered"></p><p class="text-xs" style="color:var(--fg3)">ডেলিভার্ড</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#B91C1C" x-text="histCur().cancelled"></p><p class="text-xs" style="color:var(--fg3)">বাতিল</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#B45309" x-text="histCur().active+histCur().approval"></p><p class="text-xs" style="color:var(--fg3)">চলমান</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-xl" x-text="'৳'+histCur().sum.toLocaleString()"></p><p class="text-xs" style="color:var(--fg3)">ডেলিভার্ড মোট</p></div>
+          </div>
+          <p class="text-xs mt-3" style="color:var(--fg3)" x-text="'ইউজার নিজের তালিকা থেকে ডিলিট করেছে: '+histCur().hidden+'টি · লাইভ ডাটা থেকে মুছে গেছে (আর্কাইভে আছে): '+histCur().gone+'টি'"></p>
+        </div>
+        <div class="dd-card overflow-hidden"><div class="overflow-x-auto"><table class="dd-table">
+          <thead><tr><th>আইডি/তারিখ</th><th>পণ্য</th><th>মোট</th><th>স্ট্যাটাস</th><th>নোট</th><th></th></tr></thead>
+          <template x-for="o in histCur().orders" :key="o.fbKey">
+            <tbody>
+              <tr><td><span class="font-mono text-xs font-bold">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="_hd(_csOrderTs(o))"></span></td>
+                <td class="text-xs" style="max-width:240px" x-text="_itemsTxt(o)"></td>
+                <td class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(Number(o.total)||0).toLocaleString()"></td>
+                <td><span class="text-xs font-bold px-2 py-1 rounded-full" :class="chipCls(o.status)" x-text="o.status"></span></td>
+                <td class="text-xs"><span x-show="o.userHidden" class="font-bold" style="color:#C2410C">🗑 ইউজার ডিলিট করেছে<br></span><span x-show="o._archived" class="font-bold" style="color:#B91C1C">লাইভ থেকে মুছে গেছে<br></span><span x-show="o.resellerPhone" style="color:#1D4ED8" x-text="'রিসেলার: '+getResellerName(o.resellerPhone)"></span></td>
+                <td><button type="button" @click="histOpen[o.fbKey]=!histOpen[o.fbKey]" class="text-xs px-2 py-1.5 rounded-lg font-bold" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer"><i class="fa-solid" :class="histOpen[o.fbKey]?'fa-chevron-up':'fa-chevron-down'"></i></button></td></tr>
+              <tr x-show="histOpen[o.fbKey]" x-cloak><td colspan="6" class="text-xs" style="background:var(--bg2);color:var(--fg2)">
+                <div style="line-height:1.7"><b>ঠিকানা:</b> <span x-text="[o.address,o.upazila,o.district,o.division].filter(Boolean).join(', ')"></span><br>
+                <b>পেমেন্ট:</b> <span x-text="(o.payMethod||'—')+(o.trxId?' · TrxID: '+o.trxId:'')"></span><br>
+                <b>ট্র্যাকিং:</b> <span x-text="o.trackingLink||o.trackId||'—'"></span><br>
+                <template x-for="l in _logArr(o)" :key="l.t+(l.text||'')"><div>• <span x-text="_hd(l.t)"></span> — <span x-text="l.text"></span></div></template>
+                <template x-for="h in _hist(o)" :key="h.t+h.s"><div style="color:var(--fg3)">↳ স্ট্যাটাস: <span x-text="h.s"></span> (<span x-text="_hd(h.t)"></span>)</div></template></div></td></tr>
+            </tbody>
+          </template></table></div></div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ══ রিসেলার ইতিহাস ══ -->
+  <div x-show="activeTab==='reshist'" x-cloak class="animate-fade-in space-y-4">
+    <div class="dd-card p-4">
+      <div class="relative">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs" style="color:var(--fg3)"></i>
+        <input x-model="rhQ" @input="rhSel=''" class="dd-input pl-8" placeholder="রিসেলারের ফোন / নাম / শপের নাম / রেফার কোড..."/>
+      </div>
+      <p class="text-xs mt-2" style="color:var(--fg3)">রিসেলার কতগুলো অর্ডার দিয়েছে, কতগুলো ডেলিভার্ড ও কতগুলো বাতিল/রিজেক্ট হয়েছে — রিসেলার নিজে ডিলিট করলেও সব এখানে থাকবে।</p>
+    </div>
+    <template x-if="!rhCur()">
+      <div class="dd-card p-4"><p class="font-bold text-sm mb-3" style="color:var(--fg)" x-text="rhQ.trim().length>=2?('ফলাফল: '+rhResults().length+' জন'):'সবচেয়ে বেশি অর্ডার (শীর্ষ ১০)'"></p>
+        <div class="overflow-x-auto"><table class="dd-table">
+          <thead><tr><th>রিসেলার</th><th>মোট</th><th>ডেলিভার্ড</th><th>বাতিল/রিজেক্ট</th><th>চলমান</th><th></th></tr></thead>
+          <tbody><template x-for="g in rhResults()" :key="g.phone">
+            <tr><td><p class="text-xs font-bold" x-text="g.name||'—'"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="g.phone"></p></td>
+              <td class="font-mono text-xs" x-text="g.total"></td><td class="font-mono text-xs" style="color:#15803D" x-text="g.delivered"></td>
+              <td class="font-mono text-xs" style="color:#B91C1C" x-text="g.cancelled"></td><td class="font-mono text-xs" x-text="g.active+g.approval"></td>
+              <td><button type="button" @click="rhSel=g.phone" class="text-xs px-2 py-1.5 rounded-lg font-bold" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer">বিস্তারিত</button></td></tr>
+          </template></tbody></table></div>
+        <p x-show="rhResults().length===0" class="text-center text-xs py-6" style="color:var(--fg3)">কিছু পাওয়া যায়নি</p></div>
+    </template>
+    <template x-if="rhCur()">
+      <div class="space-y-3">
+        <div class="dd-card p-4">
+          <div class="flex flex-wrap items-start gap-3 justify-between">
+            <div><p class="font-display text-xl" style="color:var(--fg)" x-text="(rhCur().name||'নাম নেই')+(rhCur().shop?' — '+rhCur().shop:'')"></p>
+              <p class="font-mono text-sm" style="color:var(--fg2)" x-text="rhCur().phone"></p>
+              <p class="text-xs mt-1" style="color:var(--fg3)" x-text="'স্ট্যাটাস: '+(rhCur().status||'—')+' · ওয়ালেট: ৳'+(rhCur().wallet||0).toLocaleString()+(rhCur().deleted?' · ⚠ রিসেলার অ্যাকাউন্ট মুছে ফেলা হয়েছে (আর্কাইভে আছে)':'')"></p></div>
+            <button type="button" @click="rhSel='';rhQ=''" class="btn-ghost !text-xs"><i class="fa-solid fa-arrow-left"></i> ফিরে যান</button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3">
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" x-text="rhCur().total"></p><p class="text-xs" style="color:var(--fg3)">মোট অর্ডার</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#15803D" x-text="rhCur().delivered"></p><p class="text-xs" style="color:var(--fg3)">ডেলিভার্ড (সেল)</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#B91C1C" x-text="rhCur().cancelled"></p><p class="text-xs" style="color:var(--fg3)">বাতিল/রিজেক্ট</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-2xl" style="color:#B45309" x-text="rhCur().active+rhCur().approval"></p><p class="text-xs" style="color:var(--fg3)">চলমান</p></div>
+            <div class="dd-card-sm p-3 text-center"><p class="font-display text-xl" x-text="'৳'+rhCur().sum.toLocaleString()"></p><p class="text-xs" style="color:var(--fg3)">ডেলিভার্ড বিক্রি</p></div>
+          </div>
+          <p class="text-xs mt-3" style="color:var(--fg3)" x-text="'রিসেলার মুনাফা (ডেলিভার্ড, সেল-প্রাইস − রিসেলার-প্রাইস): ৳'+rhCur().profit.toLocaleString()+' · রিসেলার নিজে বাতিল: '+rhCur().selfCancel+'টি · অনুমোদনের অপেক্ষায়: '+rhCur().approval+'টি · লাইভ থেকে মুছে গেছে (আর্কাইভে আছে): '+rhCur().gone+'টি'"></p>
+        </div>
+        <div class="dd-card overflow-hidden"><div class="overflow-x-auto"><table class="dd-table">
+          <thead><tr><th>আইডি/তারিখ</th><th>কাস্টমার</th><th>পণ্য</th><th>মোট</th><th>স্ট্যাটাস</th><th>নোট</th></tr></thead>
+          <tbody><template x-for="o in rhCur().orders" :key="o.fbKey">
+            <tr><td><span class="font-mono text-xs font-bold">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="_hd(_csOrderTs(o))"></span></td>
+              <td><p class="text-xs font-semibold" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
+              <td class="text-xs" style="max-width:220px" x-text="_itemsTxt(o)"></td>
+              <td class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(Number(o.total)||0).toLocaleString()"></td>
+              <td><span class="text-xs font-bold px-2 py-1 rounded-full" :class="chipCls(o.status)" x-text="o.status"></span></td>
+              <td class="text-xs"><span x-text="o.orderType==='referral'?'রেফার':(o.orderType==='installment'?'কিস্তি':(o.linkOrder?'লিংক অর্ডার':'রিসেল'))"></span><span x-show="o.cancelledBy==='reseller'" style="color:#B91C1C"> · রিসেলার বাতিল</span><span x-show="o._archived" style="color:#B91C1C"> · লাইভ থেকে মুছে গেছে</span></td></tr>
+          </template></tbody></table></div></div>
+      </div>
+    </template>
+  </div>
+
+<!-- ══ RESELLER MANAGEMENT (NEW) ══ -->
   <div x-show="activeTab==='resellers'" x-cloak class="animate-fade-in">
     <div class="mb-3"><button @click="repairReferralIndex(false)" class="btn-ghost text-xs"><i class="fa-solid fa-screwdriver-wrench"></i> রেফার কোড মেরামত (সব অ্যাপ্রুভড রিসেলার)</button></div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -3227,7 +3356,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
-  orderSearch:'',oFilt:'সব',orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
+  orderSearch:'',oFilt:'সব',archVer:0,arch:{denied:false,last:0,written:0,count:0},histQ:'',histSel:'',histOpen:{},rhQ:'',rhSel:'',rhOpen:{},orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
   orderDetailOpen:false,viewOrder:null,adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
 
   assignSearch:'',draggedId:null,
@@ -3280,7 +3409,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   tabLabels:{reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
-    assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'অর্ডার',
+    assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
     savings:'জমিয়ে কিনুন',installments:'মাসিক কিস্তি',kyc:'KYC রিভিউ',vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
@@ -3324,8 +3453,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     });
   },
   get filteredOrders(){
+    const want=this.activeTab==='delivered'?'delivered':(this.activeTab==='cancelled'?'cancelled':'active');
     return this.fbOrders
-      .filter(o=>o.cancelledBy!=='reseller'&&o.status!=='রিসেলার অ্যাপ্রুভাল'&&(this.oFilt==='সব'||o.status===this.oFilt))
+      .filter(o=>this.ordGroup(o)===want&&(want!=='active'||this.oFilt==='সব'||o.status===this.oFilt))
       .filter(o=>!this.orderSearch||o.customerName?.includes(this.orderSearch)||o.phone?.includes(this.orderSearch)||String(o.id).includes(this.orderSearch))
       .filter(o=>!this.orderSuspectOnly||!!this.orderSuspect(o));
   },
@@ -3405,7 +3535,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   hubs:[
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
     {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
-    {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','blocklist']},
+    {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
     {id:'kisti',label:'কিস্তি ও KYC',ic:'fa-calendar-check',tabs:['installments','savings','kyc']},
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
@@ -3413,7 +3543,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']}
   ],
-  tabIcons:{reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',installments:'fa-calendar-check',savings:'fa-piggy-bank',kyc:'fa-id-card',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',installments:'fa-calendar-check',savings:'fa-piggy-bank',kyc:'fa-id-card',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.hubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -3685,7 +3815,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     window.addEventListener('firebase-ready',()=>{
       if(window.__fbBooted)return;window.__fbBooted=true;
       window.$db.listenProducts(prods=>this.fbProducts=prods);
-      window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule()});
+      window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule();this._arSchedule()});
       window.$db.listenUsers(count=>this.totalUsers=count);
       window.$db.listenCategories(cats=>{this.fbCategories=cats;this.sortableCats=[...cats];this.$nextTick(()=>this.initSortable())});
       window.$db.listenSections(secs=>{this.fbSections=secs});
@@ -4110,6 +4240,125 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
 
   // ══════════ ORDER CRUD ══════════
+  // ══ সুরক্ষিত অর্ডার আর্কাইভ + গ্রাহক/রিসেলার ইতিহাস ══
+  ordGroup(o){const s=String(o.status||'');if(s==='ডেলিভার্ড')return 'delivered';if(s==='বাতিল'||/রিটার্ন|ফেরত|cancel|reject/i.test(s)||o.cancelledBy==='reseller')return 'cancelled';if(s==='রিসেলার অ্যাপ্রুভাল')return 'approval';return 'active'},
+  chipCls(s){return({'পেন্ডিং':'chip-pending','প্রসেসিং':'chip-processing','পাঠানো হচ্ছে':'chip-outfordelivery','ডেলিভার্ড':'chip-delivered','বাতিল':'chip-cancelled'})[s]||'chip-pending'},
+  ordTabSummary(){const l=this.filteredOrders,s=l.reduce((a,o)=>a+(Number(o.total)||0),0);return (this.activeTab==='delivered'?'✅ ডেলিভারি সম্পন্ন: ':'❌ বাতিল অর্ডার: ')+l.length+'টি · মোট ৳'+s.toLocaleString()},
+  _ph11(p){return String(p||'').replace(/\D/g,'').slice(-11)},
+  _hd(ts){const n=Number(ts);return n?new Date(n).toLocaleDateString('bn-BD',{year:'numeric',month:'short',day:'numeric'}):'—'},
+  _itemsTxt(o){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});return it.map(i=>(i.name||'?')+' ×'+(i.qty||1)+(i.size?' ('+i.size+')':'')).join(', ')||'—'},
+  _logArr(o){const l=Array.isArray(o.trackLog)?o.trackLog:Object.values(o.trackLog||{});return l.slice(-6)},
+  _hist(o){const l=Array.isArray(o.statusHistory)?o.statusHistory:Object.values(o.statusHistory||{});return l.slice(-8)},
+  _osig(o){const L=x=>Array.isArray(x)?x.length:(x&&typeof x==='object'?Object.keys(x).length:0);return [o.status,o.total,o.trackNote||'',L(o.trackLog),L(o.adjustments),o.userHidden?1:0,o.trackingLink||'',o.cancelledBy||'',o.deliveredAt||'',o.cancelledAt||'',o.customerName||'',o.phone||'',L(o.statusHistory)].join('|')},
+  _arState(){return window.__arch||(window.__arch={map:null,rs:null,busy:false,sig:{},timer:null,denied:false,last:0,written:0})},
+  _arSchedule(){const st=this._arState();if(st.denied)return;clearTimeout(st.timer);st.timer=setTimeout(()=>this.archiveSync(false),4000)},
+  // লাইভ + আর্কাইভ মিলিয়ে সব অর্ডার (লাইভে যেটা আছে সেটাই অগ্রাধিকার)
+  _allOrders(){const a=window.__arch||{},m=window.__ao;if(m&&m.live===this.fbOrders&&m.v===this.archVer)return m.list;
+    const seen=new Set(),list=[];for(const o of this.fbOrders){seen.add(o.fbKey);list.push(o)}
+    const am=a.map||{};for(const k of Object.keys(am)){if(!seen.has(k))list.push({...am[k],fbKey:k,_archived:true})}
+    window.__ao={live:this.fbOrders,v:this.archVer,list};return list},
+  archSummary(){const _=this.arch.last+this.archVer;const gone=this._allOrders().filter(o=>o._archived).length;return 'লাইভ '+this.fbOrders.length+'টি · আর্কাইভে '+this.arch.count+'টি · লাইভ থেকে মুছে গেছে কিন্তু সংরক্ষিত '+gone+'টি'+(this.arch.last?' · শেষ সিঙ্ক '+new Date(this.arch.last).toLocaleTimeString('bn-BD'):'')},
+  async archiveSync(manual){
+    const st=this._arState();
+    if(st.busy||!this._ordersLoaded)return;
+    if(st.denied&&!manual)return;
+    st.busy=true;st.denied=false;
+    try{
+      if(!st.map){
+        const v=await window.$db.getOnceVal('orderArchive');
+        st.map=v||{};st.sig={};for(const k of Object.keys(st.map))st.sig[k]=this._osig(st.map[k]);
+        try{st.rs=(await window.$db.getOnceVal('resellerArchive'))||{}}catch(e){st.rs={}}
+        this.archVer++;
+      }
+      const now=Date.now(),upd={},live=new Set();let n=0,more=false,rem=0;
+      for(const o of this.fbOrders){
+        const k=o.fbKey;if(!k)continue;live.add(k);
+        const old=st.map[k],sg=this._osig(o);
+        if(old&&st.sig[k]===sg&&!(old._a&&old._a.liveRemoved))continue;
+        if(n>=150){more=true;continue}
+        const rec=JSON.parse(JSON.stringify(o));delete rec.fbKey;
+        rec._a={firstAt:(old&&old._a&&old._a.firstAt)||now,lastAt:now,liveRemoved:false};
+        upd[k]=rec;n++;
+      }
+      if(this.fbOrders.length){for(const k of Object.keys(st.map)){const r=st.map[k];if(rem<300&&!live.has(k)&&!(r._a&&r._a.liveRemoved)){upd[k+'/_a/liveRemoved']=true;upd[k+'/_a/removedDetectedAt']=now;rem++}}}
+      if(Object.keys(upd).length){
+        await window.$db.updatePath('orderArchive',upd);
+        for(const k of Object.keys(upd)){
+          if(k.includes('/')){const r=st.map[k.split('/')[0]];if(r){r._a=r._a||{};r._a.liveRemoved=true;r._a.removedDetectedAt=now}}
+          else{st.map[k]=upd[k];st.sig[k]=this._osig(upd[k])}
+        }
+        st.written+=n;this.archVer++;
+      }
+      st.last=Date.now();
+      if(more)setTimeout(()=>this.archiveSync(false),1500);
+      this._csSchedule();
+    }catch(e){if(/permission/i.test(String((e&&(e.code||e.message))||'')))st.denied=true;console.warn('archiveSync',e)}
+    finally{st.busy=false;this.arch={denied:st.denied,last:st.last,written:st.written,count:st.map?Object.keys(st.map).length:0}}
+  },
+  async _archiveOne(o,extra){
+    try{const st=this._arState(),k=o.fbKey,rec=JSON.parse(JSON.stringify(o));delete rec.fbKey;delete rec._archived;
+      const old=st.map&&st.map[k];
+      rec._a={firstAt:(old&&old._a&&old._a.firstAt)||Date.now(),lastAt:Date.now(),liveRemoved:true,removedAt:Date.now(),...(extra||{})};
+      await window.$db.updatePath('orderArchive',{[k]:rec});
+      if(st.map){st.map[k]=rec;st.sig[k]=this._osig(rec);this.archVer++}
+      return true}catch(e){console.warn('archiveOne',e);return false}
+  },
+  histGroups(){
+    const all=this._allOrders(),m=window.__hg;if(m&&m.all===all)return m.v;
+    const map={};
+    for(const o of all){
+      let ph=this._ph11(o.phone);if(ph.length<5)ph='অজানা';
+      const g=map[ph]||(map[ph]={phone:ph,names:[],total:0,delivered:0,cancelled:0,active:0,approval:0,sum:0,hidden:0,gone:0,last:0,orders:[]});
+      g.total++;const gr=this.ordGroup(o);g[gr]++;
+      if(gr==='delivered')g.sum+=Number(o.total)||0;
+      if(o.userHidden)g.hidden++;if(o._archived)g.gone++;
+      const nm=String(o.customerName||'').trim();if(nm&&!g.names.includes(nm))g.names.push(nm);
+      const t=this._csOrderTs(o);if(t>g.last)g.last=t;g.orders.push(o);
+    }
+    const v=Object.values(map);
+    for(const g of v)g.orders.sort((a,b)=>this._csOrderTs(b)-this._csOrderTs(a));
+    v.sort((a,b)=>b.last-a.last);
+    window.__hg={all,v};return v},
+  histResults(){
+    const q=String(this.histQ||'').trim();
+    if(q.length<2)return this.histGroups().filter(g=>g.cancelled>0).sort((a,b)=>b.cancelled-a.cancelled).slice(0,10);
+    let qd=q.replace(/\D/g,'');if(qd.length>11)qd=qd.slice(-11);const ql=q.toLowerCase(),oid=q.replace(/^#/,'');
+    return this.histGroups().filter(g=>(qd.length>=3&&g.phone.includes(qd))||g.names.some(n=>String(n).toLowerCase().includes(ql))||g.orders.some(o=>String(o.id)===oid)).slice(0,25)},
+  histCur(){const r=this.histResults();const s=r.find(g=>g.phone===this.histSel);if(s)return s;return(this.histQ.trim().length>=2&&r.length===1)?r[0]:null},
+  rhGroups(){
+    const all=this._allOrders(),m=window.__rg;if(m&&m.all===all&&m.rs===this.fbResellers)return m.v;
+    const arc=((window.__arch||{}).rs)||{},map={};
+    const mk=ph=>map[ph]||(map[ph]={phone:ph,name:'',shop:'',status:'',wallet:0,code:'',deleted:false,total:0,delivered:0,cancelled:0,active:0,approval:0,sum:0,profit:0,selfCancel:0,gone:0,orders:[]});
+    for(const r of this.fbResellers){const g=mk(r.fbKey);g.name=r.name||'';g.shop=r.shopName||'';g.status=r.status||'';g.wallet=r.walletBalance||0;g.code=r.myReferralCode||''}
+    for(const o of all){
+      const ph=String(o.resellerPhone||'');if(!ph)continue;
+      const g=mk(ph);if(!g.name&&arc[ph]){g.name=arc[ph].name||'';g.shop=arc[ph].shopName||'';g.deleted=true;g.status=arc[ph].status||''}
+      if(!g.shop&&o.resellerShopName)g.shop=o.resellerShopName;
+      g.total++;const gr=this.ordGroup(o);g[gr]++;
+      if(o.cancelledBy==='reseller')g.selfCancel++;if(o._archived)g.gone++;
+      if(gr==='delivered'){g.sum+=Number(o.total)||0;if(o.orderType==='reseller'){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});for(const i of it)g.profit+=Math.max(0,(Number(i.resellerSellPrice)||0)-(Number(i.resellerPrice)||0))*(Number(i.qty)||1)}}
+      g.orders.push(o);
+    }
+    const v=Object.values(map);
+    for(const g of v)g.orders.sort((a,b)=>this._csOrderTs(b)-this._csOrderTs(a));
+    v.sort((a,b)=>b.total-a.total);
+    window.__rg={all,rs:this.fbResellers,v};return v},
+  rhResults(){
+    const q=String(this.rhQ||'').trim();
+    if(q.length<2)return this.rhGroups().filter(g=>g.total>0).slice(0,10);
+    let qd=q.replace(/\D/g,'');if(qd.length>11)qd=qd.slice(-11);const ql=q.toLowerCase();
+    return this.rhGroups().filter(g=>(qd.length>=3&&g.phone.includes(qd))||(g.name||'').toLowerCase().includes(ql)||(g.shop||'').toLowerCase().includes(ql)||(g.code||'').toLowerCase().includes(ql)).slice(0,25)},
+  rhCur(){const r=this.rhResults();const s=r.find(g=>g.phone===this.rhSel);if(s)return s;return(this.rhQ.trim().length>=2&&r.length===1)?r[0]:null},
+  exportOrders(fmt){
+    const all=this._allOrders().slice().sort((a,b)=>this._csOrderTs(b)-this._csOrderTs(a)),d=new Date().toISOString().slice(0,10);let blob,name;
+    if(fmt==='json'){blob=new Blob([JSON.stringify(all.map(o=>{const r={...o};delete r._archived;return r}),null,1)],{type:'application/json'});name='orders-backup-'+d+'.json'}
+    else{
+      const E=v=>'"'+String(v==null?'':v).replace(/"/g,'""').replace(/\r?\n/g,' ')+'"';
+      const H=['অর্ডার আইডি','তারিখ','স্ট্যাটাস','নাম','ফোন','বিভাগ','জেলা','উপজেলা','ঠিকানা','পণ্য','মোট','পেমেন্ট','TrxID','টাইপ','রিসেলার ফোন','ইউজার ডিলিট','লাইভ থেকে মুছে গেছে'];
+      const rows=all.map(o=>[o.id,o.timestamp||o.date,o.status,o.customerName,o.phone,o.division,o.district,o.upazila,o.address,this._itemsTxt(o),o.total,o.payMethod,o.trxId,o.orderType||'',o.resellerPhone||'',o.userHidden?'হ্যাঁ':'',o._archived?'হ্যাঁ':''].map(E).join(','));
+      blob=new Blob(['\ufeff'+H.map(E).join(',')+'\n'+rows.join('\n')],{type:'text/csv;charset=utf-8'});name='orders-backup-'+d+'.csv'}
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    this.showToast('ব্যাকআপ ডাউনলোড হচ্ছে ('+all.length+'টি অর্ডার)','success')},
   // ══ কাস্টমার ডেলিভারি রিপোর্ট (customerStats) — ফোন-হ্যাশ ভিত্তিক; ঠিকানা/ব্যক্তিগত তথ্য নেই ══
   _csState(){return window.__cs||(window.__cs={cache:null,timer:null,memo:{},busy:false})},
   async _csHash(p11){
@@ -4126,7 +4375,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   async _csCompute(){
     const m={};
-    for(const o of this.fbOrders){
+    for(const o of this._allOrders()){
       const ph=String(o.phone||'').replace(/\D/g,'').slice(-11);if(ph.length<11)continue;
       const r=m[ph]||(m[ph]={delivered:0,cancelled:0,total:0,lastOrderAt:0});
       r.total++;
@@ -4144,6 +4393,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const st=this._csState();
     if(st.busy)return null;
     if(!this._ordersLoaded)return null;
+    {const _s=this._arState();if(!_s.map&&!_s.denied){this._arSchedule();return null}}
     if(!this.fbOrders.length&&!force)return null;
     st.busy=true;
     try{
@@ -4211,6 +4461,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       await window.$db.updateOrder(key,d);
       if(this.viewOrder&&this.viewOrder.fbKey===key)Object.assign(this.viewOrder,d);
       this._csSchedule();
+      try{const _c0=(this.fbOrders||[]).find(o=>o.fbKey===key);const _h0=_c0?(Array.isArray(_c0.statusHistory)?_c0.statusHistory:Object.values(_c0.statusHistory||{})):[];
+        const ex={statusHistory:[..._h0,{s:status,t:Date.now(),by:'admin'}].slice(-30)};
+        if(status==='ডেলিভার্ড')ex.deliveredAt=Date.now();else if(status==='বাতিল')ex.cancelledAt=(_c0&&_c0.cancelledAt)||Date.now();
+        await window.$db.updateOrder(key,ex)}catch(e){console.warn('statusHistory',e)}
       if(status==='ডেলিভার্ড'){
         const order=this.fbOrders.find(o=>o.fbKey===key);
         if(order)await this.creditReferralCommissions(order,key);
@@ -4253,7 +4507,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     if(!confirm(r.status==='blocked'?'আনব্লক করবেন?':'ব্লক করবেন? ব্লক করলে সে আর রিসেলিং প্যানেল ব্যবহার করতে পারবে না।'))return;
     try{await window.$db.saveReseller({status:r.status==='blocked'?'approved':'blocked'},r.fbKey);this.showToast('স্ট্যাটাস আপডেট হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}
   },
-  async deleteReseller(r){if(!confirm('একদম মুছে ফেলবেন? এটি ফেরানো যাবে না।'))return;try{await window.$db.deleteReseller(r.fbKey);this.showToast('মুছা হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
+  async deleteReseller(r){if(!confirm('রিসেলার অ্যাকাউন্ট মুছবেন? (প্রোফাইল ও অর্ডার ইতিহাস আর্কাইভে সংরক্ষিত থাকবে)'))return;try{
+    try{const rec=JSON.parse(JSON.stringify(r));delete rec.fbKey;rec.deletedAt=Date.now();await window.$db.updatePath('resellerArchive',{[r.fbKey]:rec});const st=this._arState();if(st.rs)st.rs[r.fbKey]=rec}catch(e){if(!confirm('⚠ প্রোফাইল আর্কাইভ করা যায়নি (রুলস?)। তবুও মুছবেন?'))return}
+    await window.$db.deleteReseller(r.fbKey);this.showToast('মুছা হয়েছে (আর্কাইভে সংরক্ষিত)','success')}catch{this.showToast('ব্যর্থ!','error')}},
   getUplineChain(phone,levels){
     const chain=[];let cur=phone;
     for(let i=0;i<levels;i++){
@@ -4721,7 +4977,14 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     }catch{this.showToast('ব্যর্থ!','error')}
   },
   async updateTrackingLink(key,link){link=String(link||'').trim();const _m=link.match(/https?:\/\/[^\s"'<>]+/i);if(_m)link=_m[0];try{await window.$db.updateOrder(key,{trackingLink:link||null});if(link)this.showToast('ট্র্যাকিং লিংক সেভ! ✅','success');}catch{this.showToast('আপডেট ব্যর্থ!','error')}},
-  async deleteOrder(key){if(!confirm('মুছবেন?'))return;try{await window.$db.deleteOrder(key);this.showToast('অর্ডার মুছা হয়েছে!','success')}catch{this.showToast('মুছতে ব্যর্থ!','error')}},
+  async deleteOrder(key){
+    if(!confirm('অর্ডারটি লাইভ তালিকা থেকে সরানো হবে।\nতবে আর্কাইভে সংরক্ষিত থাকবে — গ্রাহক/রিসেলার ইতিহাসে দেখা যাবে। এগিয়ে যাবেন?'))return;
+    try{
+      const o=this.fbOrders.find(x=>x.fbKey===key);
+      if(o){const ok=await this._archiveOne(o,{removedBy:'admin'});if(!ok&&!confirm('⚠ আর্কাইভে সেভ করা যায়নি (রুলস পাবলিশ হয়েছে?)।\nতবুও মুছবেন? এটা আর ফেরানো যাবে না।'))return}
+      await window.$db.deleteOrder(key);this.showToast('লাইভ থেকে সরানো হয়েছে (আর্কাইভে সংরক্ষিত)','success')
+    }catch{this.showToast('মুছতে ব্যর্থ!','error')}
+  },
 
   // ══════════ PINNED PRODUCTS (NEW) ══════════
   async pinProd(){
