@@ -2,9 +2,11 @@
 <html lang="bn" x-data="Admin()" x-init="boot()" :class="'theme-'+activeTheme">
 <head>
 <meta charset="UTF-8"/>
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://www.gstatic.com https://cdn.tailwindcss.com https://www.google.com https://www.recaptcha.net; worker-src 'self' blob: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;"/>
+<meta name="referrer" content="strict-origin-when-cross-origin"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
 <title>Daily Deal — অ্যাডমিন প্যানেল v10.0 (Unified)</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script>
 tailwind.config={
   darkMode:'class',
@@ -31,9 +33,9 @@ tailwind.config={
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Hind+Siliguri:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.4/dist/cdn.min.js" integrity="sha384-5/joNqFnRyVWzXp99bHot6RHG+EksGp+USSgZwPar7T9SD9PKKER37n/8bXBAZGd" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
 
 <!-- Firebase (merged: products, orders, categories, sections, notifications, custom buttons, pinned products, settings, storage) -->
 <script type="module">
@@ -53,7 +55,7 @@ const cfg={
 const app=initializeApp(cfg);
 /* App Check (reCAPTCHA v3, ফ্রি) — সাইট-কী বসালেই চালু; খালি থাকলে আগের মতোই চলে। */
 const APPCHECK_SITE_KEY='';   // ← আপনার reCAPTCHA v3 সাইট-কী এখানে বসান
-if(APPCHECK_SITE_KEY){try{const ac=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true})}catch(e){console.warn('AppCheck init failed',e)}}
+if(APPCHECK_SITE_KEY){try{const ac=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");const _acI=ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});window.$acGet=async()=>{try{return (await ac.getToken(_acI,false)).token}catch(e){return ''}}}catch(e){console.warn('AppCheck init failed',e)}}
 const db=getDatabase(app);
 const auth=getAuth(app);
 (function(){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0F0D0A;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Hind Siliguri,sans-serif';
@@ -70,6 +72,7 @@ onAuthStateChanged(auth,u=>{
   if(u&&!isAdmin){signOut(auth);} // অন্য কেউ (যেমন রিসেলার) লগইন অবস্থায় থাকলে সাথে সাথে সাইন আউট — অ্যাডমিন প্যানেলে ঢুকতে না পারে
 });})();
 const storage=getStorage(app);
+window.$adminTok=async()=>auth.currentUser?await auth.currentUser.getIdToken():null;
 window.$db={
   // Products
   saveProduct:async(data,id)=>{if(id){await update(ref(db,'products/'+id),data);return id;}const r=push(ref(db,'products'));await set(r,data);return r.key},
@@ -599,7 +602,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           </div>
           <div class="flex gap-2">
             <input :value="viewOrder.trackingLink||''" @change="updateTrackingLink(viewOrder.fbKey,$event.target.value);viewOrder.trackingLink=$event.target.value" class="dd-input flex-1" placeholder="ট্র্যাকিং লিংক (ShopBase থেকে পাওয়া) https://..."/>
-            <a x-show="viewOrder.trackingLink" :href="viewOrder.trackingLink" target="_blank" class="px-3 py-2 rounded-xl text-xs font-bold text-white" style="background:#16A34A"><i class="fa-solid fa-location-arrow"></i></a>
+            <a x-show="viewOrder.trackingLink" :href="safeUrl(viewOrder.trackingLink)" target="_blank" class="px-3 py-2 rounded-xl text-xs font-bold text-white" style="background:#16A34A" rel="noopener noreferrer"><i class="fa-solid fa-location-arrow"></i></a>
           </div>
           <p class="text-[11px]" style="color:var(--fg3)" x-show="settings.trackUrlTemplate&&viewOrder.trackId&&!viewOrder.trackingLink">ID দিলে লিংক নিজে তৈরি হবে (সেটিংসের টেমপ্লেট থেকে)।</p>
           <div>
@@ -1320,7 +1323,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
               <p class="text-xs mt-1 leading-relaxed" style="color:var(--fg3)">ছবি বেছে নিন → ImgBB API-তে অটো আপলোড → Direct URL স্বয়ংক্রিয়ভাবে তৈরি হয়ে কারাউসেলে যোগ হবে। Firebase Storage ব্যর্থ হলে fallback হিসেবেও কাজ করে।</p>
             </div>
             <div class="mb-3">
-              <label class="dd-label">ImgBB API Key <a href="https://api.imgbb.com/" target="_blank" style="color:var(--accent)" class="normal-case font-semibold">→ api.imgbb.com</a></label>
+              <label class="dd-label">ImgBB API Key <a href="https://api.imgbb.com/" target="_blank" style="color:var(--accent)" class="normal-case font-semibold" rel="noopener noreferrer">→ api.imgbb.com</a></label>
               <div class="flex gap-2">
                 <input :type="up.showKey?'text':'password'" x-model="up.imgbbKey" placeholder="আপনার ImgBB API Key..." class="dd-input flex-1"/>
                 <button @click="up.showKey=!up.showKey" class="btn-ghost flex-shrink-0"><i :class="up.showKey?'fa-solid fa-eye-slash':'fa-solid fa-eye'" style="font-size:11px"></i></button>
@@ -1953,7 +1956,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
                 <td style="min-width:160px">
                   <div class="flex items-center gap-1.5">
                     <input :value="o.trackingLink||''" @change="updateTrackingLink(o.fbKey,$event.target.value)" class="dd-input py-1.5 text-xs" style="min-width:120px;padding:6px 8px" placeholder="ট্র্যাকিং URL"/>
-                    <a x-show="o.trackingLink" :href="o.trackingLink" target="_blank" class="text-xs px-1.5 py-1.5 rounded-lg" style="background:#E6FFF1;color:#16A34A;border:none;cursor:pointer"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                    <a x-show="o.trackingLink" :href="safeUrl(o.trackingLink)" target="_blank" class="text-xs px-1.5 py-1.5 rounded-lg" style="background:#E6FFF1;color:#16A34A;border:none;cursor:pointer" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
                   </div>
                 </td>
                 <td>
@@ -3083,7 +3086,7 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <p class="text-xs leading-relaxed" style="color:var(--fg3)">একবার এখানে কনফিগার করলে প্রোডাক্ট আপলোড ফর্মে "System C — Cloudinary" থেকে ছবি সরাসরি Cloudinary-তে আপলোড হয়ে যাবে, প্রতিবার কোনো Key দিতে হবে না।</p>
         </div>
         <div>
-          <label class="dd-label">Cloud Name <a href="https://cloudinary.com/console" target="_blank" style="color:var(--accent)" class="normal-case font-semibold">→ cloudinary.com/console</a></label>
+          <label class="dd-label">Cloud Name <a href="https://cloudinary.com/console" target="_blank" style="color:var(--accent)" class="normal-case font-semibold" rel="noopener noreferrer">→ cloudinary.com/console</a></label>
           <input class="dd-input" x-model="settings.cloudinaryCloudName" placeholder="যেমন: dxyzabc12"/>
         </div>
         <div>
@@ -3231,10 +3234,83 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
       </div>
 
+      <div class="dd-card p-4 space-y-3" x-init="if(_api())otpLoad()">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-mobile-screen-button" style="color:var(--accent)"></i>ফোন যাচাই (OTP) ও SMS প্রোভাইডার</p>
+        <div>
+          <label class="dd-label">সার্ভার API URL (Railway, https://…)</label>
+          <div class="flex gap-2"><input class="dd-input" x-model="settings.apiBase" placeholder="https://your-app.up.railway.app"/><button @click="saveSettings().then(()=>otpLoad())" class="btn-primary text-xs" :disabled="otp.busy">সেভ ও সংযোগ</button><button @click="otpLoad()" class="btn-ghost text-xs" :disabled="otp.busy">রিফ্রেশ</button></div>
+          <p class="text-xs mt-1" style="color:var(--fg3)">সার্ভারের অবস্থা: <b x-text="otp.health==='ok'?'চালু আছে':otp.health==='bad'?'সংযোগ হয়নি':'—'"></b></p>
+        </div>
+        <p x-show="otp.msg" x-text="otp.msg" class="text-xs font-bold" style="color:var(--accent)"></p>
+        <div class="space-y-2" style="border-top:1px dashed var(--border);padding-top:10px">
+              <p class="text-xs font-bold" style="color:var(--fg)">কোথায় যাচাই লাগবে (আগে মূল সুইচ চালু করতে হবে)</p>
+          <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyAtSignup===true" @change="settings.verifyAtSignup=$event.target.checked"/> গ্রাহক প্রোফাইলে ফোন সেভ করার সময়</label>
+          <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyResellerSignup===true" @change="settings.verifyResellerSignup=$event.target.checked"/> রিসেলার সাইনআপে</label>
+          <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyAtOrder===true" @change="settings.verifyAtOrder=$event.target.checked"/> অর্ডার দেওয়ার সময়</label>
+          <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyWithdraw===true" @change="settings.verifyWithdraw=$event.target.checked"/> রিসেলারের উইথড্র / রিচার্জ / সার্ভিস অনুরোধে (১০ মিনিটের মধ্যে যাচাই)</label>
+          <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyPinReset===true" @change="settings.verifyPinReset=$event.target.checked"/> রিসেলার PIN ভুলে গেলে (PIN রিসেট)</label>
+              <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.serverStatsOnly===true" @change="settings.serverStatsOnly=$event.target.checked"/> কাস্টমার রিপোর্ট শুধু সার্ভারের মাধ্যমে (সার্ভার চালু ও পরীক্ষিত হলে তবেই)</label>
+              <div class="flex gap-2 flex-wrap items-center">
+                <button class="btn-ghost text-xs" :disabled="otp.busy" @click="_otpPersist().then(()=>otp.msg='বাছাই সেভ হয়েছে').catch(()=>otp.msg='সেভ ব্যর্থ, আবার চেষ্টা করুন')">এই বাছাই সেভ করুন</button>
+                <span class="text-xs">মূল সুইচ: <b x-text="settings.phoneVerify===true?'চালু':'বন্ধ'"></b></span>
+                <button x-show="settings.phoneVerify!==true" class="btn-primary text-xs" :disabled="otp.busy" @click="otpMaster(true)">চালু করুন (টেস্ট সফল হলে)</button>
+                <button x-show="settings.phoneVerify===true" class="btn-ghost text-xs" :disabled="otp.busy" @click="otpMaster(false)">বন্ধ করুন</button>
+                <button class="btn-danger text-xs" @click="otpPanic()">জরুরি: সব বন্ধ</button>
+              </div>
+            </div>
+        <template x-if="otp.cfg">
+          <div class="space-y-3">
+            <div class="space-y-2" style="border-top:1px dashed var(--border);padding-top:10px">
+              <p class="text-xs font-bold" style="color:var(--fg)">প্রোভাইডার (ক্রমানুযায়ী ব্যর্থ হলে পরেরটা চেষ্টা হয়; ছোট সংখ্যা = আগে)</p>
+              <template x-for="(p,i) in otp.cfg.providers" :key="p.id">
+                <div class="p-3 rounded-xl space-y-2" style="border:1px solid var(--border)">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <b class="text-xs" x-text="p.label"></b>
+                    <span class="text-xs" style="color:var(--fg3)" x-text="'('+p.id+')'"></span>
+                    <span class="text-xs" :style="'color:'+(p.verified==='verified'?'#16A34A':p.verified==='partial'?'#B45309':'#DC2626')" x-text="p.verified==='verified'?'ডক মিলেছে':p.verified==='partial'?'আংশিক যাচাইকৃত':p.verified==='custom'?'কাস্টম':'অযাচাইকৃত'"></span>
+                    <span class="text-xs" x-show="p.lastTestOkAt" style="color:#16A34A">টেস্ট সফল</span>
+                    <button class="btn-danger text-xs" style="margin-left:auto" @click="otpDel(i)">মুছুন</button>
+                  </div>
+                  <p class="text-xs" style="color:var(--fg3)" x-text="otpPresetNote(p.type)"></p>
+                  <div class="grid grid-cols-3 gap-2">
+                    <label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="p.enabled"/> চালু</label>
+                    <div><label class="dd-label">অগ্রাধিকার</label><input type="number" min="0" class="dd-input" x-model.number="p.priority"/></div>
+                    <div><label class="dd-label">অঞ্চল</label><select class="dd-input" x-model="p.region"><option value="bd">বাংলাদেশ</option><option value="intl">আন্তর্জাতিক</option><option value="any">যেকোনো</option></select></div>
+                  </div>
+                  <template x-for="f in otpPresetFields(p.type,false)" :key="f.name"><div><label class="dd-label" x-text="f.label"></label><input class="dd-input" x-model="p.fields[f.name]"/></div></template>
+                  <template x-for="f in otpPresetFields(p.type,true)" :key="f.name"><div><label class="dd-label" x-text="f.label"></label><input class="dd-input" type="password" autocomplete="new-password" x-model="p._sec[f.name]" :placeholder="(p.secrets[f.name]&&p.secrets[f.name].set)?('সেট আছে '+p.secrets[f.name].mask+' (বদলাতে নতুন লিখুন)'):'এখানে লিখুন'"/></div></template>
+                  <template x-if="p.type==='generic'"><div class="space-y-2">
+                    <div><label class="dd-label">রিকোয়েস্ট (JSON): method, url, headers, bodyType, body, success</label><textarea class="dd-input" rows="8" style="font-family:monospace;font-size:11px" x-model="p._gen"></textarea></div>
+                    <div><label class="dd-label">গোপন মান (JSON, যেমন {"KEY":"…"}; ফাঁকা = অপরিবর্তিত; টেমপ্লেটে {{secret.KEY}})</label><textarea class="dd-input" rows="2" style="font-family:monospace;font-size:11px" x-model="p._gsec" :placeholder="Object.keys(p.secrets||{}).length?('সেট আছে: '+Object.keys(p.secrets).join(', ')):''"></textarea></div>
+                  </div></template>
+                  <button class="btn-ghost text-xs" :disabled="otp.busy" @click="otpTest(p)">এই প্রোভাইডারে টেস্ট এসএমএস পাঠান</button>
+                </div>
+              </template>
+              <div class="flex gap-2 items-center"><select class="dd-input" x-model="otp.addType" style="width:auto"><template x-for="pr in otp.cfg.presets" :key="pr.type"><option :value="pr.type" x-text="pr.label"></option></template></select><button class="btn-ghost text-xs" @click="otpAdd()">+ প্রোভাইডার যোগ</button></div>
+              <div><label class="dd-label">টেস্ট নম্বর</label><input class="dd-input" type="tel" x-model="otp.testPhone" placeholder="01XXXXXXXXX"/></div>
+            </div>
+            <div class="space-y-2" style="border-top:1px dashed var(--border);padding-top:10px">
+              <label class="dd-label">এসএমএস টেমপ্লেট ({{code}} থাকতেই হবে)</label>
+              <textarea class="dd-input" rows="2" x-model="otp.cfg.smsTemplate"></textarea>
+              <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="otp.cfg.routing.bdFirst"/> বাংলাদেশি নম্বরে বাংলাদেশি প্রোভাইডার আগে</label>
+              <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="otp.cfg.useUnicode"/> বাংলা/ইউনিকোড টেক্সট ব্যবহার (সব গেটওয়ে সাপোর্ট করে না; আগে টেস্ট করুন)</label>
+              <button class="btn-primary text-xs" :disabled="otp.busy" @click="otpSave()">প্রোভাইডার ও টেমপ্লেট সেভ</button>
+            </div>
+            <div x-show="otp.stats" class="text-xs space-y-1" style="border-top:1px dashed var(--border);padding-top:10px">
+              <p class="font-bold" style="color:var(--fg)">ব্যবহার</p>
+              <p>আজকের এসএমএস: <b x-text="(otp.stats&&otp.stats.today.used)+' / '+(otp.stats&&otp.stats.today.cap)"></b></p>
+              <template x-for="d in Object.keys((otp.stats&&otp.stats.stats)||{}).sort().reverse()" :key="d"><p x-show="Object.keys(otp.stats.stats[d]).length"><span x-text="d"></span>: <template x-for="id in Object.keys(otp.stats.stats[d])" :key="id"><span x-text="id+' সফল '+otp.stats.stats[d][id].ok+'/ব্যর্থ '+otp.stats.stats[d][id].fail+'  '"></span></template></p></template>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <div class="dd-card p-4 space-y-3">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-user-shield" style="color:var(--accent)"></i>নিরাপত্তা ও ডেটা পরিষ্কার</p>
         <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="settings.orderRateLimit"/> অর্ডার-ফ্লাড ব্রেক (২০ সেকেন্ডে ১টি অর্ডার; App Check Enforce হলে কার্যকর)</label>
         <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="settings.forcePinChange"/> দুর্বল (৪ ডিজিট) PIN-ধারী রিসেলারকে PIN বদল বাধ্যতামূলক করুন</label>
+        <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.legacyMigrationOpen!==false" @change="settings.legacyMigrationOpen=$event.target.checked"/> পুরনো রিসেলার মাইগ্রেশন (migrationCheck) খোলা রাখুন — সব মাইগ্রেট হলে বন্ধ করুন, তারপর সেভ দিন</label>
+        <label class="flex items-center gap-2 text-xs font-bold">নতুন PIN-এর ন্যূনতম দৈর্ঘ্য (শুধু নতুন সেট/বদলের সময়): <select class="dd-input" style="width:auto;padding:4px 8px" :value="settings.minPinLength||6" @change="settings.minPinLength=Number($event.target.value)"><option value="6">6</option><option value="8">8</option></select></label>
         <button @click="saveSettings()" class="btn-primary text-xs">সুইচ সেভ করুন</button>
         <p class="text-xs" style="color:var(--fg3)">PIN-রেকর্ড এখনো পরিষ্কার হয়নি এমন রিসেলার: <b x-text="fbResellers.filter(r=>r.pin).length"></b> জন (PIN-এর দৈর্ঘ্য হ্যাশ থেকে জানা যায় না; লগইন করলে তাদের pin নিজে মুছে যায়)।</p>
 
@@ -3379,8 +3455,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     codSettings:{extraCharge:0,discountOnAdvance:0},
     checkoutPromoBanners:[],
     supportPhone:'',telegramLink:'',
-    shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,
+    shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,legacyMigrationOpen:true,minPinLength:6,apiBase:'',phoneVerify:false,verifyAtSignup:false,verifyResellerSignup:false,verifyAtOrder:false,verifyWithdraw:false,verifyPinReset:false,serverStatsOnly:false,
   },
+  otp:{cfg:null,stats:null,busy:false,msg:'',health:'',testPhone:'',addType:'alphasms'},
   secBox:{checking:false,found:null,usersBusy:false,usersInfo:null,trxDel:'',lockPhone:''},
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
@@ -5105,6 +5182,55 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
 
   // ══════════ SETTINGS ══════════
+  /* ---- ফোন যাচাই (OTP) / SMS প্রোভাইডার ---- */
+  _api(){const b=String((this.settings&&this.settings.apiBase)||'').trim().replace(/\/+$/,'');return /^https:\/\/[^\s]+$/.test(b)?b:''},
+  async apiCall(method,path,body){
+    const api=this._api();if(!api)return{ok:false,message:'আগে "সার্ভার API URL" লিখে সেভ করুন'};
+    const tok=await window.$adminTok();if(!tok)return{ok:false,message:'অ্যাডমিন লগইন দরকার'};
+    const h={Authorization:'Bearer '+tok};if(body)h['Content-Type']='application/json';
+    try{const ac=window.$acGet?await window.$acGet():'';if(ac)h['X-Firebase-AppCheck']=ac}catch(e){}
+    try{const r=await fetch(api+path,{method,headers:h,body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return{...j,ok:!!j.ok&&r.ok}}
+    catch(e){return{ok:false,message:'সার্ভারে পৌঁছানো যায়নি (URL / CORS / ইন্টারনেট দেখুন)'}}
+  },
+  async otpHealth(){try{const r=await fetch(this._api()+'/healthz');this.otp.health=r.ok?'ok':'bad'}catch(e){this.otp.health='bad'}},
+  _otpPrep(r){r.providers.forEach(p=>{p._sec={};p._gen=p.generic?JSON.stringify(p.generic,null,1):'';p._gsec=''});return r},
+  async otpLoad(){this.otp.busy=true;this.otp.msg='';const r=await this.apiCall('GET','/admin/otp/config');this.otp.busy=false;if(!r.ok){this.otp.msg=r.message||'লোড ব্যর্থ';this.otpHealth();return}
+    this.otp.cfg=this._otpPrep(r);this.otpHealth();this.otpStats()},
+  async otpStats(){const r=await this.apiCall('GET','/admin/otp/stats');if(r.ok)this.otp.stats=r},
+  otpPresetFields(type,secret){const p=((this.otp.cfg&&this.otp.cfg.presets)||[]).find(x=>x.type===type);return p?p.fields.filter(f=>!!f.secret===secret):[]},
+  otpPresetNote(type){const p=((this.otp.cfg&&this.otp.cfg.presets)||[]).find(x=>x.type===type);return p?p.note:''},
+  otpAdd(){const t=this.otp.addType;if(!t||!this.otp.cfg)return;const pr=this.otp.cfg.presets.find(x=>x.type===t);let id=t,n=1;while(this.otp.cfg.providers.some(p=>p.id===id))id=t+'-'+(++n);
+    this.otp.cfg.providers.push({id,type:t,label:pr.label,enabled:false,priority:this.otp.cfg.providers.length+1,region:pr.region,fields:{},secrets:{},generic:null,lastTestOkAt:null,verified:pr.verified,_sec:{},_gsec:'',
+      _gen:t==='generic'?JSON.stringify({method:'POST',url:'https://',headers:{},bodyType:'form',body:{to:'{{to}}',message:'{{text}}'},success:{type:'status',codes:[200]}},null,1):''})},
+  otpDel(i){if(confirm('এই প্রোভাইডার মুছবেন? (সেভ করলে কার্যকর হবে)'))this.otp.cfg.providers.splice(i,1)},
+  async otpSave(){
+    const c=this.otp.cfg;if(!c)return;this.otp.busy=true;this.otp.msg='';
+    try{
+      const providers=c.providers.map(p=>{const secrets={};
+        Object.entries(p._sec||{}).forEach(([k,v])=>{if(String(v||'').trim())secrets[k]=v});
+        if(p.type==='generic'&&String(p._gsec||'').trim()){Object.entries(JSON.parse(p._gsec)).forEach(([k,v])=>{secrets[k]=v})}
+        return{id:p.id,type:p.type,label:p.label,enabled:!!p.enabled,priority:Number(p.priority)||0,region:p.region,fields:p.fields||{},secrets,...(p.type==='generic'?{generic:JSON.parse(p._gen||'{}')}:{})}});
+      const r=await this.apiCall('PUT','/admin/otp/config',{smsTemplate:c.smsTemplate,useUnicode:!!c.useUnicode,intlEnabled:!!c.intlEnabled,routing:{bdFirst:c.routing.bdFirst!==false},providers});
+      if(!r.ok)this.otp.msg=r.message||'সেভ ব্যর্থ';else{this.otp.cfg=this._otpPrep(r);this.otp.msg='সেভ হয়েছে। এখন "টেস্ট এসএমএস" দিয়ে পরীক্ষা করুন।'}
+    }catch(e){this.otp.msg='JSON ভুল: '+e.message}
+    this.otp.busy=false},
+  async otpTest(p){if(!/^01[3-9]\d{8}$/.test(this.otp.testPhone||'')){this.otp.msg='টেস্ট নম্বর দিন (01XXXXXXXXX)';return}
+    this.otp.busy=true;const r=await this.apiCall('POST','/admin/otp/test',{providerId:p.id,phone:this.otp.testPhone});this.otp.busy=false;this.otp.msg=(r.ok?'সফল: ':'ব্যর্থ: ')+(r.message||'');if(r.ok)p.lastTestOkAt=Date.now()},
+  async _otpPersist(){const d=await this.getCurrentSettings();await window.$db.saveSettings(d)},   // saveSettings() এরর গিলে ফেলে; এটা ফেলে না
+  async otpMaster(on){this.otp.busy=true;this.otp.msg='';
+    try{
+      if(!on){this.settings.phoneVerify=false;await this._otpPersist();this.otp.msg='ফোন যাচাই বন্ধ হয়েছে (সার্ভার ছাড়াই, সরাসরি ডাটাবেসে)';return}
+      await this._otpPersist();
+      const r=await this.apiCall('POST','/admin/otp/master',{enable:true});
+      if(r.ok){this.settings.phoneVerify=true;this.otp.msg='ফোন যাচাই চালু হয়েছে'}else this.otp.msg=r.message||'ব্যর্থ';
+      this.otpStats()
+    }catch(e){this.otp.msg='সেভ ব্যর্থ। Firebase Console → Realtime Database → settings/settings/phoneVerify সরাসরি বদলান।'}
+    finally{this.otp.busy=false}},
+  async otpPanic(){if(!confirm('সব ফোন-যাচাই ফ্ল্যাগ এখনই বন্ধ করবেন?'))return;this.otp.busy=true;
+    ['phoneVerify','verifyAtSignup','verifyResellerSignup','verifyAtOrder','verifyWithdraw','verifyPinReset'].forEach(k=>{this.settings[k]=false});
+    try{await this._otpPersist();this.otp.msg='সব যাচাই বন্ধ করা হয়েছে (সরাসরি ডাটাবেসে, সার্ভার লাগেনি)'}
+    catch(e){this.otp.msg='সেভ ব্যর্থ। Firebase Console → Realtime Database → settings/settings-এ phoneVerify = false বসান।'}
+    finally{this.otp.busy=false}},
   async saveSettings(){
     try{
       const data=await this.getCurrentSettings();
@@ -5115,7 +5241,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   showToast(msg,type='success'){this.toast={show:true,msg,type};setTimeout(()=>this.toast.show=false,3500)},
 }}
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@twemoji/api@17.0.3/dist/twemoji.min.js" integrity="sha384-Y5xukbGJwykbHHkTbLJykYLcBPFxrwipTbEh0puxhkz9CZ90raTPGe2Ks4vCxsYU" crossorigin="anonymous"></script>
 <script>(function(){var t,run=function(){try{if(!window.twemoji)return;twemoji.parse(document.body,{folder:'svg',ext:'.svg',className:'emoji'});document.querySelectorAll('option img.emoji,textarea img.emoji').forEach(function(i){i.replaceWith(i.alt)})}catch(e){}};
 new MutationObserver(function(rs){if(rs.some(function(r){var el=r.target.nodeType===1?r.target:r.target.parentElement;return el&&!el.closest('option,textarea')})){clearTimeout(t);t=setTimeout(run,150)}}).observe(document.body,{childList:true,subtree:true,characterData:true});
 window.addEventListener('load',run)})();</script>
