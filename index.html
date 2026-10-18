@@ -3234,12 +3234,13 @@ html,body{touch-action:auto!important;overflow-x:clip}
         <button @click="saveSettings()" class="btn-primary">সেভ করুন</button>
       </div>
 
-      <div class="dd-card p-4 space-y-3" x-init="if(_api())otpLoad()">
+      <div class="dd-card p-4 space-y-3" x-init="if(_api())otpConnect(false)">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-mobile-screen-button" style="color:var(--accent)"></i>ফোন যাচাই (OTP) ও SMS প্রোভাইডার</p>
         <div>
           <label class="dd-label">সার্ভার API URL (Railway, https://…)</label>
-          <div class="flex gap-2"><input class="dd-input" x-model="settings.apiBase" placeholder="https://your-app.up.railway.app"/><button @click="saveSettings().then(()=>otpLoad())" class="btn-primary text-xs" :disabled="otp.busy">সেভ ও সংযোগ</button><button @click="otpLoad()" class="btn-ghost text-xs" :disabled="otp.busy">রিফ্রেশ</button></div>
-          <p class="text-xs mt-1" style="color:var(--fg3)">সার্ভারের অবস্থা: <b x-text="otp.health==='ok'?'চালু আছে':otp.health==='bad'?'সংযোগ হয়নি':'—'"></b></p>
+          <div class="flex gap-2"><input class="dd-input" x-model="settings.apiBase" placeholder="https://your-app.up.railway.app"/><button @click="otpConnect()" class="btn-primary text-xs" :disabled="otp.busy">সেভ ও সংযোগ</button><button @click="otpConnect(false)" class="btn-ghost text-xs" :disabled="otp.busy">রিফ্রেশ</button></div>
+          <p class="text-xs mt-1" style="color:var(--fg3)">সার্ভারের অবস্থা: <b x-text="otp.health==='ok'?'চালু আছে':otp.health==='origin'?'চালু, কিন্তু ঠিকানা অনুমোদিত নয়':otp.health==='bad'?'সংযোগ হয়নি':'—'"></b></p>
+          <p x-show="otp.diag" x-text="otp.diag" class="text-xs font-bold mt-1" style="color:#DC2626"></p>
         </div>
         <p x-show="otp.msg" x-text="otp.msg" class="text-xs font-bold" style="color:var(--accent)"></p>
         <div class="space-y-2" style="border-top:1px dashed var(--border);padding-top:10px">
@@ -3457,7 +3458,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     supportPhone:'',telegramLink:'',
     shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,legacyMigrationOpen:true,minPinLength:6,apiBase:'',phoneVerify:false,verifyAtSignup:false,verifyResellerSignup:false,verifyAtOrder:false,verifyWithdraw:false,verifyPinReset:false,serverStatsOnly:false,
   },
-  otp:{cfg:null,stats:null,busy:false,msg:'',health:'',testPhone:'',addType:'alphasms'},
+  otp:{cfg:null,stats:null,busy:false,msg:'',health:'',diag:'',testPhone:'',addType:'alphasms'},
   secBox:{checking:false,found:null,usersBusy:false,usersInfo:null,trxDel:'',lockPhone:''},
   tickers:['🔥 আজকের সেরা ডিল!','🚚 দ্রুত ডেলিভারি','✅ ১০০% অরিজিনাল'],
   banners:[
@@ -5192,10 +5193,27 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     try{const r=await fetch(api+path,{method,headers:h,body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return{...j,ok:!!j.ok&&r.ok}}
     catch(e){return{ok:false,message:'সার্ভারে পৌঁছানো যায়নি (URL / CORS / ইন্টারনেট দেখুন)'}}
   },
-  async otpHealth(){try{const r=await fetch(this._api()+'/healthz');this.otp.health=r.ok?'ok':'bad'}catch(e){this.otp.health='bad'}},
+  async otpHealth(){const api=this._api();this.otp.health='';this.otp.diag='';if(!api)return;
+    const fix='Railway → আপনার সার্ভিস → Variables → ALLOWED_ORIGINS-এ এই ঠিকানা বসান (পাথ ছাড়া): '+location.origin;
+    try{
+      const r=await fetch(api+'/healthz',{cache:'no-store'});const j=await r.json();
+      if(j&&j.ok){if(j.originAllowed===false){this.otp.health='origin';this.otp.diag='সার্ভার চালু আছে, কিন্তু আপনার সাইটের ঠিকানা অনুমোদিত নয়। '+fix}else this.otp.health='ok'}
+      else{this.otp.health='bad';this.otp.diag='সার্ভার সাড়া দিয়েছে কিন্তু ঠিক নয় (HTTP '+r.status+')'}
+    }catch(e){
+      try{await fetch(api+'/healthz',{mode:'no-cors',cache:'no-store'});this.otp.health='origin';this.otp.diag='সার্ভারে পৌঁছানো গেছে, কিন্তু ব্রাউজার উত্তর পড়তে দেয়নি (CORS)। '+fix}
+      catch(e2){this.otp.health='bad';this.otp.diag='সার্ভারে পৌঁছানো যায়নি। দেখুন: (১) URL ঠিক কিনা (https://…up.railway.app, শেষে স্ল্যাশ ছাড়া), (২) Railway-তে ডিপ্লয় Active কিনা, (৩) Settings → Networking-এ ডোমেইনের পোর্ট ঠিক কিনা'}
+    }},
+  async otpConnect(persist=true){this.otp.busy=true;this.otp.msg='';
+    if(!this._api()){this.otp.health='bad';this.otp.diag='URL ঠিক নয়: https:// দিয়ে শুরু হতে হবে (যেমন https://আপনার-নাম.up.railway.app)';this.otp.busy=false;return}
+    await this.otpHealth();
+    let note='';
+    if(persist){try{await this._otpPersist()}catch(e){note='URL ডাটাবেসে সেভ হয়নি: '+String((e&&(e.code||e.message))||'অজানা').slice(0,120)+'। (সাইট গ্রাহকদের জন্য এই URL পাবে না)'}}
+    if(this.otp.health==='ok')await this.otpLoad();
+    if(note)this.otp.msg=note+(this.otp.msg?' | '+this.otp.msg:'');   // otpLoad() বার্তা মুছে দেয়, তাই পরে বসাই
+    this.otp.busy=false},
   _otpPrep(r){r.providers.forEach(p=>{p._sec={};p._gen=p.generic?JSON.stringify(p.generic,null,1):'';p._gsec=''});return r},
   async otpLoad(){this.otp.busy=true;this.otp.msg='';const r=await this.apiCall('GET','/admin/otp/config');this.otp.busy=false;if(!r.ok){this.otp.msg=r.message||'লোড ব্যর্থ';this.otpHealth();return}
-    this.otp.cfg=this._otpPrep(r);this.otpHealth();this.otpStats()},
+    this.otp.cfg=this._otpPrep(r);this.otpStats()},
   async otpStats(){const r=await this.apiCall('GET','/admin/otp/stats');if(r.ok)this.otp.stats=r},
   otpPresetFields(type,secret){const p=((this.otp.cfg&&this.otp.cfg.presets)||[]).find(x=>x.type===type);return p?p.fields.filter(f=>!!f.secret===secret):[]},
   otpPresetNote(type){const p=((this.otp.cfg&&this.otp.cfg.presets)||[]).find(x=>x.type===type);return p?p.note:''},
@@ -5236,7 +5254,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       const data=await this.getCurrentSettings();
       await window.$db.saveSettings(data);
       this.showToast('সেটিংস সেভ! ✅','success');
-    }catch{this.showToast('সেভ ব্যর্থ!','error')}
+    }catch(e){console.error('saveSettings',e);this.showToast('সেভ ব্যর্থ!'+(e&&(e.code||e.message)?' ('+String(e.code||e.message).slice(0,70)+')':''),'error')}
   },
   showToast(msg,type='success'){this.toast={show:true,msg,type};setTimeout(()=>this.toast.show=false,3500)},
 }}
