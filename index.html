@@ -111,6 +111,7 @@ window.$db={
   listenPinnedProducts:(cb)=>onValue(ref(db,'pinnedProducts'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Settings
   saveSettings:async(data)=>set(ref(db,'settings'),data),
+  updateSettingKeys:async(obj)=>update(ref(db,'settings/settings'),obj),
   listenSettings:(cb)=>onValue(ref(db,'settings'),s=>cb(s.val()||{}),{onlyOnce:false}),
   // Users (count only)
   listenUsers:(cb)=>onValue(ref(db,'users'),s=>{const v=s.val();cb(v?Object.keys(v).length:0)},{onlyOnce:false}),
@@ -3241,6 +3242,10 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <div class="flex gap-2"><input class="dd-input" x-model="settings.apiBase" placeholder="https://your-app.up.railway.app"/><button @click="otpConnect()" class="btn-primary text-xs" :disabled="otp.busy">সেভ ও সংযোগ</button><button @click="otpConnect(false)" class="btn-ghost text-xs" :disabled="otp.busy">রিফ্রেশ</button></div>
           <p class="text-xs mt-1" style="color:var(--fg3)">সার্ভারের অবস্থা: <b x-text="otp.health==='ok'?'চালু আছে':otp.health==='origin'?'চালু, কিন্তু ঠিকানা অনুমোদিত নয়':otp.health==='bad'?'সংযোগ হয়নি':'—'"></b></p>
           <p x-show="otp.diag" x-text="otp.diag" class="text-xs font-bold mt-1" style="color:#DC2626"></p>
+          <div x-show="otpBadKeys().length" class="mt-2 p-2 rounded-lg text-xs" style="border:1px solid #DC2626;color:#DC2626">
+            <b>সতর্কতা:</b> সেটিংসে নিষিদ্ধ-নামের কী আছে: <b x-text="otpBadKeys().join(', ')"></b>। রুলস এগুলো লিখতে দেয় না, তাই এগুলো থাকলে "সেভ করুন" বাটনগুলো ব্যর্থ হতে পারে।
+            <button class="btn-danger text-xs" style="margin-left:6px" @click="otpCleanBadKeys()">মুছুন</button>
+          </div>
         </div>
         <p x-show="otp.msg" x-text="otp.msg" class="text-xs font-bold" style="color:var(--accent)"></p>
         <div class="space-y-2" style="border-top:1px dashed var(--border);padding-top:10px">
@@ -5234,7 +5239,15 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.otp.busy=false},
   async otpTest(p){if(!/^01[3-9]\d{8}$/.test(this.otp.testPhone||'')){this.otp.msg='টেস্ট নম্বর দিন (01XXXXXXXXX)';return}
     this.otp.busy=true;const r=await this.apiCall('POST','/admin/otp/test',{providerId:p.id,phone:this.otp.testPhone});this.otp.busy=false;this.otp.msg=(r.ok?'সফল: ':'ব্যর্থ: ')+(r.message||'');if(r.ok)p.lastTestOkAt=Date.now()},
-  async _otpPersist(){const d=await this.getCurrentSettings();await window.$db.saveSettings(d)},   // saveSettings() এরর গিলে ফেলে; এটা ফেলে না
+  _otpKeys:['apiBase','phoneVerify','verifyAtSignup','verifyResellerSignup','verifyAtOrder','verifyWithdraw','verifyPinReset','serverStatsOnly','legacyMigrationOpen','minPinLength'],
+  async _otpPersist(){const o={};this._otpKeys.forEach(k=>{if(this.settings[k]!==undefined)o[k]=this.settings[k]});await window.$db.updateSettingKeys(o)},   // শুধু এই কী-গুলো লেখে; পুরো settings নোড ওভাররাইট করে না
+  _badKey(k){return /^otp/.test(k)||k==='emailService'||/[Ss]ecret|[Tt]oken|[Pp]assword/.test(k)||/[Kk]ey$/.test(k)},
+  otpBadKeys(){return Object.keys(this.settings||{}).filter(k=>this._badKey(k))},
+  async otpCleanBadKeys(){const bad=this.otpBadKeys();if(!bad.length){this.otp.msg='নিষিদ্ধ নামের কোনো কী নেই';return}
+    if(!confirm('সেটিংস থেকে এই কী-গুলো মুছবেন?\n'+bad.join(', ')+'\n\n(এগুলো পুরনো গোপন মান হতে পারে। রুলস এগুলো লিখতে দেয় না, তাই এগুলো থাকলে অন্য "সেভ করুন" বাটনও ব্যর্থ হয়)'))return;
+    const o={};bad.forEach(k=>{o[k]=null});
+    try{await window.$db.updateSettingKeys(o);bad.forEach(k=>{delete this.settings[k]});this.otp.msg='মুছে ফেলা হয়েছে: '+bad.join(', ')}
+    catch(e){this.otp.msg='মোছা যায়নি: '+String((e&&(e.code||e.message))||'অজানা').slice(0,100)}},
   async otpMaster(on){this.otp.busy=true;this.otp.msg='';
     try{
       if(!on){this.settings.phoneVerify=false;await this._otpPersist();this.otp.msg='ফোন যাচাই বন্ধ হয়েছে (সার্ভার ছাড়াই, সরাসরি ডাটাবেসে)';return}
