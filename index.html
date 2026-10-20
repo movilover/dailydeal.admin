@@ -3256,6 +3256,12 @@ html,body{touch-action:auto!important;overflow-x:clip}
           <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyWithdraw===true" @change="settings.verifyWithdraw=$event.target.checked"/> রিসেলারের উইথড্র / রিচার্জ / সার্ভিস অনুরোধে (১০ মিনিটের মধ্যে যাচাই)</label>
           <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyPinReset===true" @change="settings.verifyPinReset=$event.target.checked"/> রিসেলার PIN ভুলে গেলে (PIN রিসেট)</label>
               <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.serverStatsOnly===true" @change="settings.serverStatsOnly=$event.target.checked"/> কাস্টমার রিপোর্ট শুধু সার্ভারের মাধ্যমে (সার্ভার চালু ও পরীক্ষিত হলে তবেই)</label>
+              <div class="p-2 rounded-lg space-y-1" style="border:1px dashed var(--border)">
+                <label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" :checked="settings.verifyPrices===true" @change="settings.verifyPrices=$event.target.checked"/> অর্ডারে পণ্যের দাম রুলসে যাচাই (ভুয়া কম দামে অর্ডার ঠেকায়)</label>
+                <p class="text-xs" style="color:var(--fg3)">চালু করার আগে: (১) সাইটের নতুন index.html আপলোড থাকতে হবে, (২) নতুন রুলস Publish থাকতে হবে। চালু করে একটা টেস্ট অর্ডার দিন; আটকালে এখানেই বন্ধ করুন। এক অর্ডারে সর্বোচ্চ ১২টি আলাদা পণ্য।</p>
+                <label class="flex items-center gap-2 text-xs font-bold">সর্বোচ্চ মোট ছাড় (সাবটোটালের %, প্রিপেইড+প্রোমো): <input type="number" min="0" max="100" class="dd-input" style="width:80px;padding:4px 8px" :value="settings.maxDiscountPct??100" @change="settings.maxDiscountPct=$event.target.value===''?100:Math.max(0,Math.min(100,Number($event.target.value)||0))"/></label>
+                <p class="text-xs" style="color:var(--fg3)">১০০ = কোনো সীমা নেই। আপনার সবচেয়ে বড় বৈধ ছাড়ের চেয়ে বেশি রাখুন (যেমন ৩০/৫০), নইলে বৈধ অর্ডারও আটকাবে।</p>
+              </div>
               <div class="flex gap-2 flex-wrap items-center">
                 <button class="btn-ghost text-xs" :disabled="otp.busy" @click="_otpPersist().then(()=>otp.msg='বাছাই সেভ হয়েছে').catch(()=>otp.msg='সেভ ব্যর্থ, আবার চেষ্টা করুন')">এই বাছাই সেভ করুন</button>
                 <span class="text-xs">মূল সুইচ: <b x-text="settings.phoneVerify===true?'চালু':'বন্ধ'"></b></span>
@@ -3461,7 +3467,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     codSettings:{extraCharge:0,discountOnAdvance:0},
     checkoutPromoBanners:[],
     supportPhone:'',telegramLink:'',
-    shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,legacyMigrationOpen:true,minPinLength:6,apiBase:'',phoneVerify:false,verifyAtSignup:false,verifyResellerSignup:false,verifyAtOrder:false,verifyWithdraw:false,verifyPinReset:false,serverStatsOnly:false,
+    shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,legacyMigrationOpen:true,minPinLength:6,apiBase:'',phoneVerify:false,verifyAtSignup:false,verifyResellerSignup:false,verifyAtOrder:false,verifyWithdraw:false,verifyPinReset:false,serverStatsOnly:false,verifyPrices:false,maxDiscountPct:100,
   },
   otp:{cfg:null,stats:null,busy:false,msg:'',health:'',diag:'',testPhone:'',addType:'alphasms'},
   secBox:{checking:false,found:null,usersBusy:false,usersInfo:null,trxDel:'',lockPhone:''},
@@ -5239,7 +5245,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.otp.busy=false},
   async otpTest(p){if(!/^01[3-9]\d{8}$/.test(this.otp.testPhone||'')){this.otp.msg='টেস্ট নম্বর দিন (01XXXXXXXXX)';return}
     this.otp.busy=true;const r=await this.apiCall('POST','/admin/otp/test',{providerId:p.id,phone:this.otp.testPhone});this.otp.busy=false;this.otp.msg=(r.ok?'সফল: ':'ব্যর্থ: ')+(r.message||'');if(r.ok)p.lastTestOkAt=Date.now()},
-  _otpKeys:['apiBase','phoneVerify','verifyAtSignup','verifyResellerSignup','verifyAtOrder','verifyWithdraw','verifyPinReset','serverStatsOnly','legacyMigrationOpen','minPinLength'],
+  _otpKeys:['apiBase','phoneVerify','verifyAtSignup','verifyResellerSignup','verifyAtOrder','verifyWithdraw','verifyPinReset','serverStatsOnly','legacyMigrationOpen','minPinLength','verifyPrices','maxDiscountPct'],
   async _otpPersist(){const o={};this._otpKeys.forEach(k=>{if(this.settings[k]!==undefined)o[k]=this.settings[k]});await window.$db.updateSettingKeys(o)},   // শুধু এই কী-গুলো লেখে; পুরো settings নোড ওভাররাইট করে না
   _badKey(k){return /^otp/.test(k)||k==='emailService'||/[Ss]ecret|[Tt]oken|[Pp]assword/.test(k)||/[Kk]ey$/.test(k)},
   otpBadKeys(){return Object.keys(this.settings||{}).filter(k=>this._badKey(k))},
