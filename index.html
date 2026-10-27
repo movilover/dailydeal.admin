@@ -438,6 +438,41 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 <div x-show="sidebarOpen" x-cloak class="sidebar-overlay md:hidden" @click="sidebarOpen=false"></div>
 
 <!-- CATEGORY MODAL (name/emoji/img/gender + Section link) -->
+<div x-show="hc.open" x-cloak class="modal-overlay" @click.self="hc.open=false">
+  <div class="dd-card p-4" style="max-width:660px;width:94%;margin:auto;max-height:90vh;overflow-y:auto;overscroll-behavior:contain">
+    <div class="flex items-center justify-between mb-3"><p class="font-bold" style="font-size:17px;color:var(--fg)"><i class="fa-solid fa-stethoscope mr-1" style="color:var(--accent)"></i>পণ্য ডাটা চেক ও মেরামত</p><button @click="hc.open=false" class="btn-ghost text-xs">বন্ধ</button></div>
+    <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))">
+      <div class="p-3 rounded-2xl" style="background:var(--bg2)"><p class="text-xs" style="color:var(--fg3)">মোট পণ্য</p><p class="font-bold text-xl" x-text="fbProducts.length"></p></div>
+      <div class="p-3 rounded-2xl" style="background:var(--bg2)"><p class="text-xs" style="color:var(--fg3)">ঈদ কালেকশন</p><p class="font-bold text-xl" x-text="fbProducts.filter(p=>p.isEidCollection).length"></p></div>
+      <div class="p-3 rounded-2xl" :style="'background:'+(hcOrphans.length?'#FEF2F2':'var(--bg2)')"><p class="text-xs" style="color:var(--fg3)">ক্যাটাগরি অমিল/নেই</p><p class="font-bold text-xl" :style="hcOrphans.length?'color:#DC2626':''" x-text="hcOrphans.length"></p></div>
+      <div class="p-3 rounded-2xl" :style="'background:'+(hcNoImg.length?'#FFFBEB':'var(--bg2)')"><p class="text-xs" style="color:var(--fg3)">ছবি নেই</p><p class="font-bold text-xl" x-text="hcNoImg.length"></p></div>
+      <div class="p-3 rounded-2xl" :style="'background:'+(hcNoPrice.length?'#FEF2F2':'var(--bg2)')"><p class="text-xs" style="color:var(--fg3)">দাম নেই (সাইটে লুকানো)</p><p class="font-bold text-xl" x-text="hcNoPrice.length"></p></div>
+      <div class="p-3 rounded-2xl" :style="'background:'+(productsMissingId.length?'#FFFBEB':'var(--bg2)')"><p class="text-xs" style="color:var(--fg3)">আইডি নেই</p><p class="font-bold text-xl" x-text="productsMissingId.length"></p></div>
+      <div class="p-3 rounded-2xl" :style="'background:'+(hcDupIds.length?'#FFFBEB':'var(--bg2)')"><p class="text-xs" style="color:var(--fg3)">ডুপ্লিকেট আইডি</p><p class="font-bold text-xl" x-text="hcDupIds.length"></p></div>
+    </div>
+    <div class="flex gap-2 flex-wrap mb-4">
+      <button class="btn-ghost text-xs" x-show="productsMissingId.length>0" :disabled="hc.busy" @click="backfillProductIds()"><i class="fa-solid fa-hashtag"></i>আইডি বসান</button>
+      <button class="btn-ghost text-xs" x-show="hcDupIds.length>0" :disabled="hc.busy" @click="hcFixDupIds()"><i class="fa-solid fa-clone"></i>ডুপ্লিকেট আইডি ঠিক করুন</button>
+      <button class="btn-ghost text-xs" @click="hcCsv()"><i class="fa-solid fa-file-csv"></i>পণ্য → ক্যাটাগরি (CSV)</button>
+    </div>
+    <p class="font-bold text-sm mb-2" style="color:var(--fg)">ক্যাটাগরি অনুযায়ী পণ্য</p>
+    <div class="rounded-2xl mb-4" style="background:var(--bg2);padding:6px 12px">
+      <template x-for="r in hcCatRows" :key="r.key"><div class="flex items-center justify-between py-1.5 text-sm" style="border-bottom:1px solid var(--border,rgba(0,0,0,.06))"><span :style="r.sub?'padding-left:16px;color:var(--fg2)':'font-weight:700'" x-text="(r.sub?'↳ ':'')+r.name"></span><span class="font-mono text-xs"><span x-text="r.n+'টি'"></span><span x-show="r.eid>0" style="color:var(--accent)" x-text="' · ঈদ '+r.eid"></span></span></div></template>
+      <p x-show="!hcCatRows.length" class="text-xs py-2" style="color:var(--fg3)">কোনো ক্যাটাগরি নেই</p>
+    </div>
+    <div class="flex items-center justify-between mb-2 flex-wrap gap-2"><p class="font-bold text-sm" style="color:var(--fg)">⚠️ ক্যাটাগরি অমিল পণ্য <span style="color:var(--fg3);font-weight:400">(এগুলো সাইটের ক্যাটাগরিতে দেখায় না)</span></p><button class="btn-primary text-xs" x-show="hcOrphans.length>0" :disabled="hc.busy" @click="hcFixSuggested()"><i class="fa-solid fa-wand-magic-sparkles"></i>অটো মেলান</button></div>
+    <p x-show="hcOrphans.length===0" class="text-sm p-3 rounded-2xl" style="background:#ECFDF5;color:#047857">✅ সব পণ্যের ক্যাটাগরি ঠিক আছে।</p>
+    <div class="flex flex-col gap-2">
+      <template x-for="p in hcOrphans.slice(0,100)" :key="p.fbKey"><div class="flex items-center gap-2 p-2 rounded-2xl" style="background:var(--bg2)" x-init="hc.pick[p.fbKey]=hcSuggest(p)">
+        <img :src="(p.images&&p.images[0])||p.img||''" style="width:44px;height:44px;object-fit:cover;border-radius:10px;flex-shrink:0" onerror="this.style.visibility='hidden'"/>
+        <div style="min-width:0;flex:1"><p class="text-xs font-bold truncate" x-text="(p.productId?'#'+p.productId+' · ':'')+(p.name||'নাম নেই')"></p><p class="text-xs" style="color:var(--fg3)" x-text="'এখন: '+(p.cat||'— নেই —')"></p>
+          <select class="dd-input mt-1" style="padding:6px 8px;font-size:12px" x-model="hc.pick[p.fbKey]"><option value="">ক্যাটাগরি বেছে নিন</option><template x-for="n in hcCatNames" :key="n"><option :value="n" x-text="n"></option></template></select></div>
+        <button class="btn-primary text-xs" :disabled="hc.busy" @click="hcAssign(p,hc.pick[p.fbKey])">ঠিক করুন</button>
+      </div></template>
+    </div>
+    <p x-show="hcOrphans.length>100" class="text-xs mt-2" style="color:var(--fg3)">প্রথম ১০০টি দেখানো হচ্ছে — ঠিক করলে বাকিগুলো আসবে।</p>
+  </div>
+</div>
 <div x-show="dupModal.open" x-cloak class="modal-overlay" @click.self="dupModal.open=false">
   <div class="dd-card p-5" style="max-width:380px;width:92%;margin:auto" x-show="dupModal.prod">
     <div style="width:52px;height:52px;border-radius:50%;background:#FEF3C7;color:#B45309;display:grid;place-items:center;font-size:22px;margin:0 auto 10px"><i class="fa-solid fa-triangle-exclamation"></i></div>
@@ -1566,7 +1601,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   <div x-show="activeTab==='products'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <p class="text-sm" style="color:var(--fg3)" x-text="fbProducts.length+' টি পণ্য'"></p>
-      <div class="flex gap-2 flex-wrap"><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
+      <div class="flex gap-2 flex-wrap"><button @click="hc.open=true" class="btn-ghost text-xs"><i class="fa-solid fa-stethoscope"></i>ডাটা চেক<span x-show="hcOrphans.length>0" class="px-1.5 rounded-full text-white" style="background:#DC2626;font-size:10px" x-text="hcOrphans.length"></span></button><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
     </div>
     <div class="flex gap-3 mb-4 flex-wrap">
       <div class="relative flex-1" style="min-width:180px">
@@ -3490,7 +3525,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   customColors:{accent:'#E8320A'},
   quickColors:['#E8320A','#7C3AED','#1D4ED8','#B8860B','#E8196A','#16A34A','#0EA5E9','#F97316','#EC4899','#14B8A6','#8B5CF6','#EF4444'],
 
-  dupModal:{open:false,prod:null,why:''},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
+  dupModal:{open:false,prod:null,why:''},hc:{open:false,busy:false,pick:{}},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
   secModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',icon:'🛍️',color:'#6B7280',color2:'#9CA3AF',order:99,active:true,img:''}},
   notifModal:{open:false,editing:null,saving:false,form:{title:'',body:'',type:'general',icon:'fa-solid fa-bell',appLink:'',linkLabel:'',date:''}},
   cbModal:{open:false,editing:null,saving:false,form:{label:'',icon:'🛍️',color:'#E8320A',color2:'#FF6B45',action:'',cat:'',link:'',active:true}},
@@ -4322,6 +4357,43 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     let next=this.nextProductId;
     for(const p of missing){try{await window.$db.saveProduct({productId:next},p.fbKey);next++}catch(e){}}
     this.showToast(missing.length+'টি পণ্যে আইডি বসানো হয়েছে! ✅','success');
+  },
+  /* ── ডাটা চেক ও মেরামত ── */
+  _hcn(x){return String(x==null?'':x).replace(/[\u200b-\u200d\ufeff]/g,'').replace(/\s+/g,' ').trim()},
+  get hcCatNames(){return this.fbCategories.map(c=>this._hcn(c.name)).filter(Boolean)},
+  get hcProds(){return this.fbProducts.filter(p=>!p.intl)},
+  get hcOrphans(){const s=new Set(this.hcCatNames);return this.hcProds.filter(p=>!s.has(this._hcn(p.cat)))},
+  hcSuggest(p){const c=this._hcn(p.cat).toLowerCase();if(!c)return '';const n=this.hcCatNames;return n.find(x=>x.toLowerCase()===c)||n.find(x=>x.toLowerCase().includes(c)||c.includes(x.toLowerCase()))||''},
+  get hcCatRows(){const cnt={},eid={};for(const p of this.hcProds){const k=this._hcn(p.cat);cnt[k]=(cnt[k]||0)+1;if(p.isEidCollection)eid[k]=(eid[k]||0)+1}return this.fbCategories.map(c=>{const k=this._hcn(c.name);return{key:c.fbKey||c.name,name:c.name,sub:!!c.parent,n:cnt[k]||0,eid:eid[k]||0}})},
+  get hcNoImg(){return this.hcProds.filter(p=>!((p.images&&p.images.length)||p.img))},
+  get hcNoPrice(){return this.hcProds.filter(p=>!(Number(p.price)>0))},
+  get hcDupIds(){const m={};for(const p of this.fbProducts){if(p.productId)(m[p.productId]=m[p.productId]||[]).push(p)}return Object.values(m).filter(a=>a.length>1)},
+  async hcAssign(p,name,quiet){
+    if(!name)return this.showToast('আগে ক্যাটাগরি বেছে নিন','error');
+    const c=this.fbCategories.find(x=>this._hcn(x.name)===this._hcn(name));
+    try{
+      const d={cat:c?c.name:name};
+      if(c){const sec=c.section||c.sectionId;if(sec&&!(p.section||p.sectionId)){d.section=sec;d.sectionId=sec}if(c.gender&&c.gender!=='both'&&!p.gender)d.gender=c.gender}
+      await window.$db.saveProduct(d,p.fbKey);
+      if(!quiet)this.showToast('ক্যাটাগরি ঠিক হয়েছে ✅','success');
+    }catch(e){if(!quiet)this.showToast('ব্যর্থ!','error')}
+  },
+  async hcFixSuggested(){
+    const list=this.hcOrphans.map(p=>[p,this.hcSuggest(p)]).filter(x=>x[1]);
+    if(!list.length)return this.showToast('অটো-মেলানোর মতো কিছু পাওয়া যায়নি','error');
+    this.hc.busy=true;for(const [p,n] of list){await this.hcAssign(p,n,true)}this.hc.busy=false;
+    this.showToast(list.length+'টি পণ্যের ক্যাটাগরি মেলানো হয়েছে ✅','success');
+  },
+  async hcFixDupIds(){
+    let next=this.nextProductId,n=0;this.hc.busy=true;
+    for(const g of this.hcDupIds){const s=g.slice().sort((a,b)=>(a.timestamp||0)-(b.timestamp||0));for(const p of s.slice(1)){try{await window.$db.saveProduct({productId:next},p.fbKey);next++;n++}catch(e){}}}
+    this.hc.busy=false;this.showToast(n+'টি ডুপ্লিকেট আইডি ঠিক হয়েছে ✅','success');
+  },
+  hcCsv(){
+    const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+    const rows=[['আইডি','নাম','ক্যাটাগরি','দাম','ঈদ কালেকশন','ছবি আছে','কী']].concat(this.fbProducts.slice().sort((a,b)=>(Number(a.productId)||0)-(Number(b.productId)||0)).map(p=>[p.productId||'',p.name||'',p.cat||(p.intl?'(ইন্টারন্যাশনাল)':''),p.price||'',p.isEidCollection?'হ্যাঁ':'',((p.images&&p.images.length)||p.img)?'হ্যাঁ':'না',p.fbKey]));
+    const b=new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='products-by-category.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   },
   async seedDefaultCategories(){
     if(this.fbCategories.length&&!confirm('আগে থেকেই ক্যাটাগরি আছে। ডিফল্ট ৫টি ক্যাটাগরি যোগ করবেন?'))return;
