@@ -392,6 +392,14 @@ html,body{touch-action:auto!important;overflow-x:clip}
 .hub-tab.on .bd{background:#fff;color:var(--accent)}
 @media(max-width:768px){.hub-bar{margin:-6px -10px 14px;padding:8px 10px}}
 </style>
+<style>/* v9.1: সাইডবার পুরোপুরি লক — স্ক্রল/সোয়াইপে নড়বে না */
+html,body{overscroll-behavior-x:none}
+.sidebar{position:fixed!important;top:0;bottom:0;left:0;height:100vh;height:100dvh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;transform:translate3d(0,0,0);will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+@media(max-width:768px){.sidebar{transform:translate3d(-100%,0,0)!important}.sidebar.open{transform:translate3d(0,0,0)!important}.sidebar-overlay{touch-action:none;overscroll-behavior:contain}}
+html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
+</style>
+<script>(function(){function sync(){var a=document.querySelector('aside.sidebar');document.documentElement.classList.toggle('sb-lock',!!(a&&a.classList.contains('open')&&window.innerWidth<=768))}
+['click','touchend','keyup'].forEach(function(e){document.addEventListener(e,function(){setTimeout(sync,60)},true)});window.addEventListener('resize',sync)})();</script>
 </head>
 <body :class="'theme-'+activeTheme" class="theme-light">
 
