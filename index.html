@@ -122,6 +122,7 @@ window.$db={
   deleteReseller:async(phone)=>remove(ref(db,'resellers/'+phone)),
   getOnceVal:(path)=>new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),e=>rej(e),{onlyOnce:true})),
   updatePath:async(path,obj)=>update(ref(db,path),obj),
+  setPath:async(path,val)=>set(ref(db,path),val),
   removePath:async(path)=>remove(ref(db,path)),
   listenSharedLinks:(cb)=>onValue(ref(db,'sharedLinks'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   updSharedLink:async(k,d)=>update(ref(db,'sharedLinks/'+k),d),
@@ -438,6 +439,48 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 <div x-show="sidebarOpen" x-cloak class="sidebar-overlay md:hidden" @click="sidebarOpen=false"></div>
 
 <!-- CATEGORY MODAL (name/emoji/img/gender + Section link) -->
+<div x-show="bk.open" x-cloak class="modal-overlay" @click.self="bk.open=false">
+  <div class="dd-card p-4" style="max-width:640px;width:94%;margin:auto;max-height:90vh;overflow-y:auto;overscroll-behavior:contain">
+    <div class="flex items-center justify-between mb-2"><p class="font-bold" style="font-size:17px;color:var(--fg)"><i class="fa-solid fa-shield-halved mr-1" style="color:#16A34A"></i>ব্যাকআপ ও রিকভারি</p><button @click="bk.open=false" class="btn-ghost text-xs">বন্ধ</button></div>
+    <p class="text-xs leading-relaxed mb-3" style="color:var(--fg3)">JSON-এ থাকে পণ্যের ডেটা ও ছবির লিংক; আসল ছবিগুলো থাকে ZIP-এ। Cloudinary বা অন্য হোস্ট বন্ধ হলে JSON + ZIP দিয়ে নতুন অ্যাকাউন্টে সব ফিরিয়ে আনা যায়। ZIP ও JSON নিজের কম্পিউটার/Google Drive-এ রাখুন।</p>
+    <div x-show="bk.err" class="p-2 rounded-xl text-xs font-bold mb-3" style="background:#FEF2F2;color:#B91C1C" x-text="bk.err"></div>
+
+    <p class="font-bold text-sm mb-1" style="color:var(--fg)">১) অটো ব্যাকআপ (ডাটাবেসে, শেষ ৭ দিন)</p>
+    <p class="text-xs mb-2" style="color:var(--fg3)">নতুন পণ্য আপলোড/এডিটের ~৪৫ সেকেন্ড পরে আজকের স্ন্যাপশট নিজে আপডেট হয়। পণ্য হঠাৎ ২০%+ কমে গেলে অটো ব্যাকআপ থেমে যায়, যাতে ভালো কপি নষ্ট না হয়।</p>
+    <div class="flex gap-2 flex-wrap mb-2"><button class="btn-primary text-xs" @click="bkSnapshot(false)"><i class="fa-solid fa-floppy-disk"></i>এখনই ব্যাকআপ নিন</button></div>
+    <div class="mb-4">
+      <template x-for="s in bk.idx" :key="s.day"><div class="flex items-center justify-between gap-2 p-2 rounded-xl mb-1 text-xs" style="background:var(--bg2)">
+        <span><b x-text="s.day"></b> · <span x-text="s.products+' পণ্য, '+s.categories+' ক্যাটাগরি'"></span></span>
+        <span class="flex gap-1"><button class="btn-ghost text-xs" @click="bkSnapJson(s.day)">JSON</button><button class="btn-ghost text-xs" @click="bkRestoreSnap(s.day)">মুছে যাওয়া ফেরত আনুন</button></span></div></template>
+      <p x-show="!bk.idx.length" class="text-xs" style="color:var(--fg3)">এখনো কোনো স্ন্যাপশট নেই।</p>
+    </div>
+
+    <p class="font-bold text-sm mb-1" style="color:var(--fg)">২) ডাউনলোড</p>
+    <div class="flex gap-2 flex-wrap mb-1">
+      <button class="btn-ghost text-xs" @click="bkJson()"><i class="fa-solid fa-file-code"></i>JSON (পূর্ণ ব্যাকআপ)</button>
+      <button class="btn-ghost text-xs" @click="bkCsv()"><i class="fa-solid fa-file-csv"></i>CSV (পণ্য তালিকা)</button>
+      <button class="btn-ghost text-xs" :disabled="!!bk.busy" @click="bkZip()"><i class="fa-solid fa-file-zipper"></i>সব ছবি ZIP</button>
+    </div>
+    <div x-show="bk.busy==='zip'||bk.msg" class="mb-3"><div x-show="bk.busy==='zip'" style="height:8px;border-radius:99px;background:var(--bg2);overflow:hidden"><div :style="'height:100%;background:#16A34A;width:'+bk.pct+'%'"></div></div><p class="text-xs mt-1" style="color:var(--fg3)" x-text="bk.msg"></p><p class="text-xs" style="color:var(--fg3)">ZIP কয়েকটা পার্টে নামতে পারে; ব্রাউজার একাধিক ডাউনলোডের অনুমতি চাইলে Allow দিন।</p></div>
+
+    <p class="font-bold text-sm mb-1 mt-3" style="color:var(--fg)">৩) ছবি স্বাস্থ্য পরীক্ষা</p>
+    <div class="flex gap-2 flex-wrap mb-2"><button class="btn-ghost text-xs" :disabled="bk.health.run" @click="bkHealth()"><i class="fa-solid fa-heart-pulse"></i>সব ছবি চেক করুন</button><span class="text-xs self-center" style="color:var(--fg3)" x-show="bk.health.run||bk.health.checked" x-text="bk.health.done+' / '+bk.health.total+' চেক · মরা ছবি '+bk.health.dead.length"></span></div>
+    <template x-for="(d,i) in bk.health.dead.slice(0,15)" :key="i"><div class="p-2 rounded-xl mb-1" style="background:var(--bg2)"><p class="text-xs font-bold truncate" x-text="d.names"></p><p class="text-xs truncate" style="color:var(--fg3)" x-text="d.url"></p></div></template>
+    <p x-show="bk.health.checked&&!bk.health.dead.length" class="text-xs p-2 rounded-xl mb-2" style="background:#ECFDF5;color:#047857">✅ সব ছবি লোড হচ্ছে।</p>
+
+    <p class="font-bold text-sm mb-1 mt-3" style="color:var(--fg)">৪) রিকভারি / নতুন Cloudinary-তে মাইগ্রেশন</p>
+    <p class="text-xs mb-2" style="color:var(--fg3)">আগে Settings-এ <b>নতুন</b> Cloudinary Cloud Name ও Unsigned Preset দিন। তারপর ব্যাকআপ JSON ও ছবির ZIP (থাকলে) বেছে নিন। ZIP থাকলে মরা হোস্টেও ছবি ফেরত আসবে; না থাকলে শুধু যেসব লিংক এখনো খোলে সেগুলো সরানো যাবে।</p>
+    <div class="grid gap-2 mb-2">
+      <label class="text-xs font-bold">ব্যাকআপ JSON (ঐচ্ছিক) <input type="file" accept=".json,application/json" @change="bkPickJson($event)" class="dd-input mt-1"/></label>
+      <label class="text-xs font-bold">ছবির ZIP (এক বা একাধিক, ঐচ্ছিক) <input type="file" accept=".zip" multiple @change="bkPickZips($event)" class="dd-input mt-1"/></label>
+      <label class="text-xs flex items-center gap-2"><input type="checkbox" x-model="bk.rs.onlyDead"/> শুধু যেসব ছবি লোড হয় না সেগুলো সরান (বন্ধ করলে সব পুরোনো-হোস্টের ছবি সরবে)</label>
+      <label class="text-xs flex items-center gap-2"><input type="checkbox" x-model="bk.rs.recreate"/> JSON-এ আছে কিন্তু ডাটাবেসে নেই — সেই পণ্য/ক্যাটাগরি ফেরত আনুন</label>
+    </div>
+    <div class="flex gap-2 flex-wrap mb-2"><button class="btn-primary text-xs" x-show="!bk.rs.running" @click="bkRestore()"><i class="fa-solid fa-rotate-left"></i>রিকভারি শুরু</button><button class="btn-warn text-xs" x-show="bk.rs.running" @click="bk.rs.stop=true"><i class="fa-solid fa-stop"></i>থামান</button></div>
+    <div x-show="bk.rs.running||bk.rs.done>0||bk.rs.log.length"><p class="text-xs" style="color:var(--fg3)" x-text="bk.rs.done+' / '+bk.rs.total+' আইটেম · সফল ছবি '+bk.rs.ok+' · ব্যর্থ '+bk.rs.fail"></p><template x-for="(l,i) in bk.rs.log" :key="i"><p class="text-xs truncate" style="color:var(--fg2)" x-text="l"></p></template>
+      <template x-for="(f,i) in bk.rs.fails.slice(0,10)" :key="'f'+i"><p class="text-xs truncate" style="color:#B45309" x-text="f.url+' — '+f.err"></p></template></div>
+  </div>
+</div>
 <div x-show="mig.open" x-cloak class="modal-overlay" @click.self="!mig.running&&(mig.open=false)">
   <div class="dd-card p-4" style="max-width:600px;width:94%;margin:auto;max-height:90vh;overflow-y:auto;overscroll-behavior:contain">
     <div class="flex items-center justify-between mb-2"><p class="font-bold" style="font-size:17px;color:var(--fg)"><i class="fa-solid fa-cloud-arrow-up mr-1" style="color:#0EA5E9"></i>ImgBB → Cloudinary মাইগ্রেশন</p><button @click="mig.open=false" :disabled="mig.running" class="btn-ghost text-xs">বন্ধ</button></div>
@@ -1627,7 +1670,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   <div x-show="activeTab==='products'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <p class="text-sm" style="color:var(--fg3)" x-text="fbProducts.length+' টি পণ্য'"></p>
-      <div class="flex gap-2 flex-wrap"><button @click="hc.open=true" class="btn-ghost text-xs"><i class="fa-solid fa-stethoscope"></i>ডাটা চেক<span x-show="hcOrphans.length>0" class="px-1.5 rounded-full text-white" style="background:#DC2626;font-size:10px" x-text="hcOrphans.length"></span></button><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
+      <div class="flex gap-2 flex-wrap"><button @click="bk.open=true;bkLoadIdx()" class="btn-ghost text-xs"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ</button><button @click="hc.open=true" class="btn-ghost text-xs"><i class="fa-solid fa-stethoscope"></i>ডাটা চেক<span x-show="hcOrphans.length>0" class="px-1.5 rounded-full text-white" style="background:#DC2626;font-size:10px" x-text="hcOrphans.length"></span></button><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
     </div>
     <div class="flex gap-3 mb-4 flex-wrap">
       <div class="relative flex-1" style="min-width:180px">
@@ -3169,6 +3212,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <span x-text="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'কনফিগার করা আছে':'এখনো কনফিগার করা হয়নি'"></span>
         </div>
         <button class="btn-ghost text-xs" @click="migScan();mig.open=true"><i class="fa-solid fa-cloud-arrow-up"></i>পুরোনো ImgBB ছবি Cloudinary-তে সরান</button>
+        <button class="btn-ghost text-xs" @click="bk.open=true;bkLoadIdx()"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ ও রিকভারি</button>
       </div>
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-share-nodes" style="color:var(--accent)"></i>সোশ্যাল ও পেমেন্ট</p>
@@ -3552,7 +3596,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   customColors:{accent:'#E8320A'},
   quickColors:['#E8320A','#7C3AED','#1D4ED8','#B8860B','#E8196A','#16A34A','#0EA5E9','#F97316','#EC4899','#14B8A6','#8B5CF6','#EF4444'],
 
-  dupModal:{open:false,prod:null,why:''},hc:{open:false,busy:false,pick:{}},mig:{open:false,running:false,stop:false,scanned:false,docs:[],uniq:0,total:0,done:0,okUrls:0,failUrls:0,fails:[],log:[]},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
+  dupModal:{open:false,prod:null,why:''},hc:{open:false,busy:false,pick:{}},bk:{open:false,busy:'',pct:0,msg:'',idx:[],err:'',health:{run:false,total:0,done:0,dead:[],checked:false},rs:{jsonName:'',zipNames:[],onlyDead:true,recreate:true,running:false,stop:false,done:0,total:0,ok:0,fail:0,fails:[],log:[]}},mig:{open:false,running:false,stop:false,scanned:false,docs:[],uniq:0,total:0,done:0,okUrls:0,failUrls:0,fails:[],log:[]},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
   secModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',icon:'🛍️',color:'#6B7280',color2:'#9CA3AF',order:99,active:true,img:''}},
   notifModal:{open:false,editing:null,saving:false,form:{title:'',body:'',type:'general',icon:'fa-solid fa-bell',appLink:'',linkLabel:'',date:''}},
   cbModal:{open:false,editing:null,saving:false,form:{label:'',icon:'🛍️',color:'#E8320A',color2:'#FF6B45',action:'',cat:'',link:'',active:true}},
@@ -3966,7 +4010,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   // ══════════ BOOT ══════════
   boot(){
-    try{this.$watch('activeTab',()=>{window.scrollTo(0,0)})}catch(e){}
+    try{this.$watch('activeTab',()=>{window.scrollTo(0,0)})}catch(e){}try{this.$watch('fbProducts',()=>this._bkSchedule())}catch(e){}
     if(sessionStorage.getItem('dd_admin_auth')==='1')this.authenticated=true;
     const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
@@ -4384,6 +4428,154 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     let next=this.nextProductId;
     for(const p of missing){try{await window.$db.saveProduct({productId:next},p.fbKey);next++}catch(e){}}
     this.showToast(missing.length+'টি পণ্যে আইডি বসানো হয়েছে! ✅','success');
+  },
+  /* ══ ব্যাকআপ ও রিকভারি সেন্টার ══ */
+  _bkDay(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')},
+  _isImgUrl(s){if(typeof s!=='string')return false;const t=s.trim();return /^https?:\/\/\S+$/i.test(t)&&(/\.(jpe?g|png|webp|gif|avif|bmp)(\?|#|$)/i.test(t)||/^https?:\/\/(res\.cloudinary\.com|([a-z0-9-]+\.)?(ibb\.co|imgbb\.com)|firebasestorage\.googleapis\.com|[a-z0-9-]+\.firebasestorage\.app)\//i.test(t))},
+  _imgKey(url){
+    let u=String(url).trim().replace(/^https?:\/\//i,'').split('#')[0].split('?')[0];
+    const m=u.match(/\.([a-z0-9]{2,5})$/i),ext=m?m[1].toLowerCase():'jpg';
+    u=u.replace(/\.[a-z0-9]{2,5}$/i,'');
+    u=u.replace(/(res\.cloudinary\.com\/[^/]+)\/image\/upload\/(?:[^/]*,[^/]*\/)*(?:v\d+\/)?/,'$1_');
+    return u.replace(/[^a-zA-Z0-9_-]+/g,'_').slice(-150)+'.'+ext;
+  },
+  _bkUrls(v,out){
+    if(typeof v==='string'){if(this._isImgUrl(v))out.add(v.trim());return}
+    if(Array.isArray(v)){v.forEach(x=>this._bkUrls(x,out));return}
+    if(v&&typeof v==='object'){Object.values(v).forEach(x=>this._bkUrls(x,out))}
+  },
+  _bkMap(arr){const o={};arr.forEach(x=>{const c=JSON.parse(JSON.stringify(x));delete c.fbKey;o[x.fbKey]=c});return o},
+  _bkLive(){return{products:this._bkMap(this.fbProducts),categories:this._bkMap(this.fbCategories),sections:this._bkMap(this.fbSections||[])}},
+  _bkPackage(d){
+    const s=new Set();this._bkUrls(d,s);
+    return{app:'DailyDeal',version:1,createdAt:new Date().toISOString(),counts:{products:Object.keys(d.products||{}).length,categories:Object.keys(d.categories||{}).length,sections:Object.keys(d.sections||{}).length,images:s.size},
+      products:d.products||{},categories:d.categories||{},sections:d.sections||{},images:[...s].map(u=>({url:u,file:this._imgKey(u)}))};
+  },
+  _bkSave(name,blob){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)},
+  _bkSchedule(){clearTimeout(this._bkT);this._bkT=setTimeout(()=>this.bkSnapshot(true),45000)},
+  async bkLoadIdx(){try{const v=await window.$db.getOnceVal('backups/index')||{};this.bk.idx=Object.entries(v).map(([d,x])=>({day:d,...x})).sort((a,b)=>b.day.localeCompare(a.day))}catch(e){this.bk.err=/permission/i.test(String(e&&(e.code||e.message)))?'রুলসে "backups" নোড যোগ করুন (database_rules.json আপডেট করে Publish দিন)':'তালিকা আনা যায়নি'}},
+  async bkSnapshot(auto){
+    if(this._bkBusy)return;
+    const P=this.fbProducts;
+    if(!P.length){if(!auto)this.showToast('পণ্য এখনো লোড হয়নি','error');return}
+    this._bkBusy=true;
+    try{
+      const day=this._bkDay();
+      const idx=await window.$db.getOnceVal('backups/index')||{};
+      const prev=idx[day];
+      if(auto&&prev&&P.length<prev.products*0.8){this.bk.err='⚠️ পণ্য হঠাৎ কমেছে ('+prev.products+' → '+P.length+') — আজকের অটো ব্যাকআপ থামানো হয়েছে। রিস্টোর করে দেখুন।';this.showToast(this.bk.err,'error');return}
+      const d=this._bkLive(),at=Date.now();
+      await window.$db.setPath('backups/snap/'+day,{at,...d});
+      await window.$db.setPath('backups/index/'+day,{at,products:P.length,categories:this.fbCategories.length,sections:(this.fbSections||[]).length});
+      const days=Object.keys({...idx,[day]:1}).sort();
+      for(const x of days.slice(0,Math.max(0,days.length-7))){await window.$db.removePath('backups/snap/'+x);await window.$db.removePath('backups/index/'+x)}
+      this.bk.err='';if(!auto)this.showToast('ব্যাকআপ সেভ হয়েছে ✅ ('+P.length+'টি পণ্য)','success');
+      if(this.bk.open)this.bkLoadIdx();
+    }catch(e){this.bk.err=/permission/i.test(String(e&&(e.code||e.message)))?'অটো ব্যাকআপ বন্ধ: রুলসে "backups" নোড যোগ করুন':('ব্যাকআপ ব্যর্থ: '+(e&&(e.code||e.message)));if(!auto)this.showToast(this.bk.err,'error')}
+    finally{this._bkBusy=false}
+  },
+  bkJson(){const p=this._bkPackage(this._bkLive());this._bkSave('dailydeal-backup-'+this._bkDay()+'.json',new Blob([JSON.stringify(p)],{type:'application/json'}));this.showToast('JSON ডাউনলোড হচ্ছে','success')},
+  async bkSnapJson(day){try{const d=await window.$db.getOnceVal('backups/snap/'+day);if(!d)return this.showToast('স্ন্যাপশট নেই','error');this._bkSave('dailydeal-backup-'+day+'.json',new Blob([JSON.stringify(this._bkPackage(d))],{type:'application/json'}))}catch(e){this.showToast('ব্যর্থ','error')}},
+  bkCsv(){
+    const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+    const rows=[['আইডি','নাম','ক্যাটাগরি','দাম','ঈদ','ছবি সংখ্যা','ছবির লিংক','কী']];
+    for(const p of this.fbProducts){const s=new Set();this._bkUrls(p,s);rows.push([p.productId||'',p.name||'',p.cat||'',p.price||'',p.isEidCollection?'হ্যাঁ':'',s.size,[...s].join(' | '),p.fbKey])}
+    this._bkSave('dailydeal-products-'+this._bkDay()+'.csv',new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv;charset=utf-8'}));
+  },
+  async _loadJSZip(){
+    if(window.JSZip)return;
+    await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';s.onload=res;s.onerror=()=>rej(new Error('JSZip লোড হয়নি'));document.head.appendChild(s)});
+  },
+  async _pool(items,n,fn){const q=items.slice();await Promise.all(Array.from({length:Math.min(n,q.length)},async()=>{while(q.length){const x=q.shift();await fn(x)}}))},
+  _imgAlive(u){return new Promise(res=>{const i=new Image();let d=false;const f=v=>{if(d)return;d=true;clearTimeout(t);i.onload=i.onerror=null;res(v)};const t=setTimeout(()=>f(false),20000);i.onload=()=>f(true);i.onerror=()=>f(false);i.referrerPolicy='no-referrer';i.src=u})},
+  async bkZip(){
+    if(this.bk.busy)return;
+    try{
+      await this._loadJSZip();
+      const pkg=this._bkPackage(this._bkLive()),imgs=pkg.images;
+      if(!imgs.length)return this.showToast('কোনো ছবি পাওয়া যায়নি','error');
+      this.bk.busy='zip';this.bk.pct=0;this.bk.msg='';
+      let zip=new window.JSZip(),bytes=0,part=1,inPart=0,done=0,fails=[];
+      const flush=async()=>{if(!inPart)return;zip.file('manifest.json',JSON.stringify({images:pkg.images}));const b=await zip.generateAsync({type:'blob',compression:'STORE'});this._bkSave('dailydeal-images-'+this._bkDay()+'-part'+part+'.zip',b);part++;zip=new window.JSZip();bytes=0;inPart=0;await new Promise(r=>setTimeout(r,800))};
+      for(let i=0;i<imgs.length;i+=4){
+        await Promise.all(imgs.slice(i,i+4).map(async im=>{
+          try{const r=await fetch(im.url,{mode:'cors'});if(!r.ok)throw new Error('HTTP '+r.status);const b=await r.blob();zip.file('images/'+im.file,b);bytes+=b.size;inPart++}
+          catch(e){fails.push(im.url)}
+          done++;this.bk.pct=Math.round(done/imgs.length*100);this.bk.msg=done+' / '+imgs.length+(fails.length?(' · ব্যর্থ '+fails.length):'')+' · পার্ট '+part;
+        }));
+        if(bytes>45*1024*1024)await flush();
+      }
+      await flush();
+      this.bk.msg='শেষ — '+(imgs.length-fails.length)+'টি ছবি সেভ'+(fails.length?(', ব্যর্থ '+fails.length+' (ছবি লোড হয় না)'):'');
+      this.showToast(this.bk.msg,fails.length?'error':'success');
+    }catch(e){this.showToast('ZIP ব্যর্থ: '+(e&&e.message||e),'error')}
+    finally{this.bk.busy=''}
+  },
+  async bkHealth(){
+    const h=this.bk.health;if(h.run)return;
+    const refs={};
+    const scan=(arr,path)=>arr.forEach(o=>{const s=new Set();this._bkUrls(o,s);s.forEach(u=>{(refs[u]=refs[u]||[]).push(o.name||o.title||path+o.fbKey)})});
+    scan(this.fbProducts,'products/');scan(this.fbCategories,'categories/');scan(this.fbSections||[],'sections/');
+    const urls=Object.keys(refs);Object.assign(h,{run:true,total:urls.length,done:0,dead:[],checked:false});
+    await this._pool(urls,8,async u=>{let ok=await this._imgAlive(u);if(!ok){await new Promise(r=>setTimeout(r,800));ok=await this._imgAlive(u)}if(!ok)h.dead.push({url:u,names:refs[u].slice(0,3).join(', ')});h.done++});
+    h.run=false;h.checked=true;
+  },
+  async _cloudBlob(blob,key,cn,pr){
+    const pid='dd_'+key.replace(/\.[a-z0-9]+$/i,'').slice(-100);
+    const attempt=async(withId)=>{const fd=new FormData();fd.append('file',blob,key);fd.append('upload_preset',pr);if(withId)fd.append('public_id',pid);const r=await fetch('https://api.cloudinary.com/v1_1/'+cn+'/image/upload',{method:'POST',body:fd});const j=await r.json().catch(()=>({}));if(j.secure_url)return j.secure_url;throw new Error((j.error&&j.error.message)||('HTTP '+r.status))};
+    try{return await attempt(true)}catch(e){if(/public_id/i.test(String(e.message)))return await attempt(false);await new Promise(r=>setTimeout(r,1500));return await attempt(true)}
+  },
+  bkPickJson(e){const f=e.target.files[0]||null;window._bkFiles=window._bkFiles||{zips:[]};window._bkFiles.json=f;this.bk.rs.jsonName=f?f.name:''},
+  bkPickZips(e){const f=[...e.target.files];window._bkFiles=window._bkFiles||{};window._bkFiles.zips=f;this.bk.rs.zipNames=f.map(x=>x.name)},
+  async bkRestoreSnap(day){
+    if(!confirm(day+' এর ব্যাকআপ থেকে মুছে যাওয়া পণ্য/ক্যাটাগরি ফেরত আনবেন? (যেগুলো এখন আছে সেগুলো বদলাবে না)'))return;
+    try{
+      const d=await window.$db.getOnceVal('backups/snap/'+day);if(!d)return this.showToast('স্ন্যাপশট নেই','error');
+      const n=await this._bkRecreate(d);this.showToast(n+'টি আইটেম ফেরত এসেছে ✅','success');
+    }catch(e){this.showToast('রিস্টোর ব্যর্থ','error')}
+  },
+  async _bkRecreate(d){
+    const have=new Set([...this.fbProducts.map(x=>'products/'+x.fbKey),...this.fbCategories.map(x=>'categories/'+x.fbKey),...(this.fbSections||[]).map(x=>'sections/'+x.fbKey)]);
+    let n=0;
+    for(const t of ['products','categories','sections']){for(const [k,o] of Object.entries(d[t]||{})){if(have.has(t+'/'+k))continue;await window.$db.setPath(t+'/'+k,o);n++}}
+    return n;
+  },
+  async bkRestore(){
+    const rs=this.bk.rs,cn=this.settings.cloudinaryCloudName,pr=this.settings.cloudinaryUploadPreset;
+    if(!cn||!pr)return this.showToast('আগে Settings-এ নতুন Cloudinary (Cloud Name + Unsigned Preset) দিন','error');
+    if(rs.running)return;
+    Object.assign(rs,{running:true,stop:false,done:0,total:0,ok:0,fail:0,fails:[],log:[]});
+    try{
+      const F=window._bkFiles||{},zidx={};
+      if((F.zips||[]).length){await this._loadJSZip();for(const z of F.zips){const zip=await window.JSZip.loadAsync(z);zip.forEach((p,e)=>{if(!e.dir&&p.indexOf('images/')===0)zidx[p.slice(7)]=e})}}
+      const jd=F.json?JSON.parse(await F.json.text()):null;
+      const own='res.cloudinary.com/'+cn+'/',docs=[],exist=new Set();
+      const add=(path,o,create)=>{const s=new Set();this._bkUrls(o,s);const urls=[...s].filter(u=>u.indexOf(own)===-1);if(urls.length||create)docs.push({path,name:o.name||o.title||path,urls,obj:o,create:!!create})};
+      this.fbProducts.forEach(p=>{exist.add('products/'+p.fbKey);add('products/'+p.fbKey,p)});
+      this.fbCategories.forEach(p=>{exist.add('categories/'+p.fbKey);add('categories/'+p.fbKey,p)});
+      (this.fbSections||[]).forEach(p=>{exist.add('sections/'+p.fbKey);add('sections/'+p.fbKey,p)});
+      if(jd&&rs.recreate){for(const t of ['products','categories','sections']){for(const [k,o] of Object.entries(jd[t]||{})){if(!exist.has(t+'/'+k))add(t+'/'+k,o,true)}}}
+      const all=new Set();docs.forEach(d=>d.urls.forEach(u=>all.add(u)));
+      const target=new Set(all);
+      if(rs.onlyDead){rs.log.unshift('ছবি চেক হচ্ছে…');await this._pool([...all],8,async u=>{if(await this._imgAlive(u))target.delete(u)})}
+      const work=docs.filter(d=>d.create||d.urls.some(u=>target.has(u)));
+      rs.total=work.length;
+      if(!work.length){rs.log.unshift('✅ কিছু করার নেই — সব ছবি ঠিক আছে');return}
+      const map={};
+      const getNew=async u=>{if(u in map)return map[u];const key=this._imgKey(u),e=zidx[key];let r=null;try{r=e?await this._cloudBlob(await e.async('blob'),key,cn,pr):await this._migUpload(u,cn,pr);rs.ok++}catch(x){rs.fail++;rs.fails.push({name:'',url:u,err:String(x&&x.message||x).slice(0,140)})}map[u]=r;return r};
+      await this._pool(work,3,async d=>{
+        if(rs.stop)return;
+        const ok={};
+        for(const u of d.urls){if(!target.has(u))continue;const nu=await getNew(u);if(nu)ok[u]=nu}
+        try{
+          if(d.create){const o={};for(const k of Object.keys(d.obj)){if(k!=='fbKey')o[k]=this._migReplace(d.obj[k],ok)}await window.$db.setPath(d.path,o)}
+          else if(Object.keys(ok).length){const patch={};for(const k of Object.keys(d.obj)){if(k==='fbKey')continue;const nv=this._migReplace(d.obj[k],ok);if(JSON.stringify(nv)!==JSON.stringify(d.obj[k]))patch[k]=nv}if(Object.keys(patch).length)await window.$db.updatePath(d.path,patch)}
+          rs.log.unshift((d.create?'🆕 ':'✅ ')+d.name);
+        }catch(e){rs.log.unshift('❌ সেভ ব্যর্থ: '+d.name)}
+        rs.log=rs.log.slice(0,6);rs.done++;
+      });
+    }catch(e){this.showToast('রিকভারি ব্যর্থ: '+(e&&e.message||e),'error')}
+    finally{rs.running=false;this.showToast(rs.stop?'থামানো হয়েছে':('শেষ — সফল '+rs.ok+' · ব্যর্থ '+rs.fail),rs.fail?'error':'success')}
   },
   /* ── ImgBB → Cloudinary মাইগ্রেশন ── */
   _isIbb(s){return typeof s==='string'&&/^https?:\/\/([a-z0-9-]+\.)?(ibb\.co|imgbb\.com)\//i.test(s.trim())},
