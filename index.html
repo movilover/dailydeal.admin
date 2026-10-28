@@ -438,6 +438,31 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 <div x-show="sidebarOpen" x-cloak class="sidebar-overlay md:hidden" @click="sidebarOpen=false"></div>
 
 <!-- CATEGORY MODAL (name/emoji/img/gender + Section link) -->
+<div x-show="mig.open" x-cloak class="modal-overlay" @click.self="!mig.running&&(mig.open=false)">
+  <div class="dd-card p-4" style="max-width:600px;width:94%;margin:auto;max-height:90vh;overflow-y:auto;overscroll-behavior:contain">
+    <div class="flex items-center justify-between mb-2"><p class="font-bold" style="font-size:17px;color:var(--fg)"><i class="fa-solid fa-cloud-arrow-up mr-1" style="color:#0EA5E9"></i>ImgBB → Cloudinary মাইগ্রেশন</p><button @click="mig.open=false" :disabled="mig.running" class="btn-ghost text-xs">বন্ধ</button></div>
+    <p class="text-xs leading-relaxed mb-3" style="color:var(--fg3)">পণ্য, ক্যাটাগরি ও সেকশনের সব ImgBB লিংক খুঁজে Cloudinary-তে তুলে ডাটাবেসে নতুন লিংক বসানো হয়। শুরুর আগে অরিজিনাল লিংকের ব্যাকআপ ফাইল অটো ডাউনলোড হয়। ImgBB যে ছবি এখনো দিচ্ছে না সেগুলো ব্যর্থ তালিকায় থাকবে — ImgBB ঠিক হলে আবার চালালে বাকিগুলো হবে।</p>
+    <div class="p-2 rounded-xl text-xs font-bold mb-3" :style="(settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset)?'background:#ECFDF5;color:#047857':'background:#FFFBEB;color:#B45309'" x-text="(settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset)?('Cloudinary ঠিক আছে: '+settings.cloudinaryCloudName):'Settings-এ Cloudinary Cloud Name ও Unsigned Preset আগে দিন'"></div>
+    <div class="grid gap-2 mb-3" style="grid-template-columns:repeat(4,1fr)">
+      <div class="p-2 rounded-xl text-center" style="background:var(--bg2)"><p style="font-size:10px;color:var(--fg3)">ডক</p><p class="font-bold" x-text="mig.scanned?mig.total:'–'"></p></div>
+      <div class="p-2 rounded-xl text-center" style="background:var(--bg2)"><p style="font-size:10px;color:var(--fg3)">ইউনিক ছবি</p><p class="font-bold" x-text="mig.scanned?mig.uniq:'–'"></p></div>
+      <div class="p-2 rounded-xl text-center" style="background:#ECFDF5"><p style="font-size:10px;color:var(--fg3)">সফল</p><p class="font-bold" style="color:#047857" x-text="mig.okUrls"></p></div>
+      <div class="p-2 rounded-xl text-center" :style="'background:'+(mig.failUrls?'#FEF2F2':'var(--bg2)')"><p style="font-size:10px;color:var(--fg3)">ব্যর্থ</p><p class="font-bold" :style="mig.failUrls?'color:#DC2626':''" x-text="mig.failUrls"></p></div>
+    </div>
+    <div x-show="mig.running||mig.done>0" class="mb-3"><div style="height:8px;border-radius:99px;background:var(--bg2);overflow:hidden"><div :style="'height:100%;background:#0EA5E9;transition:width .3s;width:'+(mig.total?Math.round(mig.done/mig.total*100):0)+'%'"></div></div><p class="text-xs mt-1" style="color:var(--fg3)" x-text="mig.done+' / '+mig.total+' আইটেম'"></p>
+      <template x-for="(l,i) in mig.log" :key="i"><p class="text-xs truncate" style="color:var(--fg2)" x-text="l"></p></template></div>
+    <div class="flex gap-2 flex-wrap mb-3">
+      <button class="btn-ghost text-xs" :disabled="mig.running" @click="migScan()"><i class="fa-solid fa-magnifying-glass"></i>স্ক্যান করুন</button>
+      <button class="btn-primary text-xs" x-show="!mig.running" @click="migRun()"><i class="fa-solid fa-play"></i>মাইগ্রেশন শুরু</button>
+      <button class="btn-warn text-xs" x-show="mig.running" @click="mig.stop=true"><i class="fa-solid fa-stop"></i>থামান</button>
+      <button class="btn-ghost text-xs" x-show="mig.fails.length>0" @click="migFailCsv()"><i class="fa-solid fa-file-csv"></i>ব্যর্থ তালিকা (CSV)</button>
+    </div>
+    <p x-show="mig.scanned&&mig.total===0" class="text-sm p-3 rounded-2xl" style="background:#ECFDF5;color:#047857">✅ কোনো ImgBB লিংক আর নেই।</p>
+    <div x-show="mig.fails.length>0"><p class="font-bold text-sm mb-1" style="color:#DC2626">ব্যর্থ ছবি</p>
+      <template x-for="(f,i) in mig.fails.slice(0,40)" :key="i"><div class="p-2 rounded-xl mb-1" style="background:var(--bg2)"><p class="text-xs font-bold truncate" x-text="f.name"></p><p class="text-xs truncate" style="color:var(--fg3)" x-text="f.url"></p><p class="text-xs" style="color:#B45309" x-text="f.err"></p></div></template>
+      <p x-show="mig.fails.length>40" class="text-xs" style="color:var(--fg3)">প্রথম ৪০টি দেখানো হচ্ছে — পুরোটা CSV-তে।</p></div>
+  </div>
+</div>
 <div x-show="hc.open" x-cloak class="modal-overlay" @click.self="hc.open=false">
   <div class="dd-card p-4" style="max-width:660px;width:94%;margin:auto;max-height:90vh;overflow-y:auto;overscroll-behavior:contain">
     <div class="flex items-center justify-between mb-3"><p class="font-bold" style="font-size:17px;color:var(--fg)"><i class="fa-solid fa-stethoscope mr-1" style="color:var(--accent)"></i>পণ্য ডাটা চেক ও মেরামত</p><button @click="hc.open=false" class="btn-ghost text-xs">বন্ধ</button></div>
@@ -454,6 +479,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       <button class="btn-ghost text-xs" x-show="productsMissingId.length>0" :disabled="hc.busy" @click="backfillProductIds()"><i class="fa-solid fa-hashtag"></i>আইডি বসান</button>
       <button class="btn-ghost text-xs" x-show="hcDupIds.length>0" :disabled="hc.busy" @click="hcFixDupIds()"><i class="fa-solid fa-clone"></i>ডুপ্লিকেট আইডি ঠিক করুন</button>
       <button class="btn-ghost text-xs" @click="hcCsv()"><i class="fa-solid fa-file-csv"></i>পণ্য → ক্যাটাগরি (CSV)</button>
+      <button class="btn-ghost text-xs" @click="hc.open=false;migScan();mig.open=true"><i class="fa-solid fa-cloud-arrow-up"></i>ImgBB → Cloudinary</button>
     </div>
     <p class="font-bold text-sm mb-2" style="color:var(--fg)">ক্যাটাগরি অনুযায়ী পণ্য</p>
     <div class="rounded-2xl mb-4" style="background:var(--bg2);padding:6px 12px">
@@ -3142,6 +3168,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <i :class="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'fa-solid fa-circle-check':'fa-solid fa-triangle-exclamation'"></i>
           <span x-text="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'কনফিগার করা আছে':'এখনো কনফিগার করা হয়নি'"></span>
         </div>
+        <button class="btn-ghost text-xs" @click="migScan();mig.open=true"><i class="fa-solid fa-cloud-arrow-up"></i>পুরোনো ImgBB ছবি Cloudinary-তে সরান</button>
       </div>
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-share-nodes" style="color:var(--accent)"></i>সোশ্যাল ও পেমেন্ট</p>
@@ -3525,7 +3552,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   customColors:{accent:'#E8320A'},
   quickColors:['#E8320A','#7C3AED','#1D4ED8','#B8860B','#E8196A','#16A34A','#0EA5E9','#F97316','#EC4899','#14B8A6','#8B5CF6','#EF4444'],
 
-  dupModal:{open:false,prod:null,why:''},hc:{open:false,busy:false,pick:{}},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
+  dupModal:{open:false,prod:null,why:''},hc:{open:false,busy:false,pick:{}},mig:{open:false,running:false,stop:false,scanned:false,docs:[],uniq:0,total:0,done:0,okUrls:0,failUrls:0,fails:[],log:[]},catModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',emoji:'',img:'',gender:'both',parent:'',section:''}},
   secModal:{open:false,editing:null,saving:false,uploadPct:0,form:{name:'',icon:'🛍️',color:'#6B7280',color2:'#9CA3AF',order:99,active:true,img:''}},
   notifModal:{open:false,editing:null,saving:false,form:{title:'',body:'',type:'general',icon:'fa-solid fa-bell',appLink:'',linkLabel:'',date:''}},
   cbModal:{open:false,editing:null,saving:false,form:{label:'',icon:'🛍️',color:'#E8320A',color2:'#FF6B45',action:'',cat:'',link:'',active:true}},
@@ -4357,6 +4384,94 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     let next=this.nextProductId;
     for(const p of missing){try{await window.$db.saveProduct({productId:next},p.fbKey);next++}catch(e){}}
     this.showToast(missing.length+'টি পণ্যে আইডি বসানো হয়েছে! ✅','success');
+  },
+  /* ── ImgBB → Cloudinary মাইগ্রেশন ── */
+  _isIbb(s){return typeof s==='string'&&/^https?:\/\/([a-z0-9-]+\.)?(ibb\.co|imgbb\.com)\//i.test(s.trim())},
+  _migCollect(v,out){
+    if(typeof v==='string'){if(this._isIbb(v))out.add(v.trim());return}
+    if(Array.isArray(v)){v.forEach(x=>this._migCollect(x,out));return}
+    if(v&&typeof v==='object'){Object.values(v).forEach(x=>this._migCollect(x,out))}
+  },
+  _migReplace(v,map){
+    if(typeof v==='string'){const t=v.trim();return map[t]||v}
+    if(Array.isArray(v))return v.map(x=>this._migReplace(x,map));
+    if(v&&typeof v==='object'){const o={};for(const k in v)o[k]=this._migReplace(v[k],map);return o}
+    return v;
+  },
+  migScan(){
+    const docs=[];
+    const add=(path,o)=>{const s=new Set();this._migCollect(o,s);if(s.size)docs.push({path,name:o.name||o.title||o.fbKey,urls:[...s],obj:o})};
+    this.fbProducts.forEach(p=>add('products/'+p.fbKey,p));
+    this.fbCategories.forEach(c=>add('categories/'+c.fbKey,c));
+    (this.fbSections||[]).forEach(c=>add('sections/'+c.fbKey,c));
+    const all=new Set();docs.forEach(d=>d.urls.forEach(u=>all.add(u)));
+    Object.assign(this.mig,{scanned:true,docs,uniq:all.size,total:docs.length});
+  },
+  async _migUpload(url,cn,preset){
+    /* Cloudinary নিজে সার্ভার থেকে ImgBB-র ছবি টেনে নেয় (ব্রাউজারের CORS লাগে না) */
+    const pid='dd_ibb_'+url.replace(/^https?:\/\/[^/]+\//,'').replace(/\.[a-z0-9]+(\?.*)?$/i,'').replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,120);
+    const attempt=async(withId)=>{
+      const fd=new FormData();fd.append('file',url);fd.append('upload_preset',preset);if(withId)fd.append('public_id',pid);
+      const ctl=new AbortController();const t=setTimeout(()=>ctl.abort(),60000);
+      try{const r=await fetch('https://api.cloudinary.com/v1_1/'+cn+'/image/upload',{method:'POST',body:fd,signal:ctl.signal});const j=await r.json().catch(()=>({}));if(j.secure_url)return j.secure_url;throw new Error((j.error&&j.error.message)||('HTTP '+r.status))}
+      finally{clearTimeout(t)}
+    };
+    let last;
+    for(let i=0;i<3;i++){
+      try{return await attempt(true)}
+      catch(e){
+        last=e;const m=String(e&&e.message||e);
+        if(/public_id/i.test(m)){try{return await attempt(false)}catch(e2){last=e2}}
+        if(/status code 4\d\d|not found|invalid|not allowed|preset|disabled|unsupported/i.test(String(last.message||last)))break;   /* স্থায়ী ত্রুটি — আবার চেষ্টা বৃথা */
+        await new Promise(r=>setTimeout(r,1500*(i+1)));
+      }
+    }
+    throw last;
+  },
+  _migBackup(){
+    const data={};this.mig.docs.forEach(d=>{const o=JSON.parse(JSON.stringify(d.obj));delete o.fbKey;data[d.path]=o});
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
+    a.download='imgbb-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  },
+  async migRun(){
+    const cn=this.settings.cloudinaryCloudName,pr=this.settings.cloudinaryUploadPreset;
+    if(!cn||!pr)return this.showToast('আগে Settings-এ Cloudinary (Cloud Name + Unsigned Preset) দিন','error');
+    this.migScan();const m=this.mig;
+    if(!m.docs.length)return this.showToast('কোনো ImgBB লিংক নেই ✅','success');
+    this._migBackup();
+    Object.assign(m,{running:true,stop:false,done:0,okUrls:0,failUrls:0,fails:[],log:[]});
+    const map={},todo=m.docs.slice();
+    const worker=async()=>{
+      while(!m.stop){
+        const d=todo.shift();if(!d)break;
+        for(const u of d.urls){
+          if(map[u]===null){m.fails.push({name:d.name,url:u,err:'আগে ব্যর্থ'});continue}
+          if(map[u])continue;
+          try{map[u]=await this._migUpload(u,cn,pr);m.okUrls++}
+          catch(e){map[u]=null;m.failUrls++;m.fails.push({name:d.name,url:u,err:String(e&&e.message||e).slice(0,140)})}
+        }
+        const ok={};d.urls.forEach(u=>{if(map[u])ok[u]=map[u]});
+        try{
+          if(Object.keys(ok).length){
+            const patch={};
+            for(const k of Object.keys(d.obj)){if(k==='fbKey')continue;const nv=this._migReplace(d.obj[k],ok);if(JSON.stringify(nv)!==JSON.stringify(d.obj[k]))patch[k]=nv}
+            if(Object.keys(patch).length)await window.$db.updatePath(d.path,patch);
+          }
+          m.log.unshift('✅ '+d.name);
+        }catch(e){m.log.unshift('❌ সেভ ব্যর্থ: '+d.name)}
+        m.log=m.log.slice(0,6);m.done++;
+      }
+    };
+    await Promise.all([worker(),worker(),worker()]);
+    m.running=false;
+    this.showToast(m.stop?'থামানো হয়েছে':('শেষ! সফল '+m.okUrls+' · ব্যর্থ '+m.failUrls),m.failUrls?'error':'success');
+    setTimeout(()=>this.migScan(),2000);
+  },
+  migFailCsv(){
+    const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+    const rows=[['পণ্য/আইটেম','ImgBB লিংক','ত্রুটি']].concat(this.mig.fails.map(f=>[f.name,f.url,f.err]));
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv;charset=utf-8'}));
+    a.download='imgbb-failed.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
   },
   /* ── ডাটা চেক ও মেরামত ── */
   _hcn(x){return String(x==null?'':x).replace(/[\u200b-\u200d\ufeff]/g,'').replace(/\s+/g,' ').trim()},
