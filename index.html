@@ -39,9 +39,9 @@ tailwind.config={
 
 <!-- Firebase (merged: products, orders, categories, sections, notifications, custom buttons, pinned products, settings, storage) -->
 <script type="module">
-import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,push,set,get,onValue,update,remove,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getDatabase,ref,push,set,get,onValue,update,remove,runTransaction,query,orderByChild,equalTo}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut,createUserWithEmailAndPassword,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 const cfg={
   apiKey:"AIzaSyCQVlbjApQYtyc86ZTVPsBjOZ3J-RHv_vI",
@@ -66,14 +66,44 @@ document.body.appendChild(ov);document.body.appendChild(lo);
 const go=()=>{const m=ov.querySelector('#al-m');m.textContent='';signInWithEmailAndPassword(auth,ov.querySelector('#al-e').value.trim(),ov.querySelector('#al-p').value).catch(()=>{m.textContent='ইমেইল বা পাসওয়ার্ড ভুল!'})};
 ov.querySelector('#al-b').onclick=go;ov.querySelector('#al-p').onkeydown=e=>{if(e.key==='Enter')go()};
 const ADMIN_EMAIL='omor.faruk.sojol.2@gmail.com';
-onAuthStateChanged(auth,u=>{
-  const isAdmin=!!(u&&u.email===ADMIN_EMAIL);
-  ov.style.display=isAdmin?'none':'flex';lo.style.display=isAdmin?'block':'none';
-  if(u&&!isAdmin){signOut(auth);} // অন্য কেউ (যেমন রিসেলার) লগইন অবস্থায় থাকলে সাথে সাথে সাইন আউট — অ্যাডমিন প্যানেলে ঢুকতে না পারে
+window.$staff=null;let _seq=0,_unsub=null;
+const _chg=()=>{try{window.dispatchEvent(new Event('dd-staff-change'))}catch(e){}};
+const _show=(on)=>{ov.style.display=on?'none':'flex';lo.style.display=on?'block':'none'};
+const _ok=r=>!!(r&&r.active!==false&&r.perms&&Object.keys(r.perms).some(k=>r.perms[k]===true));
+onAuthStateChanged(auth,async u=>{
+  const my=++_seq;
+  if(_unsub){try{_unsub()}catch(e){}_unsub=null}
+  if(!u){window.$staff=null;_show(false);_chg();return}
+  if(u.email===ADMIN_EMAIL){window.$staff=null;_show(true);_chg();return}
+  /* অ্যাডমিন নয় — স্টাফ রেকর্ড (staff/<uid>) আছে ও চালু থাকলে ঢুকতে দেওয়া হয়, নইলে আগের মতোই বের করে দেওয়া হয় */
+  let rec=null;try{rec=(await get(ref(db,'staff/'+u.uid))).val()}catch(e){}
+  if(my!==_seq)return;
+  if(!_ok(rec)){const m=ov.querySelector('#al-m');if(m)m.textContent='এই অ্যাকাউন্টে অ্যাডমিন প্যানেলের অ্যাক্সেস নেই';window.$staff=null;signOut(auth);return}
+  window.$staff={uid:u.uid,email:u.email||'',name:rec.name||'',perms:rec.perms};
+  _show(true);_chg();
+  _unsub=onValue(ref(db,'staff/'+u.uid),sn=>{   /* অ্যাডমিন অনুমতি বদলালে/বন্ধ করলে সাথে সাথে কার্যকর */
+    const r=sn.val();
+    if(!_ok(r)){window.$staff=null;signOut(auth);return}
+    window.$staff={uid:u.uid,email:u.email||'',name:r.name||'',perms:r.perms};_chg();
+  },()=>{});
 });})();
 const storage=getStorage(app);
 window.$adminTok=async()=>auth.currentUser?await auth.currentUser.getIdToken():null;
+window.$signOut=()=>signOut(auth);
+window.$sendReset=(email)=>sendPasswordResetEmail(auth,email);
+/* স্টাফ অ্যাকাউন্ট তৈরি: আলাদা (সেকেন্ডারি) অ্যাপ দিয়ে, যাতে অ্যাডমিনের নিজের লগইন সেশন নষ্ট না হয় */
+window.$createStaffAuth=async(email,pw)=>{const sec=initializeApp(app.options,'staff'+Date.now());try{const sa=getAuth(sec);const c=await createUserWithEmailAndPassword(sa,email,pw);const uid=c.user.uid;try{await signOut(sa)}catch(e){}return uid}finally{try{await deleteApp(sec)}catch(e){}}};
 window.$db={
+  // স্টাফ ও পণ্য-জমা (অ্যাপ্রুভাল)
+  listenStaff:(cb)=>onValue(ref(db,'staff'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d,perms:{...(d.perms||{})}})):[])},()=>cb([])),
+  saveStaff:async(uid,d)=>set(ref(db,'staff/'+uid),d),
+  updateStaff:async(uid,d)=>update(ref(db,'staff/'+uid),d),
+  deleteStaff:async(uid)=>remove(ref(db,'staff/'+uid)),
+  submitProduct:async(d)=>{const r=push(ref(db,'productSubmissions'));await set(r,d);return r.key},
+  listenSubmissions:(cb)=>onValue(ref(db,'productSubmissions'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
+  listenMySubmissions:(uid,cb)=>onValue(query(ref(db,'productSubmissions'),orderByChild('submitterUid'),equalTo(uid)),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
+  updateSubmission:async(k,d)=>update(ref(db,'productSubmissions/'+k),d),
+  deleteSubmission:async(k)=>remove(ref(db,'productSubmissions/'+k)),
   // Products
   saveProduct:async(data,id)=>{if(id){await update(ref(db,'products/'+id),data);return id;}const r=push(ref(db,'products'));await set(r,data);return r.key},
   deleteProduct:async(id)=>remove(ref(db,'products/'+id)),
@@ -191,7 +221,7 @@ window.$db={
 };
 // অ্যাডমিন Firebase-এ সাইন-ইন সম্পন্ন হওয়ার পরেই লিসেনার চালু (আগে চালু হলে রুলস পড়তে দেয় না ও লিসেনার বাতিল হয়ে যায়)
 {let _fired=false;const _fire=()=>{if(_fired)return;_fired=true;window.__fbReady=true;window.dispatchEvent(new Event('firebase-ready'))};
-onAuthStateChanged(auth,u=>{if(u&&u.email==='omor.faruk.sojol.2@gmail.com')_fire()});}
+onAuthStateChanged(auth,u=>{if(u&&u.email==='omor.faruk.sojol.2@gmail.com')_fire()});window.addEventListener('dd-staff-change',()=>{if(window.$staff)_fire()});}
 </script>
 
 <style>
@@ -913,8 +943,9 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
     <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
     <span class="text-xs font-bold" style="color:#4ADE80">Firebase সংযুক্ত</span>
   </div>
+  <div x-show="staff" x-cloak class="mx-4 mb-3 px-3 py-2 rounded-xl" style="background:rgba(255,255,255,.07)"><p class="text-xs font-bold" style="color:#fff" x-text="staff?(staff.name||'স্টাফ'):''"></p><p class="text-xs" style="color:rgba(255,255,255,.45);word-break:break-all" x-text="staff?staff.email:''"></p></div>
   <nav class="flex-1 px-0 pb-4">
-    <template x-for="h in hubs" :key="h.id">
+    <template x-for="h in visibleHubs" :key="h.id">
       <button type="button" @click="goHub(h)" class="nav-item" :class="activeHub&&activeHub.id===h.id?'active':''">
         <i class="fa-solid w-4 text-center text-sm" :class="h.ic"></i><span x-text="h.label"></span>
         <span x-show="hubBadge(h)>0" x-text="hubBadge(h)" class="ml-auto text-xs font-bold px-1.5 rounded-full" style="background:#DC2626;color:#fff;min-width:20px;text-align:center"></span>
@@ -941,7 +972,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       </div>
     </div>
     <div class="flex items-center gap-2 flex-wrap justify-end">
-      <button @click="activeTab='upload';resetUp()" class="btn-primary text-xs"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button>
+      <button x-show="canTab('upload')" @click="activeTab='upload';resetUp()" class="btn-primary text-xs"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button>
     </div>
   </div>
   <!-- hub sub-tab bar -->
@@ -953,6 +984,101 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <span x-show="tabBadge(t)>0" class="bd" x-text="tabBadge(t)"></span>
         </button>
       </template>
+    </div>
+  </div>
+  <!-- ══ প্রোডাক্ট অ্যাপ্রুভাল (স্টাফের জমা দেওয়া পণ্য) ══ -->
+  <div x-show="activeTab==='subs'" x-cloak class="animate-fade-in">
+    <div class="dd-card p-4 mb-4">
+      <p class="font-bold text-sm"><i class="fa-solid fa-clipboard-check mr-2" style="color:#16A34A"></i>অ্যাপ্রুভালের অপেক্ষায় (<span x-text="pendingSubs.length"></span>)</p>
+      <p class="text-xs mt-1" style="color:var(--fg3)">স্টাফের জমা দেওয়া নতুন পণ্য এখানে আসে। অনুমোদন করলে পণ্যটি সাইটে লাইভ হবে।</p>
+    </div>
+    <template x-for="s in pendingSubs" :key="s.fbKey">
+      <div class="dd-card p-4 mb-3 flex gap-3 flex-wrap">
+        <img x-show="s.img" :src="s.img" alt="" class="w-24 h-24 rounded-xl object-cover" style="background:var(--border)"/>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-sm" x-text="s.name"></p>
+          <p class="text-xs mt-0.5" style="color:var(--fg3)" x-text="'৳'+s.price+(s.oldPrice?(' (আগে ৳'+s.oldPrice+')'):'')+' · '+(s.cat||'')+((s.sizes&&s.sizes.length)?(' · সাইজ: '+[].concat(s.sizes).join(', ')):'')"></p>
+          <p class="text-xs mt-1" style="color:var(--fg2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden" x-text="s.desc||''"></p>
+          <div class="flex gap-1 mt-2 overflow-x-auto" x-show="s.images&&s.images.length>1">
+            <template x-for="(im,ix) in (s.images||[]).slice(0,8)" :key="ix"><img :src="im" alt="" class="w-10 h-10 rounded-lg object-cover flex-shrink-0"/></template>
+          </div>
+          <p class="text-xs mt-2" style="color:var(--fg3)"><i class="fa-solid fa-user mr-1"></i><span x-text="(s.submitterName||'')+' · '+(s.submitterEmail||'')+' · '+fmtTime(s.submittedAt)"></span></p>
+        </div>
+        <div class="flex flex-col gap-2">
+          <button type="button" @click="subApprove(s)" class="btn-primary text-xs" style="justify-content:center"><i class="fa-solid fa-check"></i>অনুমোদন</button>
+          <button type="button" @click="subRejectOpen(s)" class="btn-ghost text-xs" style="justify-content:center"><i class="fa-solid fa-xmark"></i>বাতিল</button>
+        </div>
+      </div>
+    </template>
+    <p class="text-xs mb-4" x-show="!pendingSubs.length" style="color:var(--fg3)">এখন কোনো পেন্ডিং পণ্য নেই</p>
+    <div class="dd-card p-4 mb-4" x-show="subReject.open">
+      <p class="font-bold text-sm mb-2" x-text="'বাতিলের কারণ: '+(subReject.s?subReject.s.name:'')"></p>
+      <textarea class="dd-input" rows="2" x-model="subReject.note" placeholder="কারণ লিখুন (স্টাফ দেখতে পাবে)"></textarea>
+      <div class="flex gap-2 mt-2"><button type="button" @click="subRejectSave()" class="btn-primary text-xs">বাতিল নিশ্চিত করুন</button><button type="button" @click="subReject={open:false,s:null,note:''}" class="btn-ghost text-xs">থাক</button></div>
+    </div>
+    <div class="dd-card p-4" x-show="reviewedSubs.length">
+      <p class="font-bold text-sm mb-2">সাম্প্রতিক সিদ্ধান্ত</p>
+      <template x-for="s in reviewedSubs" :key="s.fbKey">
+        <div class="flex items-center justify-between gap-2 py-2" style="border-top:1px solid var(--border)">
+          <p class="text-xs min-w-0"><b x-text="s.name"></b> <span style="color:var(--fg3)" x-text="'· '+(s.submitterName||s.submitterEmail||'')+' · '+fmtTime(s.reviewedAt)"></span></p>
+          <span class="flex items-center gap-2"><span class="text-xs font-bold px-2 py-0.5 rounded-full" :style="s.status==='approved'?'background:#DCFCE7;color:#166534':'background:#FEE2E2;color:#B91C1C'" x-text="s.status==='approved'?'অনুমোদিত':'বাতিল'"></span><button type="button" @click="subDelete(s)" class="btn-ghost text-xs">মুছুন</button></span>
+        </div>
+      </template>
+    </div>
+  </div>
+  <!-- ══ আমার জমা দেওয়া পণ্য (স্টাফের নিজের তালিকা) ══ -->
+  <div x-show="activeTab==='mysubs'" x-cloak class="animate-fade-in">
+    <div class="dd-card p-4 mb-4"><p class="font-bold text-sm"><i class="fa-solid fa-paper-plane mr-2" style="color:var(--accent)"></i>আপনার জমা দেওয়া পণ্য</p><p class="text-xs mt-1" style="color:var(--fg3)">অ্যাডমিন বা অ্যাপ্রুভার অনুমোদন করলে পণ্য সাইটে লাইভ হবে।</p></div>
+    <template x-for="s in mySubsSorted" :key="s.fbKey">
+      <div class="dd-card p-3 mb-2 flex items-center gap-3">
+        <img x-show="s.img" :src="s.img" alt="" class="w-14 h-14 rounded-xl object-cover"/>
+        <div class="flex-1 min-w-0"><p class="font-bold text-sm" x-text="s.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="'৳'+s.price+' · '+fmtTime(s.submittedAt)"></p><p class="text-xs" x-show="s.status==='rejected'&&s.reviewNote" style="color:#B91C1C" x-text="'কারণ: '+s.reviewNote"></p></div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full" :style="s.status==='approved'?'background:#DCFCE7;color:#166534':(s.status==='rejected'?'background:#FEE2E2;color:#B91C1C':'background:#FEF3C7;color:#92400E')" x-text="s.status==='approved'?'অনুমোদিত':(s.status==='rejected'?'বাতিল':'অপেক্ষায়')"></span>
+      </div>
+    </template>
+    <p class="text-xs" x-show="!mySubs.length" style="color:var(--fg3)">এখনো কোনো পণ্য জমা দেননি</p>
+  </div>
+  <!-- ══ স্টাফ ও অ্যাক্সেস (শুধু অ্যাডমিন) ══ -->
+  <div x-show="activeTab==='team'&&!staff" x-cloak class="animate-fade-in">
+    <div class="dd-card p-4 mb-4 space-y-3">
+      <p class="font-bold text-sm"><i class="fa-solid fa-user-plus mr-2" style="color:var(--accent)"></i>নতুন স্টাফ যোগ করুন</p>
+      <p class="text-xs" style="color:var(--fg3)">জিমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি হবে। স্টাফ এই একই অ্যাডমিন লিংকে সেই জিমেইল-পাসওয়ার্ড দিয়ে ঢুকবে এবং শুধু আপনার দেওয়া অ্যাক্সেসগুলোই দেখতে পাবে।</p>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <input class="dd-input" x-model="team.form.name" placeholder="নাম"/>
+        <input class="dd-input" type="email" x-model="team.form.email" placeholder="জিমেইল / ইমেইল"/>
+        <input class="dd-input" :type="team.showPw?'text':'password'" x-model="team.form.pw" placeholder="পাসওয়ার্ড (কমপক্ষে ৬)" autocomplete="new-password"/>
+      </div>
+      <label class="text-xs flex items-center gap-1" style="color:var(--fg3)"><input type="checkbox" x-model="team.showPw"/> পাসওয়ার্ড দেখান</label>
+      <div class="grid sm:grid-cols-2 gap-2">
+        <template x-for="p in staffPerms" :key="p.k">
+          <label class="flex items-start gap-2 p-2 rounded-xl cursor-pointer" style="border:1.5px solid var(--border)"><input type="checkbox" class="mt-1" x-model="team.form.perms[p.k]"/><span><b class="text-sm" x-text="p.label"></b><br/><span class="text-xs" style="color:var(--fg3)" x-text="p.desc"></span></span></label>
+        </template>
+      </div>
+      <p class="text-xs font-semibold" x-show="team.err" style="color:#DC2626" x-text="team.err"></p>
+      <div class="flex gap-2 flex-wrap">
+        <button type="button" @click="teamCreate()" :disabled="team.busy" class="btn-primary text-xs"><i class="fa-solid fa-user-check"></i><span x-text="team.busy?'তৈরি হচ্ছে…':'স্টাফ তৈরি করুন'"></span></button>
+        <button type="button" x-show="team.orphan" @click="teamRetryOrphan()" class="btn-ghost text-xs">আবার সেভ</button>
+      </div>
+    </div>
+    <div class="dd-card p-4">
+      <p class="font-bold text-sm mb-2" x-text="'স্টাফ তালিকা ('+fbStaff.length+')'"></p>
+      <template x-for="m in fbStaff" :key="m.fbKey">
+        <div class="py-3" style="border-top:1px solid var(--border)">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <p class="text-sm min-w-0"><b x-text="m.name||'(নাম নেই)'"></b> <span class="text-xs" style="color:var(--fg3);word-break:break-all" x-text="m.email"></span> <span class="text-xs font-bold px-2 py-0.5 rounded-full" :style="m.active===false?'background:#FEE2E2;color:#B91C1C':'background:#DCFCE7;color:#166534'" x-text="m.active===false?'বন্ধ':'চালু'"></span></p>
+            <span class="flex gap-1 flex-wrap">
+              <button type="button" @click="teamSavePerms(m)" class="btn-primary text-xs">অ্যাক্সেস সেভ</button>
+              <button type="button" @click="teamToggle(m)" class="btn-ghost text-xs" x-text="m.active===false?'চালু করুন':'বন্ধ করুন'"></button>
+              <button type="button" @click="teamReset(m)" class="btn-ghost text-xs">পাসওয়ার্ড রিসেট ইমেইল</button>
+              <button type="button" @click="teamRemove(m)" class="btn-ghost text-xs" style="color:#DC2626">মুছুন</button>
+            </span>
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            <template x-for="p in staffPerms" :key="p.k"><label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="m.perms[p.k]"/><span x-text="p.label"></span></label></template>
+          </div>
+        </div>
+      </template>
+      <p class="text-xs" x-show="!fbStaff.length" style="color:var(--fg3)">এখনো কোনো স্টাফ নেই</p>
     </div>
   </div>
   <!-- ══ DASHBOARD ══ -->
@@ -1611,7 +1737,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   <div x-show="activeTab==='products'" class="animate-fade-in">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <p class="text-sm" style="color:var(--fg3)" x-text="fbProducts.length+' টি পণ্য'"></p>
-      <div class="flex gap-2 flex-wrap"><button @click="bk.open=true;bkLoadIdx()" class="btn-ghost text-xs"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ</button><button @click="hc.open=true" class="btn-ghost text-xs"><i class="fa-solid fa-stethoscope"></i>ডাটা চেক<span x-show="hcOrphans.length>0" class="px-1.5 rounded-full text-white" style="background:#DC2626;font-size:10px" x-text="hcOrphans.length"></span></button><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
+      <div class="flex gap-2 flex-wrap"><button x-show="!staff" @click="bk.open=true;bkLoadIdx()" class="btn-ghost text-xs"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ</button><button @click="hc.open=true" class="btn-ghost text-xs"><i class="fa-solid fa-stethoscope"></i>ডাটা চেক<span x-show="hcOrphans.length>0" class="px-1.5 rounded-full text-white" style="background:#DC2626;font-size:10px" x-text="hcOrphans.length"></span></button><button x-show="productsMissingId.length>0" @click="backfillProductIds()" class="btn-ghost text-xs"><i class="fa-solid fa-hashtag"></i><span x-text="productsMissingId.length+'টি পণ্যে আইডি বসান'"></span></button><button @click="activeTab='upload';resetUp()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন পণ্য</button></div>
     </div>
     <div class="flex gap-3 mb-4 flex-wrap">
       <div class="relative flex-1" style="min-width:180px">
@@ -2979,7 +3105,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <span x-text="settings.cloudinaryCloudName&&settings.cloudinaryUploadPreset?'কনফিগার করা আছে':'এখনো কনফিগার করা হয়নি'"></span>
         </div>
         <button class="btn-ghost text-xs" @click="migScan();mig.open=true"><i class="fa-solid fa-cloud-arrow-up"></i>পুরোনো ImgBB ছবি Cloudinary-তে সরান</button>
-        <button class="btn-ghost text-xs" @click="bk.open=true;bkLoadIdx()"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ ও রিকভারি</button>
+        <button class="btn-ghost text-xs" x-show="!staff" @click="bk.open=true;bkLoadIdx()"><i class="fa-solid fa-shield-halved"></i>ব্যাকআপ ও রিকভারি</button>
       </div>
       <div class="dd-card p-5 space-y-4">
         <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-share-nodes" style="color:var(--accent)"></i>সোশ্যাল ও পেমেন্ট</p>
@@ -3298,6 +3424,8 @@ const DD_INTL_DEFAULT_COUNTRIES=[{"code":"AE","name":"সংযুক্ত আ�
 const DD_INTL_DEFAULT_FEATS=[{"icon":"fa-plane-departure","title":"এয়ার এক্সপ্রেস","text":"দ্রুত আন্তর্জাতিক ডেলিভারি"},{"icon":"fa-ship","title":"সি-কার্গো","text":"বড়/ভারী পণ্যে সাশ্রয়ী"},{"icon":"fa-door-open","title":"ডোর ডেলিভারি","text":"প্রাপকের ঠিকানায় পৌঁছে দেওয়া"},{"icon":"fa-location-crosshairs","title":"ট্র্যাকিং","text":"অর্ডার আইডি দিয়ে ট্র্যাক করুন"},{"icon":"fa-shield-halved","title":"নিরাপদ পেমেন্ট","text":"bKash/Nagad প্রি-পেমেন্ট"},{"icon":"fa-headset","title":"সাপোর্ট","text":"সমস্যায় সাপোর্ট পাবেন"}];
 function Admin(){return{
   authenticated:false,loginPw:'',loginError:'',showPw:false,
+  staff:null,_wasStaff:false,fbStaff:[],fbSubs:[],mySubs:[],subReject:{open:false,s:null,note:''},
+  team:{form:{name:'',email:'',pw:'',perms:{}},busy:false,err:'',orphan:null,showPw:false},
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,bulkEnableResellOpen:false,bulkResellPct:15,
 
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
@@ -3374,7 +3502,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'delivery',icon:'fa-solid fa-truck-fast',label:'ডেলিভারি'},
   ],
 
-  tabLabels:{reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
+  tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
@@ -3481,16 +3609,17 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   // ══════════ মেনু / হাব (প্রতিটি সিস্টেম একবারই, গ্রুপ করা) ══════════
   hubs:[
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
-    {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
+    {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned','subs','mysubs']},
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
-    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']}
+    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']},
+    {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
-  get activeHub(){return this.hubs.find(h=>h.tabs.includes(this.activeTab))||null},
+  tabIcons:{subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
   orderCopyText(o){if(!o)return'';const L=[];L.push('অর্ডার #'+(o.id||''));L.push('নাম: '+(o.customerName||''));L.push('ফোন: '+(o.phone||''));L.push('ঠিকানা: '+(o.address||''));if(o.upazila)L.push('উপজেলা/থানা: '+o.upazila);L.push('জেলা: '+(o.district||''));L.push('বিভাগ: '+(o.division||''));
@@ -3555,7 +3684,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.showToast(ok+'টি পণ্যে রিসেলিং চালু ✅'+(bad?' ('+bad+'টি ব্যর্থ)':''),bad?'error':'success');
   },
   get productsMissingResell(){return (this.fbProducts||[]).filter(p=>!p.resellEnabled)},
-  goTab(t){if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
+  goTab(t){if(!this.canTab(t))return;if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
   /* ═══ Supplier API module ═══ */
   supInit(){
     if(this._supInit)return;this._supInit=true;
@@ -3715,7 +3844,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.ic.saving=false;
   },
   async supRoute(k){try{await this.supApi('/orders/'+k+'/route',{method:'POST'});this.showToast('সাপ্লায়ারে পাঠানো হয়েছে ✅')}catch(e){this.showToast(e.message,'error')}},
-  tabBadge(t){const m={orders:this.pendingCount,resellers:this.pendingResellers.length,withdrawals:this.pendingWithdrawals.length,deposits:this.pendingDeposits.length,tickets:this.pendingTickets.length,recharges:this.fbRecharges.filter(r=>r.status==='pending').length,svcorders:this.fbSvcOrders.filter(o=>o.status==='pending').length,custwallet:this.custPendingCount('deposit')+this.custPendingCount('withdraw')};return m[t]||0},
+  tabBadge(t){const m={subs:this.pendingSubs.length,orders:this.pendingCount,resellers:this.pendingResellers.length,withdrawals:this.pendingWithdrawals.length,deposits:this.pendingDeposits.length,tickets:this.pendingTickets.length,recharges:this.fbRecharges.filter(r=>r.status==='pending').length,svcorders:this.fbSvcOrders.filter(o=>o.status==='pending').length,custwallet:this.custPendingCount('deposit')+this.custPendingCount('withdraw')};return m[t]||0},
   hubBadge(h){return h.tabs.reduce((a,t)=>a+this.tabBadge(t),0)},
   // ══════════ গ্রাহক ওয়ালেট ══════════
   get filteredCust(){return [...this.fbCustDeposits,...this.fbCustWithdrawals].filter(r=>(this.custKind==='সব'||r.kind===this.custKind)&&(this.custF==='সব'||(this.custF==='pending'?r.status==='pending':r.status!=='pending'))).sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0))},
@@ -3745,21 +3874,111 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   getPin(key){return this.fbProducts.find(p=>p.fbKey===key)},
 
   // ══════════ AUTH ══════════
+  // ══════════ স্টাফ ও অ্যাক্সেস সিস্টেম ══════════
+  staffPerms:[
+    {k:'submit',label:'প্রোডাক্ট আপলোড',desc:'নতুন পণ্য জমা দিতে পারবে — অ্যাপ্রুভাল ছাড়া সাইটে যাবে না',tabs:['upload','mysubs']},
+    {k:'approve',label:'প্রোডাক্ট অ্যাপ্রুভাল',desc:'জমা দেওয়া পণ্য অনুমোদন বা বাতিল করতে পারবে',tabs:['subs']},
+    {k:'catalog',label:'নতুন প্রোডাক্ট অ্যাড/এডিট',desc:'সরাসরি পণ্য, ক্যাটাগরি, সেকশন যোগ ও এডিট (অনুমোদন লাগবে না)',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
+    {k:'importer',label:'ইম্পোর্টিং',desc:'সাপ্লায়ার থেকে পণ্য ইম্পোর্ট ও সাপ্লায়ার অর্ডার (API কী শুধু অ্যাডমিন)',tabs:['sup_import','sup_orders']},
+    {k:'resell',label:'রিসেলিং',desc:'রিসেলার, লিংক, ভেন্ডর, রিচার্জ, সার্ভিস ও রিসেলিং সেটিংস',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
+    {k:'intl',label:'ইন্টারন্যাশনাল',desc:'বিদেশে পণ্য ও ডেলিভারি, ইন্টারন্যাশনাল ক্যাটাগরি',tabs:['sup_intl','sup_ship']}
+  ],
+  can(k){return !this.staff||(this.staff.perms||{})[k]===true},
+  canTab(t){
+    if(!this.staff)return t!=='mysubs';
+    const P=this.staff.perms||{};
+    if(t==='team')return false;
+    if(t==='mysubs')return P.submit===true;
+    if(t==='subs')return P.approve===true;
+    if(t==='upload')return P.submit===true||P.catalog===true;
+    return this.staffPerms.some(x=>P[x.k]===true&&x.tabs.includes(t));
+  },
+  get visibleHubs(){return this.hubs.map(h=>({...h,tabs:h.tabs.filter(t=>this.canTab(t))})).filter(h=>h.tabs.length)},
+  firstTab(){const h=this.visibleHubs[0];return h?h.tabs[0]:'dashboard'},
+  get pendingSubs(){return this.fbSubs.filter(s=>s.status==='pending').sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0))},
+  get reviewedSubs(){return this.fbSubs.filter(s=>s.status!=='pending').sort((a,b)=>(b.reviewedAt||0)-(a.reviewedAt||0)).slice(0,30)},
+  get mySubsSorted(){return this.mySubs.slice().sort((a,b)=>(b.submittedAt||0)-(a.submittedAt||0))},
+  _staffListeners(){
+    if(!this.staff)window.$db.listenStaff(l=>{this.fbStaff=l.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))});
+    if(!this.staff||this.can('approve'))window.$db.listenSubmissions(l=>{this.fbSubs=l});
+    else if(this.can('submit'))window.$db.listenMySubmissions(this.staff.uid,l=>{this.mySubs=l});
+  },
+  fmtTime(t){try{return t?new Date(t).toLocaleString('bn-BD'):''}catch(e){return ''}},
+  async subApprove(s){
+    if(!this.can('approve'))return;
+    if(!confirm('"'+(s.name||'')+'" অনুমোদন করলে পণ্যটি সাইটে লাইভ হবে। ঠিক আছে?'))return;
+    try{
+      const p={...s};['fbKey','status','submitterUid','submitterEmail','submitterName','submittedAt','reviewNote','reviewedAt','reviewedBy','productKey'].forEach(k=>delete p[k]);
+      const me=this.staff?this.staff.email:'admin';
+      const key=await window.$db.saveProduct({...p,productId:this.nextProductId,timestamp:Date.now(),createdAt:Date.now(),submittedBy:s.submitterEmail||'',approvedBy:me});
+      await window.$db.updateSubmission(s.fbKey,{status:'approved',reviewedAt:Date.now(),reviewedBy:me,productKey:key});
+      this.showToast('পণ্য অনুমোদিত ও লাইভ ✅','success');
+    }catch(e){this.showToast('অনুমোদন ব্যর্থ: '+(e&&e.message||''),'error')}
+  },
+  subRejectOpen(s){this.subReject={open:true,s:s,note:''}},
+  async subRejectSave(){
+    const s=this.subReject.s;if(!s||!this.can('approve'))return;
+    try{await window.$db.updateSubmission(s.fbKey,{status:'rejected',reviewNote:(this.subReject.note||'').trim().slice(0,300),reviewedAt:Date.now(),reviewedBy:this.staff?this.staff.email:'admin'});this.subReject={open:false,s:null,note:''};this.showToast('বাতিল করা হয়েছে','success')}
+    catch(e){this.showToast('ব্যর্থ','error')}
+  },
+  async subDelete(s){if(!confirm('এই রেকর্ড মুছবেন?'))return;try{await window.$db.deleteSubmission(s.fbKey)}catch(e){this.showToast('মুছতে ব্যর্থ','error')}},
+  teamPicked(perms){return this.staffPerms.filter(x=>perms&&perms[x.k]===true)},
+  async teamCreate(){
+    const f=this.team.form,T=this.team;T.err='';
+    const email=(f.email||'').trim().toLowerCase(),name=(f.name||'').trim();
+    if(!name)return T.err='নাম লিখুন';
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return T.err='সঠিক জিমেইল/ইমেইল দিন';
+    if((f.pw||'').length<6)return T.err='পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের দিন';
+    const perms={};this.staffPerms.forEach(x=>{if(f.perms[x.k])perms[x.k]=true});
+    if(!Object.keys(perms).length)return T.err='কমপক্ষে একটি অ্যাক্সেস বেছে নিন';
+    T.busy=true;let uid=null;
+    try{
+      uid=await window.$createStaffAuth(email,f.pw);
+      await window.$db.saveStaff(uid,{name,email,perms,active:true,createdAt:Date.now()});
+      this.showToast('স্টাফ অ্যাকাউন্ট তৈরি হয়েছে ✅','success');
+      T.form={name:'',email:'',pw:'',perms:{}};T.orphan=null;
+    }catch(e){
+      const c=String(e&&e.code||'');
+      if(uid){T.orphan={uid,name,email,perms};T.err='অ্যাকাউন্ট তৈরি হয়েছে কিন্তু অ্যাক্সেস সেভ হয়নি (রুলস আপডেট করেছেন?) — নিচের "আবার সেভ" চাপুন';}
+      else if(c==='auth/email-already-in-use')T.err='এই ইমেইলে অ্যাকাউন্ট আগে থেকেই আছে — অন্য ইমেইল ব্যবহার করুন';
+      else if(c==='auth/weak-password')T.err='পাসওয়ার্ড দুর্বল — আরও শক্ত দিন';
+      else if(c==='auth/invalid-email')T.err='ইমেইল সঠিক নয়';
+      else T.err='তৈরি করা যায়নি: '+(c||(e&&e.message)||'');
+    }
+    T.busy=false;
+  },
+  async teamRetryOrphan(){
+    const o=this.team.orphan;if(!o)return;
+    try{await window.$db.saveStaff(o.uid,{name:o.name,email:o.email,perms:o.perms,active:true,createdAt:Date.now()});this.team.orphan=null;this.team.err='';this.team.form={name:'',email:'',pw:'',perms:{}};this.showToast('সেভ হয়েছে ✅','success')}
+    catch(e){this.showToast('এখনও সেভ হচ্ছে না — রুলস Publish করেছেন কি না দেখুন','error')}
+  },
+  async teamSavePerms(m){
+    const perms={};this.staffPerms.forEach(x=>{if(m.perms[x.k])perms[x.k]=true});
+    if(!Object.keys(perms).length)return this.showToast('কমপক্ষে একটি অ্যাক্সেস রাখুন (না চাইলে "বন্ধ" করুন)','error');
+    try{await window.$db.updateStaff(m.fbKey,{perms});this.showToast('অ্যাক্সেস আপডেট হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ','error')}
+  },
+  async teamToggle(m){try{await window.$db.updateStaff(m.fbKey,{active:m.active===false})}catch(e){this.showToast('ব্যর্থ','error')}},
+  async teamReset(m){try{await window.$sendReset(m.email);this.showToast(m.email+' এ পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে','success')}catch(e){this.showToast('পাঠানো যায়নি','error')}},
+  async teamRemove(m){if(!confirm((m.name||m.email)+' এর অ্যাক্সেস মুছে ফেলবেন? (সে আর প্যানেলে ঢুকতে পারবে না)'))return;try{await window.$db.deleteStaff(m.fbKey);this.showToast('মুছে ফেলা হয়েছে','success')}catch(e){this.showToast('ব্যর্থ','error')}},
+
   login(){
     if(this.loginPw===ADMIN_PASS){this.authenticated=true;this.loginError='';sessionStorage.setItem('dd_admin_auth','1');}
     else{this.loginError='❌ ভুল পাসওয়ার্ড!';}
   },
-  logout(){this.authenticated=false;sessionStorage.removeItem('dd_admin_auth');this.loginPw=''},
+  logout(){this.authenticated=false;sessionStorage.removeItem('dd_admin_auth');this.loginPw='';if(this.staff&&window.$signOut)window.$signOut()},
 
   // ══════════ BOOT ══════════
   boot(){
     try{this.$watch('activeTab',()=>{window.scrollTo(0,0)})}catch(e){}try{this.$watch('fbProducts',()=>this._bkSchedule())}catch(e){}
+    try{this.$watch('activeTab',t=>{if(this.staff&&!this.canTab(t))this.activeTab=this.firstTab()})}catch(e){}
+    const _applyStaff=()=>{this.staff=window.$staff||null;if(this.staff){this._wasStaff=true;this.authenticated=true;if(!this.canTab(this.activeTab))this.activeTab=this.firstTab()}else if(this._wasStaff){this._wasStaff=false;this.authenticated=sessionStorage.getItem('dd_admin_auth')==='1'}};
+    window.addEventListener('dd-staff-change',_applyStaff);_applyStaff();
     if(sessionStorage.getItem('dd_admin_auth')==='1')this.authenticated=true;
     const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
     setTimeout(()=>{if(window.__fbReady&&!window.__fbBooted)window.dispatchEvent(new Event('firebase-ready'))},0);
     window.addEventListener('firebase-ready',()=>{
-      if(window.__fbBooted)return;window.__fbBooted=true;
+      if(window.__fbBooted)return;window.__fbBooted=true;this.staff=window.$staff||null;try{this._staffListeners()}catch(e){}
       window.$db.listenProducts(prods=>this.fbProducts=prods);
       window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule();this._arSchedule()});
       window.$db.listenUsers(count=>this.totalUsers=count);
@@ -4138,6 +4357,19 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       updatedAt:new Date().toISOString(),
     };
     if(!this.up.editKey){data.timestamp=Date.now();data.createdAt=Date.now();data.productId=this.nextProductId;}
+    if(this.staff&&!this.can('catalog')){   /* শুধু "আপলোড" অনুমতি: সরাসরি সাইটে নয়, অ্যাপ্রুভালের জন্য জমা */
+      if(!this.can('submit'))return;
+      if(this.up.editKey){this.up.saveErr='আপনি শুধু নতুন পণ্য জমা দিতে পারবেন';return}
+      this.saving=true;this.up.saving=true;
+      try{
+        const sd={...data};delete sd.productId;
+        await window.$db.submitProduct({...sd,status:'pending',submitterUid:this.staff.uid,submitterEmail:this.staff.email,submitterName:this.staff.name||'',submittedAt:Date.now()});
+        this.showToast('অ্যাপ্রুভালের জন্য জমা হয়েছে ✅','success');
+        this.resetUp();this.activeTab='mysubs';
+      }catch(e){this.up.saveErr='জমা ব্যর্থ: '+(e.message||'')}
+      this.saving=false;this.up.saving=false;
+      return;
+    }
     this.saving=true;this.up.saving=true;
     try{
       await window.$db.saveProduct(data,this.up.editKey||null);
