@@ -139,6 +139,9 @@ window.$db={
   savePinnedProduct:async(data,id)=>{if(id){await update(ref(db,'pinnedProducts/'+id),data);return id;}const r=push(ref(db,'pinnedProducts'));await set(r,data);return r.key},
   deletePinnedProduct:async(id)=>remove(ref(db,'pinnedProducts/'+id)),
   listenPinnedProducts:(cb)=>onValue(ref(db,'pinnedProducts'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
+  // হ্যাঙ্গার পণ্য (হোমপেজের "নির্বাচিত পণ্য" শোকেস): hangerProducts/<productKey> = {n:ক্রম}
+  listenHangerProducts:(cb)=>onValue(ref(db,'hangerProducts'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({k,n:Number(d&&d.n)||0})).sort((x,y)=>x.n-y.n):[])},e=>{console.warn('hangerProducts',e&&e.code)}),
+  saveHangerProducts:async(keys)=>{const o={};(keys||[]).forEach((k,i)=>{o[k]={n:i+1,at:Date.now()}});return set(ref(db,'hangerProducts'),(keys&&keys.length)?o:null)},
   // Settings
   saveSettings:async(data)=>set(ref(db,'settings'),data),
   updateSettingKeys:async(obj)=>update(ref(db,'settings/settings'),obj),
@@ -2100,6 +2103,63 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       </div>
     </div>
   </div>
+  <!-- ══ হ্যাঙ্গার পণ্য (হোমপেজের "নির্বাচিত পণ্য" ঝুলন্ত শোকেস) ══ -->
+  <div x-show="activeTab==='hanger'" class="animate-fade-in">
+    <div class="dd-card p-4 mb-5" style="border-left:4px solid var(--accent)">
+      <p class="font-bold text-sm" style="color:var(--fg)"><i class="fa-solid fa-star mr-2" style="color:var(--accent)"></i>হ্যাঙ্গার পণ্য — হোমপেজের "নির্বাচিত পণ্য"</p>
+      <p class="text-xs mt-1" style="color:var(--fg2)">এখানে যে পণ্যগুলো বাছাই করবেন, ইউজার সাইটের হ্যাঙ্গারে ঠিক সেগুলোই (আপনার সাজানো ক্রমে) দেখাবে। সর্বোচ্চ ১২টি। কিছু বাছাই না করলে আগের মতো স্বয়ংক্রিয়ভাবে (পিন করা + নতুন ৮টি পণ্য) দেখাবে।</p>
+    </div>
+
+    <div class="dd-card p-4 mb-5">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <p class="text-sm font-bold" style="color:var(--fg)">বাছাই করা পণ্য (<span x-text="hgSel.length"></span>/১২)
+          <span x-show="hgDirty" class="text-xs font-bold px-2 py-0.5 rounded-full ml-1" style="background:#FFFBEB;color:#B45309">সেভ করা হয়নি</span></p>
+        <div class="flex gap-2">
+          <button @click="hgClear()" x-show="hgSel.length" class="btn-ghost text-xs px-3 py-2 rounded-xl" style="cursor:pointer">সব সরান (অটো মোড)</button>
+          <button @click="saveHanger()" :disabled="hgBusy||!hgDirty" class="btn-primary" :style="(!hgDirty&&!hgBusy)?'opacity:.5':''"><i class="fa-solid" :class="hgBusy?'fa-spinner fa-spin':'fa-floppy-disk'"></i> সেভ করুন</button>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <template x-for="(p,i) in hgList" :key="'hs'+p.fbKey">
+          <div class="dd-card-sm p-3 flex items-center gap-2">
+            <span class="text-xs font-bold w-5 text-center flex-shrink-0" style="color:var(--accent)" x-text="i+1"></span>
+            <img :src="(p.images&&p.images[0])||p.img||''" class="w-12 h-12 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)" onerror="this.onerror=null;this.src='https://placehold.co/48x48/eee/aaa?text=?'"/>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-bold truncate" style="color:var(--fg)" x-text="p.name"></p>
+              <p class="text-xs font-mono mt-0.5" style="color:var(--accent)" x-text="'৳'+(p.price||0).toLocaleString()"></p>
+            </div>
+            <div class="flex flex-col gap-1 flex-shrink-0">
+              <button @click="hgMove(i,-1)" :disabled="i===0" class="w-7 h-6 rounded-lg flex items-center justify-center" style="background:var(--bg2);color:var(--fg2);border:none;cursor:pointer" :style="i===0?'opacity:.3':''"><i class="fa-solid fa-chevron-up" style="font-size:9px"></i></button>
+              <button @click="hgMove(i,1)" :disabled="i===hgSel.length-1" class="w-7 h-6 rounded-lg flex items-center justify-center" style="background:var(--bg2);color:var(--fg2);border:none;cursor:pointer" :style="i===hgSel.length-1?'opacity:.3':''"><i class="fa-solid fa-chevron-down" style="font-size:9px"></i></button>
+            </div>
+            <button @click="hgRemove(i)" class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer"><i class="fa-solid fa-xmark text-xs"></i></button>
+          </div>
+        </template>
+        <div x-show="!hgSel.length" class="col-span-full text-center py-10" style="color:var(--fg3)">
+          <i class="fa-solid fa-star text-4xl mb-3 opacity-20"></i><p class="text-sm font-semibold">কোনো পণ্য বাছাই করা নেই — হ্যাঙ্গারে অটো পণ্য দেখাচ্ছে</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="dd-card p-4">
+      <p class="text-sm font-bold mb-3" style="color:var(--fg)">পণ্য যোগ করুন</p>
+      <input x-model="hgSearch" class="dd-input mb-3" placeholder="পণ্যের নাম বা আইডি লিখে খুঁজুন..."/>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <template x-for="p in hgPool" :key="'hp'+p.fbKey">
+          <div class="dd-card-sm p-3 flex items-center gap-3">
+            <img :src="(p.images&&p.images[0])||p.img||''" class="w-12 h-12 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)" onerror="this.onerror=null;this.src='https://placehold.co/48x48/eee/aaa?text=?'"/>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-bold truncate" style="color:var(--fg)" x-text="p.name"></p>
+              <p class="text-xs font-mono mt-0.5" style="color:var(--accent)" x-text="'৳'+(p.price||0).toLocaleString()"></p>
+            </div>
+            <button @click="hgAdd(p)" class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style="background:var(--accentL);color:var(--accent);border:none;cursor:pointer"><i class="fa-solid fa-plus text-xs"></i></button>
+          </div>
+        </template>
+        <div x-show="!hgPool.length" class="col-span-full text-center py-8 text-sm" style="color:var(--fg3)">কোনো পণ্য পাওয়া যায়নি</div>
+      </div>
+      <p class="text-xs mt-3" style="color:var(--fg3)" x-show="hgPool.length>=60">প্রথম ৬০টি দেখানো হচ্ছে — নির্দিষ্ট পণ্য পেতে সার্চ করুন।</p>
+    </div>
+  </div>
   <!-- ══ ORDERS ══ -->
   <div x-show="['orders','delivered','cancelled'].includes(activeTab)" class="animate-fade-in">
     <div class="flex flex-wrap gap-3 mb-5 items-center">
@@ -3428,7 +3488,7 @@ function Admin(){return{
   team:{form:{name:'',email:'',pw:'',perms:{}},busy:false,err:'',orphan:null,showPw:false},
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,bulkEnableResellOpen:false,bulkResellPct:15,
 
-  fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],
+  fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],fbHanger:[],hgSel:[],hgDirty:false,hgSearch:'',hgBusy:false,
   fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],adj:{kind:'reseller',q:'',cq:'',cres:[],sel:null,mode:'add',amount:'',note:'',busy:false,cbusy:false},fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
@@ -3504,7 +3564,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
-    assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
+    assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
     vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
@@ -3609,7 +3669,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   // ══════════ মেনু / হাব (প্রতিটি সিস্টেম একবারই, গ্রুপ করা) ══════════
   hubs:[
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
-    {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned','subs','mysubs']},
+    {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned','hanger','subs','mysubs']},
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
@@ -3618,7 +3678,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','appearance']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -3878,7 +3938,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   staffPerms:[
     {k:'submit',label:'প্রোডাক্ট আপলোড',desc:'নতুন পণ্য জমা দিতে পারবে — অ্যাপ্রুভাল ছাড়া সাইটে যাবে না',tabs:['upload','mysubs']},
     {k:'approve',label:'প্রোডাক্ট অ্যাপ্রুভাল',desc:'জমা দেওয়া পণ্য অনুমোদন বা বাতিল করতে পারবে',tabs:['subs']},
-    {k:'catalog',label:'নতুন প্রোডাক্ট অ্যাড/এডিট',desc:'সরাসরি পণ্য, ক্যাটাগরি, সেকশন যোগ ও এডিট (অনুমোদন লাগবে না)',tabs:['upload','products','categories','sections','assignment','eid','pinned']},
+    {k:'catalog',label:'নতুন প্রোডাক্ট অ্যাড/এডিট',desc:'সরাসরি পণ্য, ক্যাটাগরি, সেকশন যোগ ও এডিট (অনুমোদন লাগবে না)',tabs:['upload','products','categories','sections','assignment','eid','pinned','hanger']},
     {k:'importer',label:'ইম্পোর্টিং',desc:'সাপ্লায়ার থেকে পণ্য ইম্পোর্ট ও সাপ্লায়ার অর্ডার (API কী শুধু অ্যাডমিন)',tabs:['sup_import','sup_orders']},
     {k:'resell',label:'রিসেলিং',desc:'রিসেলার, লিংক, ভেন্ডর, রিচার্জ, সার্ভিস ও রিসেলিং সেটিংস',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {k:'intl',label:'ইন্টারন্যাশনাল',desc:'বিদেশে পণ্য ও ডেলিভারি, ইন্টারন্যাশনাল ক্যাটাগরি',tabs:['sup_intl','sup_ship']}
@@ -3987,6 +4047,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenNotifications(notifs=>this.fbNotifications=notifs.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)));
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
       window.$db.listenPinnedProducts(pins=>{this.fbPinned=pins});
+      window.$db.listenHangerProducts&&window.$db.listenHangerProducts(l=>{this.fbHanger=l;if(!this.hgDirty)this.hgSel=l.map(x=>x.k)});
       window.$db.listenResellers(rs=>{this.fbResellers=rs;if(!this._rrAuto&&rs.length){this._rrAuto=true;setTimeout(()=>this.repairReferralIndex(true),2500)}});
       window.$db.listenSharedLinks(l=>this.fbLinks=l);
       window.$db.listenBlocklist(b=>this.fbBlocks=b.sort((x,y)=>(y.at||0)-(x.at||0)));
@@ -5347,6 +5408,25 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(o){const ok=await this._archiveOne(o,{removedBy:'admin'});if(!ok&&!confirm('⚠ আর্কাইভে সেভ করা যায়নি (রুলস পাবলিশ হয়েছে?)।\nতবুও মুছবেন? এটা আর ফেরানো যাবে না।'))return}
       await window.$db.deleteOrder(key);this.showToast('লাইভ থেকে সরানো হয়েছে (আর্কাইভে সংরক্ষিত)','success')
     }catch{this.showToast('মুছতে ব্যর্থ!','error')}
+  },
+
+  // ══════════ হ্যাঙ্গার পণ্য (হোমপেজের "নির্বাচিত পণ্য" ঝুলন্ত শোকেস) ══════════
+  get hgList(){return this.hgSel.map(k=>this.fbProducts.find(p=>p.fbKey===k)||{fbKey:k,name:'(পণ্য পাওয়া যায়নি — সরিয়ে দিন)',price:0,_missing:true})},
+  get hgPool(){const q=(this.hgSearch||'').trim().toLowerCase();return this.fbProducts.filter(p=>p&&p.name&&!p.intl&&p.active!==false&&!this.hgSel.includes(p.fbKey)&&(!q||String(p.name).toLowerCase().includes(q)||String(p.productId||'').includes(q))).slice(0,60)},
+  hgAdd(p){if(this.hgSel.includes(p.fbKey))return;if(this.hgSel.length>=12){this.showToast('সর্বোচ্চ ১২টি পণ্য বাছাই করা যাবে','error');return}this.hgSel=[...this.hgSel,p.fbKey];this.hgDirty=true},
+  hgRemove(i){this.hgSel=this.hgSel.filter((_,x)=>x!==i);this.hgDirty=true},
+  hgMove(i,d){const j=i+d;if(j<0||j>=this.hgSel.length)return;const r=[...this.hgSel];[r[i],r[j]]=[r[j],r[i]];this.hgSel=r;this.hgDirty=true},
+  hgClear(){this.hgSel=[];this.hgDirty=true},
+  async saveHanger(){
+    if(this.hgBusy)return;this.hgBusy=true;
+    try{
+      await Promise.race([window.$db.saveHangerProducts(this.hgSel),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),20000))]);
+      this.hgDirty=false;
+      this.showToast(this.hgSel.length?'হ্যাঙ্গার সেভ হয়েছে! ✅':'হ্যাঙ্গার অটো মোডে ফিরেছে ✅','success');
+    }catch(e){
+      const m=String((e&&(e.code||e.message))||'');
+      this.showToast('সেভ ব্যর্থ! '+(/permission/i.test(m)?'Firebase Rules-এ hangerProducts নোড যোগ করে Publish করুন':m.slice(0,60)),'error');
+    }finally{this.hgBusy=false}
   },
 
   // ══════════ PINNED PRODUCTS (NEW) ══════════
