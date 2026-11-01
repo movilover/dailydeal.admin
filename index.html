@@ -715,7 +715,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p><p class="text-xs font-bold mt-1" style="color:#0F8F7A" x-show="viewOrder.linkOrder"><i class="fa-solid fa-link"></i> রিসেলার লিংক অর্ডার<span x-show="viewOrder.resellerShopName" x-text="' — '+viewOrder.resellerShopName"></span></p></div>
+          <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p><p class="text-xs font-bold mt-1" style="color:#0F8F7A" x-show="viewOrder.linkOrder"><i class="fa-solid fa-link"></i> রিসেলার লিংক অর্ডার<span x-show="viewOrder.resellerShopName" x-text="' — '+viewOrder.resellerShopName"></span><span x-show="viewOrder.deliveryAdvanceVerified" style="color:#047857"> · ডেলিভারি অগ্রিম রিসেলার যাচাই করেছে ✅</span></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">স্ট্যাটাস</p>
             <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-outfordelivery':viewOrder.status==='পাঠানো হচ্ছে','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}" x-text="viewOrder.status"></span>
           </div>
