@@ -56,6 +56,8 @@ const app=initializeApp(cfg);
 /* App Check (reCAPTCHA v3, ফ্রি) — সাইট-কী বসালেই চালু; খালি থাকলে আগের মতোই চলে। */
 const APPCHECK_SITE_KEY='';   // ← আপনার reCAPTCHA v3 সাইট-কী এখানে বসান
 if(APPCHECK_SITE_KEY){try{const ac=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");const _acI=ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});window.$acGet=async()=>{try{return (await ac.getToken(_acI,false)).token}catch(e){return ''}}}catch(e){console.warn('AppCheck init failed',e)}}
+/* ওয়েবসকেট আটকে গেলেও যেন অর্ডার/প্রোডাক্ট লাইভ আসে: লং-পোলিং বাধ্য */
+try{const _dbm=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");if(_dbm&&_dbm.forceLongPolling)_dbm.forceLongPolling()}catch(e){console.warn("longpoll",e)}
 const db=getDatabase(app);
 const auth=getAuth(app);
 (function(){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0F0D0A;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Hind Siliguri,sans-serif';
@@ -4047,7 +4049,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenNotifications(notifs=>this.fbNotifications=notifs.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)));
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
       window.$db.listenPinnedProducts(pins=>{this.fbPinned=pins});
-      window.$db.listenHangerProducts&&window.$db.listenHangerProducts(l=>{this.fbHanger=l;if(!this.hgDirty)this.hgSel=l.map(x=>x.k)});
+      try{window.$db.listenHangerProducts&&window.$db.listenHangerProducts(l=>{this.fbHanger=l;if(!this.hgDirty)this.hgSel=l.map(x=>x.k)})}catch(e){}
       window.$db.listenResellers(rs=>{this.fbResellers=rs;if(!this._rrAuto&&rs.length){this._rrAuto=true;setTimeout(()=>this.repairReferralIndex(true),2500)}});
       window.$db.listenSharedLinks(l=>this.fbLinks=l);
       window.$db.listenBlocklist(b=>this.fbBlocks=b.sort((x,y)=>(y.at||0)-(x.at||0)));
@@ -5637,5 +5639,54 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 new MutationObserver(function(rs){if(rs.some(function(r){var el=r.target.nodeType===1?r.target:r.target.parentElement;return el&&!el.closest('option,textarea')})){clearTimeout(t);t=setTimeout(run,150)}}).observe(document.body,{childList:true,subtree:true,characterData:true});
 window.addEventListener('load',run)})();</script>
 <style>img.emoji{height:1.15em;width:1.15em;vertical-align:-.2em;display:inline-block}</style>
+<script>
+/* ডাটাবেস সংযোগ ডায়াগনস্টিক — সংযোগে সমস্যা থাকলেই শুধু লাল ব্যানার দেখায়, নইলে কিছুই দেখায় না (অন্য কোনো ফাংশনে হাত দেয় না) */
+(function(){
+  var DB='https://daily-deal-online-shopping-default-rtdb.firebaseio.com',box=null,timer=null,dismissed=false;
+  function hide(){if(box){box.remove();box=null}if(timer){clearInterval(timer);timer=null}}
+  function show(msg){
+    if(dismissed)return;
+    if(!box){box=document.createElement('div');box.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:99998;background:#7F1D1D;color:#fff;padding:10px 38px 10px 12px;border-radius:12px;font:600 12px/1.55 system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35)';
+      var x=document.createElement('button');x.textContent='✕';x.style.cssText='position:absolute;top:6px;right:8px;background:none;border:0;color:#fff;font-size:15px;cursor:pointer';x.onclick=function(){dismissed=true;hide()};box.appendChild(x);
+      var t=document.createElement('div');t.id='dbdiag-t';box.appendChild(t);document.body.appendChild(box)}
+    box.querySelector('#dbdiag-t').textContent=msg;
+    if(!timer)timer=setInterval(probe,60000);
+  }
+  async function probe(){
+    var tok=null;
+    try{tok=window.$adminTok?await Promise.race([window.$adminTok(),new Promise(function(r){setTimeout(function(){r(null)},6000)})]):null}catch(e){}
+    if(!tok)return;   /* লগইন হয়নি — লগইন স্ক্রিন নিজেই দেখাবে */
+    var ctl=new AbortController(),to=setTimeout(function(){ctl.abort()},12000);
+    try{
+      var r=await fetch(DB+'/products.json?orderBy=%22%24key%22&limitToFirst=1',{cache:'no-store',signal:ctl.signal});
+      if(r.ok){hide();return}
+      var m='';try{m=String((await r.json()).error||'')}catch(e){}
+      show('⚠️ ডাটাবেস ডাটা দিচ্ছে না — HTTP '+r.status+(m?' · '+m:'')+'। এ কারণেই অর্ডার/প্রোডাক্ট দেখাচ্ছে না। Firebase Console → Realtime Database → Usage ট্যাবে ডাউনলোড কোটা (Spark প্ল্যানে ১০ GB/মাস) শেষ হয়েছে কিনা এবং Rules ট্যাবে সব ঠিক আছে কিনা দেখুন।');
+    }catch(e){
+      show('⚠️ ডাটাবেসে পৌঁছানো যাচ্ছে না ('+(e&&e.name==='AbortError'?'১২ সেকেন্ডে সাড়া নেই':'নেটওয়ার্ক/ব্লক')+')। ইন্টারনেট, VPN/ফায়ারওয়াল বা Firebase স্ট্যাটাস দেখুন।');
+    }finally{clearTimeout(to)}
+  }
+  window.addEventListener('firebase-ready',function(){setTimeout(probe,2500)});
+  /* ফলব্যাক: SDK লাইভ লিসেনার ১২ সেকেন্ডে কিছু না দিলে REST দিয়ে প্রোডাক্ট ও অর্ডার এনে দেখানো হয় */
+  function adminData(){var els=document.querySelectorAll('[x-data]');for(var i=0;i<els.length;i++){try{var d=window.Alpine&&window.Alpine.$data(els[i]);if(d&&'fbProducts' in d&&'fbOrders' in d)return d}catch(e){}}return null}
+  async function restLoad(){
+    var d=adminData();if(!d)return;
+    if((d.fbProducts||[]).length||(d.fbOrders||[]).length)return;   /* SDK ঠিকমতো দিয়েছে — কিছু করার নেই */
+    var tok=null;try{tok=window.$adminTok?await window.$adminTok():null}catch(e){}
+    if(!tok)return;
+    var get=function(p){return fetch(DB+'/'+p+'.json?auth='+encodeURIComponent(tok),{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('http'+r.status);return r.json()})};
+    var map=function(v){return v?Object.entries(v).map(function(e){return Object.assign({fbKey:e[0]},e[1])}):[]};
+    try{
+      var res=await Promise.all([get('products'),get('orders')]);
+      d=adminData();if(!d)return;
+      if(!(d.fbProducts||[]).length)d.fbProducts=map(res[0]);
+      if(!(d.fbOrders||[]).length)d.fbOrders=map(res[1]);
+    }catch(e){console.warn('restLoad',e)}
+  }
+  window.addEventListener('firebase-ready',function(){setTimeout(restLoad,12000);setTimeout(restLoad,40000)});
+
+  setTimeout(function(){if(window.__fbReady)probe()},9000);
+})();
+</script>
 </body>
 </html>
