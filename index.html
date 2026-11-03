@@ -40,7 +40,7 @@ tailwind.config={
 <!-- Firebase (merged: products, orders, categories, sections, notifications, custom buttons, pinned products, settings, storage) -->
 <script type="module">
 import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,push,set,get,onValue,update,remove,runTransaction,query,orderByChild,equalTo}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,push,set as _set,get as _get,onValue as _ov,update as _upd,remove as _rm,runTransaction,query,orderByChild,equalTo}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut,createUserWithEmailAndPassword,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getStorage,ref as sRef,uploadBytesResumable,getDownloadURL}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 const cfg={
@@ -56,10 +56,74 @@ const app=initializeApp(cfg);
 /* App Check (reCAPTCHA v3, ফ্রি) — সাইট-কী বসালেই চালু; খালি থাকলে আগের মতোই চলে। */
 const APPCHECK_SITE_KEY='';   // ← আপনার reCAPTCHA v3 সাইট-কী এখানে বসান
 if(APPCHECK_SITE_KEY){try{const ac=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");const _acI=ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});window.$acGet=async()=>{try{return (await ac.getToken(_acI,false)).token}catch(e){return ''}}}catch(e){console.warn('AppCheck init failed',e)}}
-/* ওয়েবসকেট আটকে গেলেও যেন অর্ডার/প্রোডাক্ট লাইভ আসে: লং-পোলিং বাধ্য */
-try{const _dbm=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");if(_dbm&&_dbm.forceLongPolling)_dbm.forceLongPolling()}catch(e){console.warn("longpoll",e)}
 const db=getDatabase(app);
 const auth=getAuth(app);
+
+/* ═══ নেটওয়ার্ক-সহনশীল স্তর ═══
+   Firebase SDK-র ওয়েবসকেট আটকে গেলে (VPN/ISP/ব্রাউজার ব্লক) আগে ডাটা আসত না, সেভও ঝুলে থাকত।
+   এখন SDK সাড়া না দিলে একই রুলস ও লগইন-টোকেনে সরাসরি REST দিয়ে পড়া/লেখা হয়। SDK ঠিক থাকলে আগের মতোই চলে, REST-এ কিছুই যায় না। */
+const _DBURL=cfg.databaseURL;
+const _pathOf=(r)=>{try{const u=new URL(String(r&&r.ref?r.ref:r));return decodeURIComponent(u.pathname).replace(/^\/+|\/+$/g,'')}catch(e){return null}};
+const _tok=async()=>{try{return auth.currentUser?await auth.currentUser.getIdToken():null}catch(e){return null}};
+const _rest=async(method,path,body)=>{
+  const t=await _tok();if(!t){const e=new Error('no-auth');e.code='no-auth';throw e}
+  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),25000);
+  try{
+    const r=await fetch(_DBURL+'/'+path+'.json?auth='+encodeURIComponent(t),{method,headers:body!==undefined?{'Content-Type':'application/json'}:undefined,body:body!==undefined?JSON.stringify(body):undefined,signal:ctl.signal,cache:'no-store'});
+    if(!r.ok){let m='';try{m=String((await r.json()).error||'')}catch(e){}const e=new Error((r.status===401||r.status===403?'PERMISSION_DENIED':'HTTP '+r.status)+(m?': '+m:''));e.code=(r.status===401||r.status===403)?'PERMISSION_DENIED':'http'+r.status;throw e}
+    return await r.json();
+  }finally{clearTimeout(to)}
+};
+const _snap=(r,v)=>({val:()=>v===undefined?null:v,exists:()=>v!=null,key:(_pathOf(r)||'').split('/').pop()||null,ref:r,forEach:(f)=>{if(v&&typeof v==='object'){for(const k of Object.keys(v)){if(f({key:k,val:()=>v[k]}))return true}}return false}});
+const _live=[];   /* REST ফলব্যাকে চলা লিসেনার */
+const _resync=(path)=>{if(path==null)return;_live.forEach(rc=>{if(rc.dead||rc.sdk||!rc.path&&rc.path!=='')return;if(rc.path===path||rc.path.startsWith(path+'/')||path.startsWith(rc.path+'/')||rc.path===''){clearTimeout(rc.dbT);rc.dbT=setTimeout(()=>rc.fetch(true),250)}})};
+const _race=(sdkP,restFn,ms)=>new Promise((res,rej)=>{
+  let done=false;const fin=(f,v)=>{if(!done){done=true;f(v)}};
+  Promise.resolve(sdkP).then(v=>fin(res,v),e=>fin(rej,e));
+  setTimeout(()=>{if(done)return;restFn().then(v=>fin(res,v),e=>{if(e&&e.code==='PERMISSION_DENIED')fin(rej,e)})},ms);
+  setTimeout(()=>fin(rej,new Error('timeout: ডাটাবেস সাড়া দিচ্ছে না — ইন্টারনেট দেখে আবার চেষ্টা করুন')),ms+60000);
+});
+const set=(r,v)=>{const p=_pathOf(r);return _race(_set(r,v),()=>_rest('PUT',p,v===undefined?null:v).then(()=>{_resync(p)}),4000)};
+const update=(r,o)=>{const p=_pathOf(r);return _race(_upd(r,o),()=>_rest('PATCH',p,o).then(()=>{_resync(p)}),4000)};
+const remove=(r)=>{const p=_pathOf(r);return _race(_rm(r),()=>_rest('DELETE',p).then(()=>{_resync(p)}),4000)};
+const get=(r)=>new Promise((res,rej)=>{
+  let done=false;_get(r).then(s=>{if(!done){done=true;res(s)}},e=>{if(!done){done=true;rej(e)}});
+  setTimeout(()=>{if(done)return;const p=_pathOf(r);if(p==null)return;_rest('GET',p).then(v=>{if(!done){done=true;res(_snap(r,v))}}).catch(()=>{})},5000);
+});
+const onValue=(r,cb,a3,a4)=>{
+  const opts=(a3&&typeof a3==='object')?a3:((a4&&typeof a4==='object')?a4:undefined);
+  const errCb=(typeof a3==='function')?a3:undefined;
+  const once=!!(opts&&opts.onlyOnce);
+  const rc={path:null,sdk:false,dead:false,last:undefined,every:120000,fetch:null,dbT:0,T:0};
+  const wrapped=(s)=>{rc.sdk=true;cb(s)};
+  let unsub=()=>{};
+  try{unsub=errCb?_ov(r,wrapped,errCb,opts):_ov(r,wrapped,opts)}catch(e){if(errCb)errCb(e);else throw e}
+  /* শুধু সাধারণ রেফারেন্সে ফলব্যাক (কোয়েরি-লিসেনারে নয়) */
+  let plain=false;try{plain=!!(r&&r.ref===r)}catch(e){}
+  const p=plain?_pathOf(r):null;
+  if(p!==null){
+    rc.path=p;
+    rc.fetch=async(force)=>{
+      if(rc.sdk||rc.dead)return;
+      try{
+        const v=await _rest('GET',p);
+        if(rc.sdk||rc.dead)return;
+        const js=JSON.stringify(v===undefined?null:v);
+        if(force||js!==rc.last){rc.last=js;rc.every=120000;cb(_snap(r,v))}
+        else rc.every=Math.min(rc.every*1.5,600000);   /* বদলায়নি → ধীরে পোল (ব্যান্ডউইথ বাঁচে) */
+        if(once)rc.dead=true;
+      }catch(e){}
+    };
+    const loop=()=>{
+      if(rc.sdk||rc.dead||once)return;
+      rc.T=setTimeout(async()=>{if(!document.hidden)await rc.fetch(false);loop()},rc.every);
+    };
+    setTimeout(async()=>{if(rc.sdk||rc.dead)return;await rc.fetch(true);loop()},3500);
+    _live.push(rc);
+  }
+  return()=>{rc.dead=true;clearTimeout(rc.T);clearTimeout(rc.dbT);try{unsub()}catch(e){}};
+};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)_live.forEach(rc=>{if(!rc.dead&&!rc.sdk&&rc.fetch)rc.fetch(false)})});
 (function(){const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0F0D0A;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Hind Siliguri,sans-serif';
 const inp='width:100%;padding:11px 12px;margin-bottom:10px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;box-sizing:border-box';
 ov.innerHTML='<div style="width:100%;max-width:340px;background:#fff;border-radius:14px;padding:24px"><h2 style="margin:0 0 4px;font-size:20px">অ্যাডমিন লগইন</h2><p style="margin:0 0 16px;font-size:12px;color:#777">শুধু অনুমোদিত অ্যাডমিন</p><input id="al-e" type="email" placeholder="ইমেইল" style="'+inp+'"><input id="al-p" type="password" placeholder="পাসওয়ার্ড" style="'+inp+'"><button id="al-b" style="width:100%;padding:12px;border:0;border-radius:9px;background:#E8320A;color:#fff;font-weight:700;font-size:14px;cursor:pointer">লগইন</button><p id="al-m" style="color:#c00;font-size:12px;margin:10px 0 0"></p></div>';
@@ -5422,7 +5486,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async saveHanger(){
     if(this.hgBusy)return;this.hgBusy=true;
     try{
-      await Promise.race([window.$db.saveHangerProducts(this.hgSel),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),20000))]);
+      await Promise.race([window.$db.saveHangerProducts(this.hgSel),new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),70000))]);
       this.hgDirty=false;
       this.showToast(this.hgSel.length?'হ্যাঙ্গার সেভ হয়েছে! ✅':'হ্যাঙ্গার অটো মোডে ফিরেছে ✅','success');
     }catch(e){
@@ -5655,36 +5719,18 @@ window.addEventListener('load',run)})();</script>
   async function probe(){
     var tok=null;
     try{tok=window.$adminTok?await Promise.race([window.$adminTok(),new Promise(function(r){setTimeout(function(){r(null)},6000)})]):null}catch(e){}
-    if(!tok)return;   /* লগইন হয়নি — লগইন স্ক্রিন নিজেই দেখাবে */
+    if(!tok)return;
     var ctl=new AbortController(),to=setTimeout(function(){ctl.abort()},12000);
     try{
       var r=await fetch(DB+'/products.json?orderBy=%22%24key%22&limitToFirst=1',{cache:'no-store',signal:ctl.signal});
       if(r.ok){hide();return}
       var m='';try{m=String((await r.json()).error||'')}catch(e){}
-      show('⚠️ ডাটাবেস ডাটা দিচ্ছে না — HTTP '+r.status+(m?' · '+m:'')+'। এ কারণেই অর্ডার/প্রোডাক্ট দেখাচ্ছে না। Firebase Console → Realtime Database → Usage ট্যাবে ডাউনলোড কোটা (Spark প্ল্যানে ১০ GB/মাস) শেষ হয়েছে কিনা এবং Rules ট্যাবে সব ঠিক আছে কিনা দেখুন।');
+      show('⚠️ ডাটাবেস ডাটা দিচ্ছে না — HTTP '+r.status+(m?' · '+m:'')+'। Firebase Console → Realtime Database → Usage ও Rules ট্যাব দেখুন।');
     }catch(e){
       show('⚠️ ডাটাবেসে পৌঁছানো যাচ্ছে না ('+(e&&e.name==='AbortError'?'১২ সেকেন্ডে সাড়া নেই':'নেটওয়ার্ক/ব্লক')+')। ইন্টারনেট, VPN/ফায়ারওয়াল বা Firebase স্ট্যাটাস দেখুন।');
     }finally{clearTimeout(to)}
   }
   window.addEventListener('firebase-ready',function(){setTimeout(probe,2500)});
-  /* ফলব্যাক: SDK লাইভ লিসেনার ১২ সেকেন্ডে কিছু না দিলে REST দিয়ে প্রোডাক্ট ও অর্ডার এনে দেখানো হয় */
-  function adminData(){var els=document.querySelectorAll('[x-data]');for(var i=0;i<els.length;i++){try{var d=window.Alpine&&window.Alpine.$data(els[i]);if(d&&'fbProducts' in d&&'fbOrders' in d)return d}catch(e){}}return null}
-  async function restLoad(){
-    var d=adminData();if(!d)return;
-    if((d.fbProducts||[]).length||(d.fbOrders||[]).length)return;   /* SDK ঠিকমতো দিয়েছে — কিছু করার নেই */
-    var tok=null;try{tok=window.$adminTok?await window.$adminTok():null}catch(e){}
-    if(!tok)return;
-    var get=function(p){return fetch(DB+'/'+p+'.json?auth='+encodeURIComponent(tok),{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('http'+r.status);return r.json()})};
-    var map=function(v){return v?Object.entries(v).map(function(e){return Object.assign({fbKey:e[0]},e[1])}):[]};
-    try{
-      var res=await Promise.all([get('products'),get('orders')]);
-      d=adminData();if(!d)return;
-      if(!(d.fbProducts||[]).length)d.fbProducts=map(res[0]);
-      if(!(d.fbOrders||[]).length)d.fbOrders=map(res[1]);
-    }catch(e){console.warn('restLoad',e)}
-  }
-  window.addEventListener('firebase-ready',function(){setTimeout(restLoad,12000);setTimeout(restLoad,40000)});
-
   setTimeout(function(){if(window.__fbReady)probe()},9000);
 })();
 </script>
