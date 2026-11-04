@@ -5139,12 +5139,12 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   // অ্যাটমিক ডেল্টা (পুরোনো read-modify-write রেস কন্ডিশন দূর করতে)
   async _bal(phone,delta){try{return await window.$db.adjustResellerWallet(phone,delta)}catch(e){if(e&&e.message==='insufficient')setTimeout(()=>this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error'),60);throw e}},
-  async creditWallet(phone,amount,type,note,orderId,extra){
+  async creditWallet(phone,amount,type,note,orderId){
     if(!phone||!amount)return;
     const r=this.fbResellers.find(x=>x.fbKey===phone);
     if(!r||r.status==='blocked'||r.status==='rejected')return;
     await this._bal(phone,amount);
-    await window.$db.pushWalletTx({resellerPhone:phone,amount,type,note,orderId:orderId||null,timestamp:Date.now(),...(extra||{})});
+    await window.$db.pushWalletTx({resellerPhone:phone,amount,type,note,orderId:orderId||null,timestamp:Date.now()});
   },
   async creditReferralCommissions(order,key){
     if((order.orderType!=='reseller'&&order.orderType!=='referral')||order.commissionCredited)return;
@@ -5162,7 +5162,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       const chain=this.getUplineChain(resellerPhone,3);
       const genAmts=[gen1,gen2,gen3],genLabels=['১ম','২য়','৩য়'];
       chain.forEach((upPhone,i)=>{
-        if(genAmts[i]>0)this.creditWallet(upPhone,genAmts[i],'commission',genLabels[i]+' জেনারেশন কমিশন — অর্ডার #'+order.id,order.id,{fromPhone:resellerPhone,fromName:((this.fbResellers.find(x=>x.fbKey===resellerPhone)||{}).name)||'',gen:i+1});
+        if(genAmts[i]>0)this.creditWallet(upPhone,genAmts[i],'commission',genLabels[i]+' জেনারেশন কমিশন — অর্ডার #'+order.id,order.id);
       });
       await window.$db.updateOrder(key,{commissionCredited:true});
     }catch(e){console.warn('commission credit failed',e)}
