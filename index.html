@@ -210,7 +210,7 @@ window.$db={
   listenHangerProducts:(cb)=>onValue(ref(db,'hangerProducts'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({k,n:Number(d&&d.n)||0})).sort((x,y)=>x.n-y.n):[])},e=>{console.warn('hangerProducts',e&&e.code)}),
   saveHangerProducts:async(keys)=>{const o={};(keys||[]).forEach((k,i)=>{o[k]={n:i+1,at:Date.now()}});return set(ref(db,'hangerProducts'),(keys&&keys.length)?o:null)},
   // Settings
-  saveSettings:async(data)=>set(ref(db,'settings'),data),
+  saveSettings:async(data)=>{if(!window.__setLoaded)throw new Error('settings-not-loaded: ডাটাবেস থেকে সেটিংস এখনো আসেনি, তাই সেভ আটকানো হয়েছে (Cloudinary ইত্যাদি মুছে যাওয়া ঠেকাতে)');return set(ref(db,'settings'),data)},
   updateSettingKeys:async(obj)=>update(ref(db,'settings/settings'),obj),
   listenSettings:(cb)=>onValue(ref(db,'settings'),s=>cb(s.val()||{}),{onlyOnce:false}),
   // Users (count only)
@@ -4189,6 +4189,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       window.$db.listenVendors(vs=>this.fbVendors=vs.sort((a,b)=>(a.name||'').localeCompare(b.name||'')));
       window.$db.listenSupportTickets(ts=>this.fbSupportTickets=ts.sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)));
       window.$db.listenSettings(s=>{
+        window.__setLoaded=true;
         if(s.settings)Object.assign(this.settings,s.settings);
         if(s.banners&&s.banners.length){this.banners=s.banners;this.adminBanners=JSON.parse(JSON.stringify(s.banners));}
         if(s.theme){this.activeTheme=s.theme;localStorage.setItem('dd_admin_theme',s.theme)}
@@ -5850,7 +5851,7 @@ window.addEventListener('load',run)})();</script>
 <script>
 /* ডাটাবেস সংযোগ ডায়াগনস্টিক — সংযোগে সমস্যা থাকলেই শুধু লাল ব্যানার দেখায়, নইলে কিছুই দেখায় না (অন্য কোনো ফাংশনে হাত দেয় না) */
 (function(){
-  var DB='https://daily-deal-online-shopping-default-rtdb.firebaseio.com',box=null,timer=null,dismissed=false;
+  var DB='https://daily-deal-online-shopping-default-rtdb.firebaseio.com',box=null,timer=null,dismissed=false,t0=Date.now();
   function hide(){if(box){box.remove();box=null}if(timer){clearInterval(timer);timer=null}}
   function show(msg){
     if(dismissed)return;
@@ -5867,9 +5868,18 @@ window.addEventListener('load',run)})();</script>
     var ctl=new AbortController(),to=setTimeout(function(){ctl.abort()},12000);
     try{
       var r=await fetch(DB+'/products.json?orderBy=%22%24key%22&limitToFirst=1',{cache:'no-store',signal:ctl.signal});
-      if(r.ok){hide();return}
+      if(r.ok){
+        var v=null;try{v=await r.json()}catch(e){}
+        if(v&&Object.keys(v).length){
+          var d=null;try{d=document.documentElement._x_dataStack[0]}catch(e){}
+          if(d&&d.fbProducts&&d.fbProducts.length===0&&Date.now()-t0>15000){show('⚠️ ডাটাবেসে পণ্য আছে কিন্তু প্যানেলে লোড হয়নি — পেজ রিলোড (Ctrl+F5) করে আবার লগইন দিন। তবুও না হলে ব্রাউজার Console-এর লাল এরর পাঠান।');return}
+          hide();return}
+        var bk='';
+        try{var br=await fetch(DB+'/backups/index.json?auth='+encodeURIComponent(tok),{cache:'no-store'});if(br.ok){var bv=await br.json();var ks=bv?Object.keys(bv).sort():[];bk=ks.length?(' অটো-ব্যাকআপ আছে: '+ks.join(', ')+' — ব্যাকআপ/রিকভারি থেকে "মুছে যাওয়া ফেরত আনুন" চাপুন।'):' কোনো অটো-ব্যাকআপ পাওয়া যায়নি।'}}catch(e){}
+        show('⚠️ ডাটাবেসের products নোড এখন খালি।'+bk);return}
       var m='';try{m=String((await r.json()).error||'')}catch(e){}
-      show('⚠️ ডাটাবেস ডাটা দিচ্ছে না — HTTP '+r.status+(m?' · '+m:'')+'। Firebase Console → Realtime Database → Usage ও Rules ট্যাব দেখুন।');
+      var hint=r.status===402?' (সম্ভবত Firebase ফ্রি কোটা/বিল সীমা শেষ — Usage ট্যাবে দেখুন; Blaze প্ল্যানে আপগ্রেড করুন বা কোটা রিসেটের অপেক্ষা করুন)':((r.status===401||r.status===403)?' (পড়ার অনুমতি নেই — ruls ফাইলের পুরো কোড Rules ট্যাবে বসিয়ে Publish দিন)':'');
+      show('⚠️ ডাটাবেস ডাটা দিচ্ছে না — HTTP '+r.status+(m?' · '+m:'')+hint+'। Firebase Console → Realtime Database → Usage ও Rules ট্যাব দেখুন।');
     }catch(e){
       show('⚠️ ডাটাবেসে পৌঁছানো যাচ্ছে না ('+(e&&e.name==='AbortError'?'১২ সেকেন্ডে সাড়া নেই':'নেটওয়ার্ক/ব্লক')+')। ইন্টারনেট, VPN/ফায়ারওয়াল বা Firebase স্ট্যাটাস দেখুন।');
     }finally{clearTimeout(to)}
