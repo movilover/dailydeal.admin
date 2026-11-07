@@ -3267,7 +3267,53 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   </div>
 
   <!-- ══ SETTINGS ══ -->
-  <!-- ═══ Facebook / Meta Settings ═══ -->
+  <!-- ═══ রেফারেল পেআউট ═══ -->
+<div x-show="activeTab==='refpay'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='refpay')refpLoad()})">
+<div class="grid grid-cols-3 gap-3 mb-4">
+<div class="dd-card p-4"><p class="text-xs" style="color:var(--fg3)">পেন্ডিং</p><p class="font-bold text-lg" style="color:#B45309" x-text="'৳'+(refp.totals.pendingSum||0).toLocaleString()+' ('+(refp.totals.pendingCount||0)+')'"></p></div>
+<div class="dd-card p-4"><p class="text-xs" style="color:var(--fg3)">মোট পেইড</p><p class="font-bold text-lg" style="color:#15803D" x-text="'৳'+(refp.totals.paidSum||0).toLocaleString()"></p></div>
+<div class="dd-card p-4"><p class="text-xs" style="color:var(--fg3)">রিজেক্ট (ফেরত)</p><p class="font-bold text-lg" style="color:#DC2626" x-text="'৳'+(refp.totals.rejectedSum||0).toLocaleString()"></p></div>
+</div>
+<div class="dd-card p-5 mb-4">
+<p class="font-bold text-sm mb-3" style="color:var(--fg)"><i class="fa-solid fa-sliders mr-2"></i>রেফারেল সেটিংস</p>
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+<div><label class="dd-label">লেভেল ১ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen1"/></div>
+<div><label class="dd-label">লেভেল ২ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen2"/></div>
+<div><label class="dd-label">লেভেল ৩ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen3"/></div>
+<div><label class="dd-label">ন্যূনতম উইথড্র (৳)</label><input type="number" min="1" class="dd-input" x-model.number="refp.cfg.minWithdraw"/></div>
+<label class="flex items-center gap-2 text-sm pb-2" style="color:var(--fg)"><input type="checkbox" :checked="refp.cfg.enabled" @change="refp.cfg.enabled=$event.target.checked" style="width:18px;height:18px"/> সিস্টেম চালু</label>
+</div>
+<button @click="refpSaveCfg()" :disabled="refp.cfgSaving" class="btn-primary mt-3" style="max-width:200px"><i :class="refp.cfgSaving?'fa-solid fa-spinner fa-spin':'fa-solid fa-save'" class="mr-2"></i>সেভ করুন</button>
+<p class="text-xs mt-2" style="color:var(--fg3)">নতুন রেট শুধু এরপরের জয়েনে প্রযোজ্য — আগের কমিশন বদলায় না।</p>
+</div>
+<div class="flex gap-2 flex-wrap mb-3">
+<template x-for="s in [['pending','পেন্ডিং'],['paid','পেইড'],['rejected','রিজেক্ট'],['all','সব']]" :key="s[0]">
+<button @click="refp.filter=s[0];refpLoad()" class="btn-ghost text-xs" :style="refp.filter===s[0]?'background:var(--accent);color:#fff':''" x-text="s[1]"></button>
+</template>
+<button @click="refpLoad()" class="btn-ghost text-xs"><i class="fa-solid fa-rotate"></i></button>
+</div>
+<div x-show="refp.err" class="rounded-xl px-3.5 py-2.5 text-xs font-semibold mb-3" style="background:#FEF2F2;border:1px solid #FECACA;color:#DC2626" x-text="refp.err"></div>
+<div x-show="refp.loading" class="text-center py-6"><i class="fa-solid fa-spinner fa-spin"></i></div>
+<div x-show="!refp.loading&&!refp.list.length&&!refp.err" class="text-center py-8 text-sm" style="color:var(--fg3)">কোনো পেআউট অনুরোধ নেই</div>
+<div class="space-y-2">
+<template x-for="p in refp.list" :key="p.id">
+<div class="dd-card p-4 flex flex-wrap items-center gap-3">
+<div class="flex-1" style="min-width:200px">
+<p class="font-bold text-sm" style="color:var(--fg)"><span x-text="p.name||'নামহীন'"></span> <small style="color:var(--fg3)" x-text="p.phone"></small></p>
+<p class="text-xs mt-0.5" style="color:var(--fg2)"><b x-text="p.method==='nagad'?'Nagad':'bKash'"></b> → <button class="font-bold" style="background:none;border:none;color:var(--accent);cursor:pointer" @click="refpCopy(p.number)" x-text="p.number"></button> <i class="fa-solid fa-copy" style="color:var(--fg3);font-size:10px"></i></p>
+<p class="text-[11px] mt-0.5" style="color:var(--fg3)" x-text="new Date(p.requestedAt).toLocaleString('bn-BD')+(p.trxId?' · TrxID '+p.trxId:'')"></p>
+</div>
+<p class="font-bold text-lg" style="color:var(--fg)" x-text="'৳'+p.amount"></p>
+<span class="text-[11px] font-bold px-2.5 py-1 rounded-full" :style="p.status==='paid'?'background:#DCFCE7;color:#15803D':p.status==='rejected'?'background:#FEE2E2;color:#DC2626':'background:#FEF3C7;color:#B45309'" x-text="p.status==='paid'?'পেইড':p.status==='rejected'?'রিজেক্ট':'পেন্ডিং'"></span>
+<div x-show="p.status==='pending'" class="flex gap-2">
+<button @click="refpAct(p,'paid')" :disabled="refp.busy===p.id" class="btn-primary text-xs" style="width:auto;padding:8px 14px;background:#15803D"><i class="fa-solid fa-check mr-1"></i>পেইড</button>
+<button @click="refpAct(p,'rejected')" :disabled="refp.busy===p.id" class="btn-ghost text-xs" style="color:#DC2626"><i class="fa-solid fa-xmark mr-1"></i>রিজেক্ট</button>
+</div>
+</div>
+</template>
+</div>
+</div>
+<!-- ═══ Facebook / Meta Settings ═══ -->
 <div x-show="activeTab==='fbmeta'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='fbmeta')fbmLoad()})">
 <div class="grid md:grid-cols-2 gap-6">
 <div class="dd-card p-5 space-y-4">
@@ -3729,7 +3775,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
-    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appearance:'থিম ও কালার',
+    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
     vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
     recharges:'মোবাইল রিচার্জ',services:'ফ্রিল্যান্সিং সার্ভিস',svcorders:'সার্ভিস অর্ডার',resellcfg:'রিসেলার কনটেন্ট'
@@ -3835,14 +3881,14 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
     {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned','hanger','subs','mysubs']},
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
-    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
+    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','refpay','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{fbmeta:'fa-bullhorn',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -4111,7 +4157,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   canTab(t){
     if(!this.staff)return t!=='mysubs';
     const P=this.staff.perms||{};
-    if(t==='team'||t==='fbmeta')return false;
+    if(t==='team'||t==='fbmeta'||t==='refpay')return false;
     if(t==='mysubs')return P.submit===true;
     if(t==='subs')return P.approve===true;
     if(t==='upload')return P.submit===true||P.catalog===true;
@@ -5798,7 +5844,12 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   // ══════════ SETTINGS ══════════
   /* ---- ফোন যাচাই (OTP) / SMS প্রোভাইডার ---- */
-  fbm:{loading:false,loaded:false,saving:false,testing:false,err:'',msg:'',pixelId:'',testEventCode:'',pageId:'',capiToken:'',pageToken:'',hasCapi:false,capiHint:'',hasPage:false,pageHint:'',feedUrl:'',encReady:true,env:{}},
+  refp:{loading:false,err:'',filter:'pending',list:[],totals:{pendingCount:0,pendingSum:0,paidSum:0,rejectedSum:0},busy:'',cfg:{enabled:true,gen1:50,gen2:30,gen3:15,minWithdraw:500},cfgSaving:false,cfgLoaded:false},
+async refpLoad(){const f=this.refp;f.loading=true;f.err='';try{const r=await this.apiCall('GET','/api/referral/admin/payouts?status='+encodeURIComponent(f.filter));if(r.ok){f.list=r.list||[];f.totals=r.totals||f.totals}else f.err=r.message||'লোড ব্যর্থ';if(!f.cfgLoaded){const c=await this.apiCall('GET','/api/referral/admin/config');if(c.ok){f.cfg={enabled:c.enabled!==false,gen1:c.gen1,gen2:c.gen2,gen3:c.gen3,minWithdraw:c.minWithdraw};f.cfgLoaded=true}}}catch(e){f.err='লোড ব্যর্থ'}f.loading=false},
+async refpAct(p,action){const f=this.refp;let trx='';if(action==='paid'){trx=prompt('bKash/Nagad ট্রানজেকশন আইডি (ঐচ্ছিক):','');if(trx===null)return}else if(!confirm('রিজেক্ট করলে ৳'+p.amount+' ইউজারের রেফারেল ওয়ালেটে ফেরত যাবে। নিশ্চিত?'))return;f.busy=p.id;try{const r=await this.apiCall('POST','/api/referral/admin/payout',{id:p.id,action,trxId:trx||''});if(r.ok){this.showToast(action==='paid'?'পেইড মার্ক হয়েছে ✅':'রিজেক্ট ও ফেরত হয়েছে ✅','success');await this.refpLoad()}else this.showToast(r.message||'ব্যর্থ','error')}catch(e){this.showToast('ব্যর্থ','error')}f.busy=''},
+async refpSaveCfg(){const f=this.refp;f.cfgSaving=true;try{const r=await this.apiCall('POST','/api/referral/admin/config',{enabled:!!f.cfg.enabled,gen1:Number(f.cfg.gen1),gen2:Number(f.cfg.gen2),gen3:Number(f.cfg.gen3),minWithdraw:Number(f.cfg.minWithdraw)});this.showToast(r.ok?'রেফারেল সেটিংস সেভ! ✅':(r.message||'সেভ ব্যর্থ'),r.ok?'success':'error')}catch(e){this.showToast('সেভ ব্যর্থ','error')}f.cfgSaving=false},
+refpCopy(t){try{navigator.clipboard.writeText(String(t));this.showToast('কপি হয়েছে ✅','success')}catch(e){}},
+fbm:{loading:false,loaded:false,saving:false,testing:false,err:'',msg:'',pixelId:'',testEventCode:'',pageId:'',capiToken:'',pageToken:'',hasCapi:false,capiHint:'',hasPage:false,pageHint:'',feedUrl:'',encReady:true,env:{}},
 async fbmLoad(){const f=this.fbm;f.loading=true;f.err='';try{const r=await this.apiCall('GET','/api/facebook/settings');if(!r.ok){f.err=r.message||'লোড করা যায়নি';f.loading=false;return}
 Object.assign(f,{pixelId:r.pixelId||'',testEventCode:r.testEventCode||'',pageId:r.pageId||'',hasCapi:!!r.hasCapiToken,capiHint:r.capiTokenHint||'',hasPage:!!r.hasPageToken,pageHint:r.pageTokenHint||'',feedUrl:r.feedUrl||'',encReady:r.encReady!==false,env:r.env||{},loaded:true})}catch(e){f.err='লোড করা যায়নি'}f.loading=false},
 async fbmSave(){const f=this.fbm;f.saving=true;f.err='';f.msg='';try{const body={pixelId:f.pixelId,testEventCode:f.testEventCode,pageId:f.pageId};if(f.capiToken.trim())body.capiToken=f.capiToken.trim();if(f.pageToken.trim())body.pageToken=f.pageToken.trim();
