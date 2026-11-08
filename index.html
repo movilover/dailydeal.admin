@@ -3276,16 +3276,13 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 </div>
 <div class="dd-card p-5 mb-4">
 <p class="font-bold text-sm mb-3" style="color:var(--fg)"><i class="fa-solid fa-sliders mr-2"></i>রেফারেল সেটিংস</p>
-<div class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
-<div><label class="dd-label">লেভেল ১ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen1"/></div>
-<div><label class="dd-label">লেভেল ২ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen2"/></div>
-<div><label class="dd-label">লেভেল ৩ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen3"/></div>
-<div><label class="dd-label">নতুন সদস্যের বোনাস (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.signupBonus"/></div>
+<div class="grid grid-cols-2 md:grid-cols-3 gap-3 items-end">
+<div><label class="dd-label">রেফার বোনাস — প্রতি জয়েনে (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen1"/></div>
 <div><label class="dd-label">ন্যূনতম উইথড্র (৳)</label><input type="number" min="1" class="dd-input" x-model.number="refp.cfg.minWithdraw"/></div>
 <label class="flex items-center gap-2 text-sm pb-2" style="color:var(--fg)"><input type="checkbox" :checked="refp.cfg.enabled" @change="refp.cfg.enabled=$event.target.checked" style="width:18px;height:18px"/> সিস্টেম চালু</label>
 </div>
 <button @click="refpSaveCfg()" :disabled="refp.cfgSaving" class="btn-primary mt-3" style="max-width:200px"><i :class="refp.cfgSaving?'fa-solid fa-spinner fa-spin':'fa-solid fa-save'" class="mr-2"></i>সেভ করুন</button>
-<p class="text-xs mt-2" style="color:var(--fg3)">নতুন রেট শুধু এরপরের জয়েনে প্রযোজ্য — আগের কমিশন বদলায় না।</p>
+<p class="text-xs mt-2" style="color:var(--fg3)">রেফার কোড দিয়ে কেউ জয়েন করলেই রেফারার সাথে সাথে এই বোনাস পান (রেফারেল ওয়ালেটে, মেইন ব্যালেন্সে নয়)। নতুন রেট শুধু এরপরের জয়েনে প্রযোজ্য।</p>
 </div>
 <div class="flex gap-2 flex-wrap mb-3">
 <template x-for="s in [['pending','পেন্ডিং'],['paid','পেইড'],['rejected','রিজেক্ট'],['all','সব']]" :key="s[0]">
