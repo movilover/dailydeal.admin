@@ -160,6 +160,12 @@ window.$sendReset=(email)=>sendPasswordResetEmail(auth,email);
 /* স্টাফ অ্যাকাউন্ট তৈরি: আলাদা (সেকেন্ডারি) অ্যাপ দিয়ে, যাতে অ্যাডমিনের নিজের লগইন সেশন নষ্ট না হয় */
 window.$createStaffAuth=async(email,pw)=>{const sec=initializeApp(app.options,'staff'+Date.now());try{const sa=getAuth(sec);const c=await createUserWithEmailAndPassword(sa,email,pw);const uid=c.user.uid;try{await signOut(sa)}catch(e){}return uid}finally{try{await deleteApp(sec)}catch(e){}}};
 window.$db={
+  // অ্যান্ড্রয়েড অ্যাপ (appConfig = পাবলিক সেটিংস, appInstalls = অ্যাপ ইউজার, appClicks = ডাউনলোড বাটন ক্লিক)
+  listenAppConfig:(cb)=>onValue(ref(db,'appConfig'),s=>cb(s.val()||{}),()=>cb({})),
+  saveAppConfig:async(d)=>set(ref(db,'appConfig'),d),
+  listenAppInstalls:(cb)=>onValue(ref(db,'appInstalls'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
+  listenAppClicks:(cb)=>onValue(ref(db,'appClicks'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
+  deleteAppInstall:async(id)=>remove(ref(db,'appInstalls/'+id)),
   // স্টাফ ও পণ্য-জমা (অ্যাপ্রুভাল)
   listenStaff:(cb)=>onValue(ref(db,'staff'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d,perms:{...(d.perms||{})}})):[])},()=>cb([])),
   saveStaff:async(uid,d)=>set(ref(db,'staff/'+uid),d),
@@ -3323,6 +3329,69 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 </template>
 </div>
 </div>
+<!-- ═══ অ্যান্ড্রয়েড অ্যাপ (APK লিংক, আপডেট পপআপ, অ্যাপ ইউজার লিস্ট) ═══ -->
+<div x-show="activeTab==='appcfg'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='appcfg')appLoad()})">
+  <div x-show="apk.err" class="rounded-xl px-3.5 py-2.5 text-xs font-semibold mb-4" style="background:#FEF2F2;border:1px solid #FECACA;color:#DC2626" x-text="apk.err"></div>
+
+  <!-- পরিসংখ্যান -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)"><i class="fa-solid fa-mobile-screen-button mr-1" style="color:#E8320A"></i>মোট অ্যাপ ইউজার</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="apkStats.total"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)"><i class="fa-solid fa-bolt mr-1" style="color:#16A34A"></i>আজ সক্রিয়</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="apkStats.today"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)"><i class="fa-solid fa-download mr-1" style="color:#2563EB"></i>ডাউনলোড বাটন ক্লিক</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="apkStats.clicks"></p><p class="text-[10px]" style="color:var(--fg3)" x-text="'ইউনিক ডিভাইস: '+apkStats.clickDevices"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)"><i class="fa-solid fa-triangle-exclamation mr-1" style="color:#D97706"></i>পুরোনো ভার্সনে</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="apkStats.outdated"></p><p class="text-[10px]" style="color:var(--fg3)" x-text="'লগইনসহ: '+apkStats.withPhone"></p></div>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-6">
+    <!-- সেটিংস -->
+    <div class="dd-card p-5 space-y-4">
+      <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-brands fa-android" style="color:#16A34A"></i>অ্যাপ ডাউনলোড ও আপডেট সেটিংস</p>
+      <label class="flex items-center gap-2 text-sm font-semibold" style="color:var(--fg);cursor:pointer"><input type="checkbox" x-model="apk.cfg.enabled"/> রিসেলিং সাইটে ভাসমান “অ্যাপ ডাউনলোড” বাটন দেখান</label>
+      <div><label class="dd-label">APK ডাউনলোড লিংক (GitHub)</label>
+        <input class="dd-input" x-model="apk.cfg.apkUrl" placeholder="https://github.com/ইউজার/রিপো/releases/latest/download/DailyDeal.apk" autocomplete="off" spellcheck="false"/>
+        <p class="text-xs mt-1" style="color:var(--fg3)">GitHub-এ বিল্ড শেষ হলে Releases পেজ থেকে <b>DailyDeal.apk</b>-এর লিংক কপি করে বসান। “latest/download” লিংক দিলে প্রতিবার নতুন APK নিজে থেকেই ধরা পড়বে।</p></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="dd-label">সর্বশেষ Build নম্বর</label><input class="dd-input" type="number" inputmode="numeric" x-model.number="apk.cfg.latestBuild" placeholder="যেমন 5"/></div>
+        <div><label class="dd-label">ভার্সনের নাম</label><input class="dd-input" x-model="apk.cfg.versionName" placeholder="যেমন 1.5"/></div>
+      </div>
+      <button type="button" @click="appDetect()" :disabled="apk.detecting" class="btn-ghost text-xs"><i :class="apk.detecting?'fa-solid fa-spinner fa-spin':'fa-solid fa-wand-magic-sparkles'" class="mr-2"></i>GitHub থেকে সর্বশেষ Build অটো নিন</button>
+      <div class="rounded-xl px-3.5 py-2.5 text-xs" style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E">
+        <b>কখন আপডেট পপআপ আসবে?</b> “সর্বশেষ Build” যদি ইউজারের অ্যাপের Build-এর চেয়ে বড় হয়, তখন অ্যাপ খুললেই পপআপ আসবে। শুধু সাইট/অ্যাডমিন বদলালে (ডিজাইন, ফিচার) অ্যাপ নিজেই আপডেট হয়ে যায় — তখন পপআপ লাগে না। লোগো/অ্যাপের ভেতরের কোড বদলালে নতুন APK বিল্ড করে এখানে নতুন Build নম্বর দিন।
+      </div>
+      <label class="flex items-center gap-2 text-sm font-semibold" style="color:var(--fg);cursor:pointer"><input type="checkbox" x-model="apk.cfg.forceUpdate"/> জোর করে আপডেট (পুরোনো অ্যাপে “পরে করব” বাটন থাকবে না)</label>
+      <div><label class="dd-label">আপডেট পপআপের শিরোনাম (ঐচ্ছিক)</label><input class="dd-input" x-model="apk.cfg.updateTitle" maxlength="80" placeholder="নতুন ভার্সন এসেছে! 🎉"/></div>
+      <div><label class="dd-label">আপডেট পপআপের বার্তা (ঐচ্ছিক)</label><textarea class="dd-input" rows="3" maxlength="400" x-model="apk.cfg.updateMsg" placeholder="কী নতুন আছে সংক্ষেপে লিখুন"></textarea></div>
+      <div><label class="dd-label">ভাসমান বাটনের লেখা (ঐচ্ছিক)</label><input class="dd-input" x-model="apk.cfg.btnText" maxlength="30" placeholder="অ্যাপ ডাউনলোড"/></div>
+      <button type="button" @click="appSave()" :disabled="apk.saving" class="btn-primary"><i :class="apk.saving?'fa-solid fa-spinner fa-spin':'fa-solid fa-save'" class="mr-2"></i>সেভ করুন</button>
+    </div>
+
+    <!-- অ্যাপ ইউজার লিস্ট -->
+    <div class="dd-card p-5">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-users" style="color:#E8320A"></i>অ্যাপ ইউজার লিস্ট <span class="text-xs font-normal" style="color:var(--fg3)" x-text="'('+apk.installs.length+')'"></span></p>
+      </div>
+      <input class="dd-input mb-3" x-model="apk.q" placeholder="নাম / নম্বর / ফোন মডেল দিয়ে খুঁজুন..." autocomplete="off"/>
+      <div style="max-height:560px;overflow-y:auto" class="space-y-2">
+        <template x-if="apkRows.length===0"><p class="text-xs text-center py-8" style="color:var(--fg3)">এখনো কেউ অ্যাপ খোলেনি।</p></template>
+        <template x-for="r in apkRows" :key="r.fbKey">
+          <div class="rounded-xl p-3 flex items-start gap-3" style="background:var(--bg2,#F8FAFC);border:1px solid var(--border,#E2E8F0)">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold" style="background:linear-gradient(135deg,#E8320A,#FF7A18)" x-text="(r.shopName||r.name||'অ্যা').charAt(0)"></div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold truncate" style="color:var(--fg)" x-text="r.shopName||r.name||'লগইন করেননি'"></p>
+              <p class="text-xs" style="color:var(--fg2)" x-text="(r.phone||'—')+(r.name&&r.shopName?' · '+r.name:'')"></p>
+              <p class="text-[11px] mt-0.5" style="color:var(--fg3)" x-text="(r.model||'অজানা ডিভাইস')+(r.android?' · Android '+r.android:'')"></p>
+              <p class="text-[11px]" style="color:var(--fg3)" x-text="'শেষ সক্রিয়: '+apkFmt(r.lastSeen)+' · প্রথম: '+apkFmt(r.firstSeen,true)"></p>
+            </div>
+            <div class="flex flex-col items-end gap-1 flex-shrink-0">
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :style="(Number(r.build)||0)<(Number(apk.cfg.latestBuild)||0)?'background:#FEF3C7;color:#B45309':'background:#DCFCE7;color:#15803D'" x-text="'Build '+(r.build||'?')+((Number(r.build)||0)<(Number(apk.cfg.latestBuild)||0)?' · পুরোনো':'')"></span>
+              <button type="button" @click="apkDel(r)" class="text-[11px]" style="color:#DC2626;background:none;border:none;cursor:pointer"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p class="text-[11px] mt-2" style="color:var(--fg3)">সর্বশেষ সক্রিয় ৩০০ জন দেখানো হচ্ছে। মোট সংখ্যা উপরের কার্ডে।</p>
+    </div>
+  </div>
+</div>
 <!-- ═══ Facebook / Meta Settings ═══ -->
 <div x-show="activeTab==='fbmeta'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='fbmeta')fbmLoad()})">
 <div class="grid md:grid-cols-2 gap-6">
@@ -3785,7 +3854,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
-    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
+    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appcfg:'অ্যান্ড্রয়েড অ্যাপ',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
     vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
     recharges:'মোবাইল রিচার্জ',services:'ফ্রিল্যান্সিং সার্ভিস',svcorders:'সার্ভিস অর্ডার',resellcfg:'রিসেলার কনটেন্ট'
@@ -3895,10 +3964,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
-    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance']},
+    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance','appcfg']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{appcfg:'fa-mobile-screen-button',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -4167,7 +4236,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   canTab(t){
     if(!this.staff)return t!=='mysubs';
     const P=this.staff.perms||{};
-    if(t==='team'||t==='fbmeta'||t==='refpay')return false;
+    if(t==='team'||t==='fbmeta'||t==='refpay'||t==='appcfg')return false;
     if(t==='mysubs')return P.submit===true;
     if(t==='subs')return P.approve===true;
     if(t==='upload')return P.submit===true||P.catalog===true;
@@ -5878,6 +5947,27 @@ async refpLoad(){const f=this.refp;f.loading=true;f.err='';try{const r=await thi
 async refpAct(p,action){const f=this.refp;let trx='';if(action==='paid'){trx=prompt('bKash/Nagad ট্রানজেকশন আইডি (ঐচ্ছিক):','');if(trx===null)return}else if(!confirm('রিজেক্ট করলে ৳'+p.amount+' ইউজারের রেফারেল ওয়ালেটে ফেরত যাবে। নিশ্চিত?'))return;f.busy=p.id;try{const r=await this.apiCall('POST','/api/referral/admin/payout',{id:p.id,action,trxId:trx||''});if(r.ok){this.showToast(action==='paid'?'পেইড মার্ক হয়েছে ✅':'রিজেক্ট ও ফেরত হয়েছে ✅','success');await this.refpLoad()}else this.showToast(r.message||'ব্যর্থ','error')}catch(e){this.showToast('ব্যর্থ','error')}f.busy=''},
 async refpSaveCfg(){const f=this.refp;f.cfgSaving=true;try{const r=await this.apiCall('POST','/api/referral/admin/config',{enabled:!!f.cfg.enabled,gen1:Number(f.cfg.gen1),gen2:Number(f.cfg.gen2),gen3:Number(f.cfg.gen3),signupBonus:Number(f.cfg.signupBonus),minWithdraw:Number(f.cfg.minWithdraw)});this.showToast(r.ok?'রেফারেল সেটিংস সেভ! ✅':(r.message||'সেভ ব্যর্থ'),r.ok?'success':'error')}catch(e){this.showToast('সেভ ব্যর্থ','error')}f.cfgSaving=false},
 refpCopy(t){try{navigator.clipboard.writeText(String(t));this.showToast('কপি হয়েছে ✅','success')}catch(e){}},
+apk:{loaded:false,saving:false,detecting:false,err:'',q:'',installs:[],clicks:[],cfgSet:false,cfg:{enabled:true,apkUrl:'',latestBuild:0,versionName:'',forceUpdate:false,updateTitle:'',updateMsg:'',btnText:''}},
+appLoad(){const a=this.apk;if(a.loaded)return;if(!window.$db||!window.$db.listenAppConfig){a.err='ডাটাবেস লোড হচ্ছে — কয়েক সেকেন্ড পর ট্যাবটি আবার খুলুন';return}a.err='';a.loaded=true;
+  window.$db.listenAppConfig(c=>{if(a.cfgSet)return;a.cfgSet=true;a.cfg=Object.assign({enabled:true,apkUrl:'',latestBuild:0,versionName:'',forceUpdate:false,updateTitle:'',updateMsg:'',btnText:''},c||{})});
+  window.$db.listenAppInstalls(l=>{a.installs=l});
+  window.$db.listenAppClicks(l=>{a.clicks=l})},
+async appSave(){const a=this.apk,c=a.cfg;const url=String(c.apkUrl||'').trim();
+  if(url&&!/^https:\/\//i.test(url))return this.showToast('লিংক https:// দিয়ে শুরু হতে হবে','error');
+  a.saving=true;
+  try{await window.$db.saveAppConfig({enabled:c.enabled!==false,apkUrl:url,latestBuild:Number(c.latestBuild)||0,versionName:String(c.versionName||'').trim().slice(0,20),forceUpdate:c.forceUpdate===true,updateTitle:String(c.updateTitle||'').trim().slice(0,80),updateMsg:String(c.updateMsg||'').trim().slice(0,400),btnText:String(c.btnText||'').trim().slice(0,30),updatedAt:Date.now()});this.showToast('অ্যাপ সেটিংস সেভ হয়েছে ✅','success')}
+  catch(e){this.showToast('সেভ ব্যর্থ! (Firebase Rules-এ appConfig যোগ করেছেন?)','error')}
+  a.saving=false},
+async appDetect(){const a=this.apk;const m=String(a.cfg.apkUrl||'').match(/github\.com\/([^\/\s]+)\/([^\/\s]+)/i);
+  if(!m)return this.showToast('আগে GitHub APK লিংকটি বসান','error');
+  a.detecting=true;
+  try{const r=await fetch('https://api.github.com/repos/'+m[1]+'/'+m[2]+'/releases/latest');if(!r.ok)throw new Error('http');const j=await r.json();const n=parseInt(String(j.tag_name||'').replace(/\D/g,''),10);if(!n)throw new Error('tag');a.cfg.latestBuild=n;a.cfg.versionName='1.'+n;this.showToast('সর্বশেষ Build '+n+' পাওয়া গেছে — এবার সেভ করুন','success')}
+  catch(e){this.showToast('GitHub থেকে ভার্সন আনা যায়নি — হাতে লিখুন','error')}
+  a.detecting=false},
+async apkDel(r){if(!confirm('এই ডিভাইসের রেকর্ড মুছবেন? (ইউজার আবার অ্যাপ খুললে নতুন করে যোগ হবে)'))return;try{await window.$db.deleteAppInstall(r.fbKey);this.showToast('মোছা হয়েছে','success')}catch(e){this.showToast('মুছতে ব্যর্থ','error')}},
+apkFmt(ts,dateOnly){const n=Number(ts);if(!n)return '—';const d=new Date(n);const p=x=>String(x).padStart(2,'0');const ds=p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear();return dateOnly?ds:ds+' '+p(d.getHours())+':'+p(d.getMinutes())},
+get apkRows(){const q=String(this.apk.q||'').trim().toLowerCase();return this.apk.installs.slice().sort((x,y)=>(Number(y.lastSeen)||0)-(Number(x.lastSeen)||0)).filter(r=>!q||[r.phone,r.shopName,r.name,r.model].join(' ').toLowerCase().includes(q)).slice(0,300)},
+get apkStats(){const a=this.apk,L=a.installs,s=new Date();s.setHours(0,0,0,0);const t0=s.getTime(),lb=Number(a.cfg.latestBuild)||0;return{total:L.length,today:L.filter(r=>(Number(r.lastSeen)||0)>=t0).length,withPhone:L.filter(r=>r.phone).length,outdated:lb?L.filter(r=>(Number(r.build)||0)<lb).length:0,clicks:a.clicks.reduce((n,c)=>n+(Number(c.count)||1),0),clickDevices:a.clicks.length}},
 fbm:{loading:false,loaded:false,saving:false,testing:false,err:'',msg:'',pixelId:'',testEventCode:'',pageId:'',capiToken:'',pageToken:'',hasCapi:false,capiHint:'',hasPage:false,pageHint:'',feedUrl:'',encReady:true,env:{}},
 async fbmLoad(){const f=this.fbm;f.loading=true;f.err='';try{const r=await this.apiCall('GET','/api/facebook/settings');if(!r.ok){f.err=r.message||'লোড করা যায়নি';f.loading=false;return}
 Object.assign(f,{pixelId:r.pixelId||'',testEventCode:r.testEventCode||'',pageId:r.pageId||'',hasCapi:!!r.hasCapiToken,capiHint:r.capiTokenHint||'',hasPage:!!r.hasPageToken,pageHint:r.pageTokenHint||'',feedUrl:r.feedUrl||'',encReady:r.encReady!==false,env:r.env||{},loaded:true})}catch(e){f.err='লোড করা যায়নি'}f.loading=false},
