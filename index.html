@@ -2484,6 +2484,14 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
         </div>
         <p class="text-xs mt-1.5" style="color:var(--fg3)">প্রমো কোড দিয়ে রেজিস্ট্রেশন করলে অ্যাপ্রুভের সময় এই বোনাস পাবে</p>
       </div>
+      <div class="stat-card">
+        <p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">রেফার বোনাস — রেফারার পাবে (৳)</p>
+        <div class="flex gap-1.5 items-center">
+          <input type="number" min="0" x-model.number="settings.referrerBonus" class="dd-input py-1.5 text-sm" style="padding:6px 8px"/>
+          <button @click="saveSettings()" class="text-xs px-2.5 py-2 rounded-lg font-bold text-white flex-shrink-0" style="background:var(--accent);border:none;cursor:pointer"><i class="fa-solid fa-check"></i></button>
+        </div>
+        <p class="text-xs mt-1.5" style="color:var(--fg3)">কারও কোডে নতুন আবেদন অ্যাপ্রুভ করলেই কোডের মালিকের ওয়ালেটে এই টাকা যোগ হবে (একবার, শুধু সরাসরি রেফারার)</p>
+      </div>
     </div>
 
     <!-- ══ নিরাপত্তা: পুরনো রিসেলার মাইগ্রেশন + কাস্টমার রিপোর্ট সিঙ্ক ══ -->
@@ -3276,13 +3284,16 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 </div>
 <div class="dd-card p-5 mb-4">
 <p class="font-bold text-sm mb-3" style="color:var(--fg)"><i class="fa-solid fa-sliders mr-2"></i>রেফারেল সেটিংস</p>
-<div class="grid grid-cols-2 md:grid-cols-3 gap-3 items-end">
-<div><label class="dd-label">রেফার বোনাস — প্রতি জয়েনে (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen1"/></div>
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+<div><label class="dd-label">লেভেল ১ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen1"/></div>
+<div><label class="dd-label">লেভেল ২ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen2"/></div>
+<div><label class="dd-label">লেভেল ৩ (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.gen3"/></div>
+<div><label class="dd-label">নতুন সদস্যের বোনাস (৳)</label><input type="number" min="0" class="dd-input" x-model.number="refp.cfg.signupBonus"/></div>
 <div><label class="dd-label">ন্যূনতম উইথড্র (৳)</label><input type="number" min="1" class="dd-input" x-model.number="refp.cfg.minWithdraw"/></div>
 <label class="flex items-center gap-2 text-sm pb-2" style="color:var(--fg)"><input type="checkbox" :checked="refp.cfg.enabled" @change="refp.cfg.enabled=$event.target.checked" style="width:18px;height:18px"/> সিস্টেম চালু</label>
 </div>
 <button @click="refpSaveCfg()" :disabled="refp.cfgSaving" class="btn-primary mt-3" style="max-width:200px"><i :class="refp.cfgSaving?'fa-solid fa-spinner fa-spin':'fa-solid fa-save'" class="mr-2"></i>সেভ করুন</button>
-<p class="text-xs mt-2" style="color:var(--fg3)">রেফার কোড দিয়ে কেউ জয়েন করলেই রেফারার সাথে সাথে এই বোনাস পান (রেফারেল ওয়ালেটে, মেইন ব্যালেন্সে নয়)। নতুন রেট শুধু এরপরের জয়েনে প্রযোজ্য।</p>
+<p class="text-xs mt-2" style="color:var(--fg3)">নতুন রেট শুধু এরপরের জয়েনে প্রযোজ্য — আগের কমিশন বদলায় না।</p>
 </div>
 <div class="flex gap-2 flex-wrap mb-3">
 <template x-for="s in [['pending','পেন্ডিং'],['paid','পেইড'],['rejected','রিজেক্ট'],['all','সব']]" :key="s[0]">
@@ -3729,7 +3740,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,referrerBonus:50,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -3879,7 +3890,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'dashboard',label:'ড্যাশবোর্ড',ic:'fa-chart-line',tabs:['dashboard']},
     {id:'catalog',label:'পণ্য ও সাজানো',ic:'fa-boxes-stacked',tabs:['upload','products','categories','sections','assignment','eid','pinned','hanger','subs','mysubs']},
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
-    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','refpay','baladj']},
+    {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
@@ -5203,7 +5214,18 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(bonus>0)await this._bal(r.fbKey,bonus);
       try{await window.$db.setReferralIndex(myCode,r.fbKey)}catch(ie){this.showToast('অ্যাপ্রুভ হয়েছে, কিন্তু রেফার-কোড ইনডেক্স লেখা যায়নি — রুলস পাবলিশ করে "রেফার কোড মেরামত" চাপুন','error')}
       if(bonus>0)await window.$db.pushWalletTx({resellerPhone:r.fbKey,amount:bonus,type:'bonus',note:'সাইনআপ বোনাস (প্রমো কোড ব্যবহার করে রেজিস্ট্রেশন)',timestamp:Date.now()});
-      this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅','success');
+      // ── রেফারারের বোনাস (এক লেভেল): যার কোডে জয়েন করেছে সে অ্যাপ্রুভের সাথে সাথে বোনাস পায়, একবারই ──
+      let refMsg='';
+      const refAmt=this.settings.referrerBonus===undefined||this.settings.referrerBonus===''?50:(Number(this.settings.referrerBonus)||0);
+      if(r.referredBy&&r.referredBy!==r.fbKey&&!r.referrerBonusPaid&&refAmt>0){
+        const ref=this.fbResellers.find(x=>x.fbKey===r.referredBy);
+        if(ref&&ref.status==='approved'){
+          await this.creditWallet(ref.fbKey,refAmt,'commission','রেফার বোনাস — '+(r.shopName||r.name||r.fbKey)+' জয়েন করেছে',null,{gen:1,fromPhone:r.fbKey,fromName:r.shopName||r.name||''});
+          await window.$db.saveReseller({referrerBonusPaid:true,referrerBonusAmount:refAmt},r.fbKey);
+          refMsg=' — রেফারার '+(ref.shopName||ref.name||ref.fbKey)+' ৳'+refAmt+' পেয়েছেন';
+        }else refMsg=' (রেফারার অ্যাপ্রুভড নন, বোনাস যায়নি)';
+      }
+      this.showToast('রিসেলার অ্যাপ্রুভ হয়েছে! ✅'+refMsg,'success');
     }catch{this.showToast('অ্যাপ্রুভ ব্যর্থ!','error')}
   },
   async rejectReseller(r){if(!confirm('এই আবেদন বাতিল করবেন?'))return;try{await window.$db.saveReseller({status:'rejected'},r.fbKey);this.showToast('আবেদন বাতিল হয়েছে','success')}catch{this.showToast('ব্যর্থ!','error')}},
