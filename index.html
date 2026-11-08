@@ -274,6 +274,7 @@ window.$db={
   updateCustTx:async(uid,key,data)=>update(ref(db,'customerWalletTx/'+uid+'/'+key),data),
   // ব্যালেন্স সমন্বয় — অ্যাটমিক ট্রানজ্যাকশন (একসাথে দুই জায়গা থেকে বদলালেও ভুল হয় না)
   adjustResellerWallet:async(phone,delta)=>{const path='resellers/'+phone+'/walletBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
+  adjustReferralWallet:async(phone,delta)=>{const path='resellers/'+phone+'/referralBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
   adjustCustWallet:async(uid,delta)=>{const path='customerWallets/'+uid+'/balance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
   setWalletExact:async(kind,id,target)=>{const path=(kind==='reseller'?'resellers/'+id+'/walletBalance':'customerWallets/'+id+'/balance');let oldV=0;const r=await runTransaction(ref(db,path),cur=>{oldV=Number(cur)||0;const n=Math.round(Number(target)*100)/100;if(!(n>=0)||n>100000000)return;return n});if(!r.committed)throw new Error('invalid');return {old:oldV,nb:r.snapshot.val()}},
   pushCustTx:async(uid,tx)=>{const r=push(ref(db,'customerWalletTx/'+uid));await set(r,{at:Date.now(),status:'done',...tx});return r.key},
@@ -2490,7 +2491,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <input type="number" min="0" x-model.number="settings.referrerBonus" class="dd-input py-1.5 text-sm" style="padding:6px 8px"/>
           <button @click="saveSettings()" class="text-xs px-2.5 py-2 rounded-lg font-bold text-white flex-shrink-0" style="background:var(--accent);border:none;cursor:pointer"><i class="fa-solid fa-check"></i></button>
         </div>
-        <p class="text-xs mt-1.5" style="color:var(--fg3)">কারও কোডে নতুন আবেদন অ্যাপ্রুভ করলেই কোডের মালিকের ওয়ালেটে এই টাকা যোগ হবে (একবার, শুধু সরাসরি রেফারার)</p>
+        <p class="text-xs mt-1.5" style="color:var(--fg3)">কারও কোডে নতুন আবেদন অ্যাপ্রুভ করলেই কোডের মালিকের <b>রেফারেল ওয়ালেটে</b> এই টাকা যোগ হবে (একবার, শুধু সরাসরি রেফারার)</p>
       </div>
     </div>
 
@@ -2548,7 +2549,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
                   </button>
                 </td>
                 <td><span class="font-mono text-xs font-bold px-2 py-1 rounded-lg" style="background:var(--accentL);color:var(--accent)" x-text="r.myReferralCode||'—'"></span></td>
-                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span><span x-show="(r.referralBalance||0)>0" class="block font-mono text-xs font-bold" style="color:#7C3AED" x-text="'রেফারেল ৳'+(r.referralBalance||0).toLocaleString()"></span></td>
                 <td>
                   <span class="text-xs font-bold px-2 py-1 rounded-full" :style="r.status==='pending'?'background:#FFF7ED;color:#C2410C':r.status==='approved'?'background:#F0FDF4;color:#15803D':r.status==='blocked'?'background:#FEF2F2;color:#B91C1C':'background:#F3F4F6;color:#6B7280'" x-text="r.status==='pending'?'পেন্ডিং':r.status==='approved'?'অ্যাপ্রুভড':r.status==='blocked'?'ব্লকড':'বাতিল'"></span>
                 </td>
@@ -3740,7 +3741,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   gridCols:2,homepageLimit:8,
   sortableCats:[],
 
-  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:150,referrerBonus:50,minWithdrawAmount:100,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
+  settings:{siteUrl:'https://dailydeal.world/',trackUrlTemplate:'',siteName:'Daily Deal',tagline:'অনলাইন শপিং',fbLink:'https://facebook.com',resellerLink:'https://t.me/',bkash:'',nagad:'',wa:'',appLink:'',shopAddress:'',shopPhone:'',shopPolicy:'',marqueeText:'',profileCover:'',resellSignupBonus:20,referrerBonus:50,minWithdrawAmount:50,cloudinaryCloudName:'',cloudinaryUploadPreset:'',
     paymentOptions:{codEnabled:true,prepaidEnabled:true},
     paymentMethods:{
       bkash:{enabled:true,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'bKash'},
@@ -5220,7 +5221,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       if(r.referredBy&&r.referredBy!==r.fbKey&&!r.referrerBonusPaid&&refAmt>0){
         const ref=this.fbResellers.find(x=>x.fbKey===r.referredBy);
         if(ref&&ref.status==='approved'){
-          await this.creditWallet(ref.fbKey,refAmt,'commission','রেফার বোনাস — '+(r.shopName||r.name||r.fbKey)+' জয়েন করেছে',null,{gen:1,fromPhone:r.fbKey,fromName:r.shopName||r.name||''});
+          await this.creditReferralWallet(ref.fbKey,refAmt,'রেফার বোনাস — '+(r.shopName||r.name||r.fbKey)+' জয়েন করেছে',{fromPhone:r.fbKey,fromName:r.shopName||r.name||''});
           await window.$db.saveReseller({referrerBonusPaid:true,referrerBonusAmount:refAmt},r.fbKey);
           refMsg=' — রেফারার '+(ref.shopName||ref.name||ref.fbKey)+' ৳'+refAmt+' পেয়েছেন';
         }else refMsg=' (রেফারার অ্যাপ্রুভড নন, বোনাস যায়নি)';
@@ -5387,6 +5388,14 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   // অ্যাটমিক ডেল্টা (পুরোনো read-modify-write রেস কন্ডিশন দূর করতে)
   async _bal(phone,delta){try{return await window.$db.adjustResellerWallet(phone,delta)}catch(e){if(e&&e.message==='insufficient')setTimeout(()=>this.showToast('রিসেলারের পর্যাপ্ত ব্যালেন্স নেই!','error'),60);throw e}},
+  // ══ রেফারেল ওয়ালেট (আলাদা): রেফার বোনাস শুধু এখানে জমা হয়, মূল ওয়ালেটে নয় ══
+  async creditReferralWallet(phone,amount,note,extra){
+    if(!phone||!amount)return;
+    const r=this.fbResellers.find(x=>x.fbKey===phone);
+    if(!r||r.status==='blocked'||r.status==='rejected')return;
+    await window.$db.adjustReferralWallet(phone,amount);
+    await window.$db.pushWalletTx({resellerPhone:phone,amount,type:'refbonus',wallet:'referral',note,timestamp:Date.now(),...(extra||{})});
+  },
   async creditWallet(phone,amount,type,note,orderId,extra){
     if(!phone||!amount)return;
     const r=this.fbResellers.find(x=>x.fbKey===phone);
