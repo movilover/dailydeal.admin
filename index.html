@@ -166,6 +166,13 @@ window.$db={
   listenAppInstalls:(cb)=>onValue(ref(db,'appInstalls'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
   listenAppClicks:(cb)=>onValue(ref(db,'appClicks'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},()=>cb([])),
   deleteAppInstall:async(id)=>remove(ref(db,'appInstalls/'+id)),
+  // অ্যাকাউন্ট লিমিট (এক আইপি/এক ডিভাইসে একটি অ্যাকাউন্ট)
+  listenSignupGuard:(cb)=>onValue(ref(db,'signupGuard'),s=>cb(s.val()||{}),()=>cb({})),
+  saveSignupGuard:async(d)=>update(ref(db,'signupGuard'),d),
+  listenIpClaims:(cb)=>onValue(ref(db,'ipClaims'),s=>cb(s.val()||{}),()=>cb({})),
+  listenDevClaims:(cb)=>onValue(ref(db,'devClaims'),s=>cb(s.val()||{}),()=>cb({})),
+  deleteClaim:async(kind,key,slot)=>remove(ref(db,kind+'/'+key+'/'+slot)),
+  setAllowIp:async(key,on)=>on?set(ref(db,'signupGuard/allowIps/'+key),true):remove(ref(db,'signupGuard/allowIps/'+key)),
   // স্টাফ ও পণ্য-জমা (অ্যাপ্রুভাল)
   listenStaff:(cb)=>onValue(ref(db,'staff'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d,perms:{...(d.perms||{})}})):[])},()=>cb([])),
   saveStaff:async(uid,d)=>set(ref(db,'staff/'+uid),d),
@@ -3392,6 +3399,61 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
     </div>
   </div>
 </div>
+<!-- ═══ অ্যাকাউন্ট লিমিট: এক আইপি / এক ডিভাইসে একটি অ্যাকাউন্ট ═══ -->
+<div x-show="activeTab==='signupguard'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='signupguard')sgLoad()})">
+  <div x-show="sg.err" class="rounded-xl px-3.5 py-2.5 text-xs font-semibold mb-4" style="background:#FEF2F2;border:1px solid #FECACA;color:#DC2626" x-text="sg.err"></div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)">রেকর্ড করা আইপি</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="sgStats.ips"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)">রেকর্ড করা ডিভাইস</p><p class="font-display text-2xl mt-1" style="color:var(--fg)" x-text="sgStats.devs"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)">একাধিক অ্যাকাউন্টের আইপি</p><p class="font-display text-2xl mt-1" style="color:#D97706" x-text="sgStats.multiIps"></p></div>
+    <div class="dd-card p-4"><p class="text-xs font-bold" style="color:var(--fg3)">একাধিক অ্যাকাউন্টের ডিভাইস</p><p class="font-display text-2xl mt-1" style="color:#D97706" x-text="sgStats.multiDevs"></p></div>
+  </div>
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="dd-card p-5 space-y-4 md:col-span-1">
+      <p class="font-bold text-sm flex items-center gap-2" style="color:var(--fg)"><i class="fa-solid fa-shield-halved" style="color:#16A34A"></i>অ্যাকাউন্ট লিমিট সেটিংস</p>
+      <label class="flex items-center gap-2 text-sm font-semibold" style="color:var(--fg);cursor:pointer"><input type="checkbox" x-model="sg.cfg.enabled"/> লিমিট চালু রাখুন</label>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="dd-label">এক আইপি-তে সর্বোচ্চ</label><input class="dd-input" type="number" min="1" max="10" x-model.number="sg.cfg.maxPerIp"/></div>
+        <div><label class="dd-label">এক ডিভাইসে সর্বোচ্চ</label><input class="dd-input" type="number" min="1" max="10" x-model.number="sg.cfg.maxPerDevice"/></div>
+      </div>
+      <button type="button" @click="sgSave()" :disabled="sg.saving" class="btn-primary"><i :class="sg.saving?'fa-solid fa-spinner fa-spin':'fa-solid fa-save'" class="mr-2"></i>সেভ করুন</button>
+      <div class="rounded-xl px-3.5 py-2.5 text-xs" style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E">
+        <b>জেনে রাখুন:</b> মোবাইল ডেটায় (Grameenphone, Robi ইত্যাদি) অনেক মানুষ একই আইপি শেয়ার করে। তাই কোনো সৎ ইউজার আটকে গেলে ডানের তালিকায় ওই আইপি-র পাশে <b>“অনুমতি দিন”</b> চাপুন (ওই আইপি-র সীমা উঠে যাবে), অথবা <b>মুছুন</b> চেপে ওই অ্যাকাউন্টের রেকর্ড সরিয়ে দিন।
+      </div>
+    </div>
+    <div class="dd-card p-5 md:col-span-2">
+      <div class="flex items-center gap-2 mb-3">
+        <button type="button" @click="sg.tab='ip'" class="px-3 py-1.5 rounded-full text-xs font-bold" :style="sg.tab==='ip'?'background:#E8320A;color:#fff':'background:var(--bg2,#F1F5F9);color:var(--fg2)'">আইপি অনুযায়ী</button>
+        <button type="button" @click="sg.tab='dev'" class="px-3 py-1.5 rounded-full text-xs font-bold" :style="sg.tab==='dev'?'background:#E8320A;color:#fff':'background:var(--bg2,#F1F5F9);color:var(--fg2)'">ডিভাইস অনুযায়ী</button>
+        <label class="flex items-center gap-1.5 text-xs font-semibold ml-auto" style="color:var(--fg2);cursor:pointer"><input type="checkbox" x-model="sg.onlyMulti"/> শুধু একাধিক অ্যাকাউন্টেরগুলো</label>
+      </div>
+      <input class="dd-input mb-3" x-model="sg.q" placeholder="আইপি / ফোন নম্বর দিয়ে খুঁজুন..." autocomplete="off"/>
+      <div style="max-height:600px;overflow-y:auto" class="space-y-2">
+        <template x-if="sgRows.length===0"><p class="text-xs text-center py-8" style="color:var(--fg3)">কোনো রেকর্ড নেই।</p></template>
+        <template x-for="g in sgRows" :key="g.key">
+          <div class="rounded-xl p-3" style="background:var(--bg2,#F8FAFC);border:1px solid var(--border,#E2E8F0)">
+            <div class="flex items-center gap-2 flex-wrap">
+              <p class="text-sm font-bold break-all" style="color:var(--fg)" x-text="sg.tab==='ip'?g.label:('ডিভাইস '+g.label.slice(0,14)+'…')"></p>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" :style="g.items.length>1?'background:#FEF3C7;color:#B45309':'background:#DCFCE7;color:#15803D'" x-text="g.items.length+' টি অ্যাকাউন্ট'"></span>
+              <span x-show="g.allowed" class="text-[10px] font-bold px-2 py-0.5 rounded-full" style="background:#DBEAFE;color:#1D4ED8">সীমা উঠানো</span>
+              <button x-show="sg.tab==='ip'" type="button" @click="sgAllow(g)" class="ml-auto text-[11px] font-bold" style="color:#2563EB;background:none;border:none;cursor:pointer" x-text="g.allowed?'অনুমতি বাতিল':'অনুমতি দিন'"></button>
+            </div>
+            <div class="mt-2 space-y-1">
+              <template x-for="it in g.items" :key="it.slot">
+                <div class="flex items-center gap-2 text-xs" style="color:var(--fg2)">
+                  <i class="fa-solid fa-user" style="color:#E8320A"></i>
+                  <span class="font-semibold" style="color:var(--fg)" x-text="it.phone"></span>
+                  <span x-text="'· '+sgFmt(it.t)+' · '+(it.via==='app'?'অ্যাপ':'ওয়েব')+(sg.tab==='dev'&&it.ip?' · '+it.ip:'')"></span>
+                  <button type="button" @click="sgDel(g,it)" class="ml-auto" style="color:#DC2626;background:none;border:none;cursor:pointer"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ═══ Facebook / Meta Settings ═══ -->
 <div x-show="activeTab==='fbmeta'" x-cloak class="animate-fade-in" x-init="$watch('activeTab',v=>{if(v==='fbmeta')fbmLoad()})">
 <div class="grid md:grid-cols-2 gap-6">
@@ -3854,7 +3916,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
-    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appcfg:'অ্যান্ড্রয়েড অ্যাপ',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
+    notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appcfg:'অ্যান্ড্রয়েড অ্যাপ',signupguard:'অ্যাকাউন্ট লিমিট (আইপি/ডিভাইস)',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
     vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
     recharges:'মোবাইল রিচার্জ',services:'ফ্রিল্যান্সিং সার্ভিস',svcorders:'সার্ভিস অর্ডার',resellcfg:'রিসেলার কনটেন্ট'
@@ -3964,10 +4026,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
-    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance','appcfg']},
+    {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance','appcfg','signupguard']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{appcfg:'fa-mobile-screen-button',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{appcfg:'fa-mobile-screen-button',signupguard:'fa-shield-halved',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -4236,7 +4298,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   canTab(t){
     if(!this.staff)return t!=='mysubs';
     const P=this.staff.perms||{};
-    if(t==='team'||t==='fbmeta'||t==='refpay'||t==='appcfg')return false;
+    if(t==='team'||t==='fbmeta'||t==='refpay'||t==='appcfg'||t==='signupguard')return false;
     if(t==='mysubs')return P.submit===true;
     if(t==='subs')return P.approve===true;
     if(t==='upload')return P.submit===true||P.catalog===true;
@@ -5968,6 +6030,19 @@ async apkDel(r){if(!confirm('এই ডিভাইসের রেকর্ড 
 apkFmt(ts,dateOnly){const n=Number(ts);if(!n)return '—';const d=new Date(n);const p=x=>String(x).padStart(2,'0');const ds=p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear();return dateOnly?ds:ds+' '+p(d.getHours())+':'+p(d.getMinutes())},
 get apkRows(){const q=String(this.apk.q||'').trim().toLowerCase();return this.apk.installs.slice().sort((x,y)=>(Number(y.lastSeen)||0)-(Number(x.lastSeen)||0)).filter(r=>!q||[r.phone,r.shopName,r.name,r.model].join(' ').toLowerCase().includes(q)).slice(0,300)},
 get apkStats(){const a=this.apk,L=a.installs,s=new Date();s.setHours(0,0,0,0);const t0=s.getTime(),lb=Number(a.cfg.latestBuild)||0;return{total:L.length,today:L.filter(r=>(Number(r.lastSeen)||0)>=t0).length,withPhone:L.filter(r=>r.phone).length,outdated:lb?L.filter(r=>(Number(r.build)||0)<lb).length:0,clicks:a.clicks.reduce((n,c)=>n+(Number(c.count)||1),0),clickDevices:a.clicks.length}},
+sg:{loaded:false,saving:false,err:'',tab:'ip',q:'',onlyMulti:false,ips:{},devs:{},cfg:{enabled:true,maxPerIp:1,maxPerDevice:1,allowIps:{}},cfgSet:false},
+sgLoad(){const a=this.sg;if(a.loaded)return;if(!window.$db||!window.$db.listenSignupGuard){a.err='ডাটাবেস লোড হচ্ছে — কয়েক সেকেন্ড পর ট্যাবটি আবার খুলুন';return}a.err='';a.loaded=true;
+  window.$db.listenSignupGuard(c=>{const d=c||{};a.cfg.allowIps=d.allowIps||{};if(a.cfgSet)return;a.cfgSet=true;a.cfg=Object.assign({enabled:true,maxPerIp:1,maxPerDevice:1},d,{allowIps:d.allowIps||{}})});
+  window.$db.listenIpClaims(v=>{a.ips=v||{}});window.$db.listenDevClaims(v=>{a.devs=v||{}})},
+async sgSave(){const a=this.sg,c=a.cfg;a.saving=true;
+  try{await window.$db.saveSignupGuard({enabled:c.enabled!==false,maxPerIp:Math.max(1,Math.min(10,Number(c.maxPerIp)||1)),maxPerDevice:Math.max(1,Math.min(10,Number(c.maxPerDevice)||1))});this.showToast('অ্যাকাউন্ট লিমিট সেভ হয়েছে ✅','success')}
+  catch(e){this.showToast('সেভ ব্যর্থ! (Firebase Rules আপডেট করেছেন?)','error')}a.saving=false},
+async sgAllow(g){try{await window.$db.setAllowIp(g.key,!g.allowed);this.showToast(g.allowed?'অনুমতি বাতিল':'এই আইপি-র সীমা উঠানো হয়েছে','success')}catch(e){this.showToast('ব্যর্থ','error')}},
+async sgDel(g,it){if(!confirm(it.phone+' নম্বরের এই রেকর্ড মুছবেন? (এরপর ওই আইপি/ডিভাইসে আরেকটি অ্যাকাউন্ট খোলা যাবে)'))return;try{await window.$db.deleteClaim(this.sg.tab==='ip'?'ipClaims':'devClaims',g.key,it.slot);this.showToast('মোছা হয়েছে','success')}catch(e){this.showToast('মুছতে ব্যর্থ','error')}},
+sgFmt(ts){const n=Number(ts);if(!n)return '—';const d=new Date(n),p=x=>String(x).padStart(2,'0');return p(d.getDate())+'/'+p(d.getMonth()+1)+'/'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes())},
+sgGroups(src,isIp){return Object.keys(src||{}).map(k=>{const o=src[k]||{};const items=Object.keys(o).filter(s=>o[s]&&typeof o[s]==='object').map(s=>Object.assign({slot:s},o[s])).sort((x,y)=>(Number(x.t)||0)-(Number(y.t)||0));const label=isIp?((items[0]&&items[0].ip)||k.replace(/_/g,'.')):((items[0]&&items[0].dev)||k);return{key:k,label,items,allowed:isIp&&!!(this.sg.cfg.allowIps||{})[k]}}).filter(g=>g.items.length)},
+get sgRows(){const a=this.sg,q=String(a.q||'').trim().toLowerCase();let r=this.sgGroups(a.tab==='ip'?a.ips:a.devs,a.tab==='ip');if(a.onlyMulti)r=r.filter(g=>g.items.length>1);if(q)r=r.filter(g=>(g.label+' '+g.items.map(i=>i.phone).join(' ')).toLowerCase().includes(q));return r.sort((x,y)=>y.items.length-x.items.length||(Number(y.items[y.items.length-1].t)||0)-(Number(x.items[x.items.length-1].t)||0)).slice(0,300)},
+get sgStats(){const a=this.sg,I=this.sgGroups(a.ips,true),D=this.sgGroups(a.devs,false);return{ips:I.length,devs:D.length,multiIps:I.filter(g=>g.items.length>1).length,multiDevs:D.filter(g=>g.items.length>1).length}},
 fbm:{loading:false,loaded:false,saving:false,testing:false,err:'',msg:'',pixelId:'',testEventCode:'',pageId:'',capiToken:'',pageToken:'',hasCapi:false,capiHint:'',hasPage:false,pageHint:'',feedUrl:'',encReady:true,env:{}},
 async fbmLoad(){const f=this.fbm;f.loading=true;f.err='';try{const r=await this.apiCall('GET','/api/facebook/settings');if(!r.ok){f.err=r.message||'লোড করা যায়নি';f.loading=false;return}
 Object.assign(f,{pixelId:r.pixelId||'',testEventCode:r.testEventCode||'',pageId:r.pageId||'',hasCapi:!!r.hasCapiToken,capiHint:r.capiTokenHint||'',hasPage:!!r.hasPageToken,pageHint:r.pageTokenHint||'',feedUrl:r.feedUrl||'',encReady:r.encReady!==false,env:r.env||{},loaded:true})}catch(e){f.err='লোড করা যায়নি'}f.loading=false},
