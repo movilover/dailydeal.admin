@@ -897,6 +897,51 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   </div>
 </div>
 
+<!-- RESELLER PASSWORD RESET MODAL -->
+<div x-show="pwModal.open" x-cloak class="modal-overlay" style="z-index:310" @click.self="closePwModal()">
+  <div class="modal-body p-6" style="max-width:440px">
+    <div class="flex items-center justify-between mb-4">
+      <p class="font-display text-xl" style="color:var(--fg)"><i class="fa-solid fa-key mr-2" style="color:var(--accent)"></i>নতুন পাসওয়ার্ড সেট</p>
+      <button @click="closePwModal()" class="btn-ghost w-8 h-8 p-0 flex items-center justify-center rounded-xl"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="dd-card-sm p-3 mb-4">
+      <p class="text-sm font-bold" style="color:var(--fg)" x-text="pwModal.name"></p>
+      <p class="font-mono text-xs mt-0.5" style="color:var(--fg3)" x-text="pwModal.phone"></p>
+    </div>
+
+    <!-- সফল হলে -->
+    <div x-show="pwModal.done" x-cloak>
+      <div class="p-4 rounded-2xl text-center" style="background:#F0FDF4;border:1px solid #BBF7D0">
+        <p class="text-xs font-bold" style="color:#15803D"><i class="fa-solid fa-circle-check mr-1"></i>পাসওয়ার্ড বদলে গেছে</p>
+        <p class="font-mono text-2xl font-bold mt-2 tracking-widest" style="color:#166534" x-text="pwModal.pin"></p>
+        <p class="text-xs mt-2" style="color:#166534">এখনই রিসেলারকে এই নতুন পাসওয়ার্ড জানিয়ে দিন। এটি আর দেখা যাবে না।</p>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button @click="copyPwNote()" class="btn-primary flex-1" style="justify-content:center"><i class="fa-solid fa-copy mr-1"></i>মেসেজ কপি করুন</button>
+        <button @click="closePwModal()" class="btn-ghost">বন্ধ</button>
+      </div>
+    </div>
+
+    <!-- ফর্ম -->
+    <div x-show="!pwModal.done">
+      <label class="dd-label">নতুন পাসওয়ার্ড / PIN (শুধু সংখ্যা, কমপক্ষে <span x-text="pwMinLen()"></span> ডিজিট)</label>
+      <div class="flex gap-2">
+        <div class="relative flex-1">
+          <input class="dd-input font-mono tracking-widest" style="padding-right:38px" :type="pwModal.show?'text':'password'" inputmode="numeric" autocomplete="new-password" maxlength="12" x-model="pwModal.pin" @input="pwModal.pin=pwModal.pin.replace(/\D/g,'');pwModal.err=''" @keydown.enter="submitPwReset()" placeholder="••••••"/>
+          <button type="button" @click="pwModal.show=!pwModal.show" class="absolute" style="right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--fg3)"><i class="fa-solid" :class="pwModal.show?'fa-eye-slash':'fa-eye'"></i></button>
+        </div>
+        <button type="button" @click="genPwPin()" class="btn-ghost !text-xs" title="র‍্যান্ডম পাসওয়ার্ড বানান"><i class="fa-solid fa-dice mr-1"></i>র‍্যান্ডম</button>
+      </div>
+      <p class="text-xs mt-2 font-semibold" style="color:#B91C1C" x-show="pwModal.err" x-text="pwModal.err"></p>
+      <p class="text-xs mt-3" style="color:var(--fg3)"><i class="fa-solid fa-shield-halved mr-1"></i>সেট করলে পুরনো পাসওয়ার্ড আর কাজ করবে না এবং রিসেলারের চালু থাকা সব লগইন বের হয়ে যাবে। রিসেলার নিজে পরে প্রোফাইল থেকে বদলে নিতে পারবে।</p>
+      <div class="flex gap-3 mt-4">
+        <button @click="submitPwReset()" :disabled="pwModal.busy" class="btn-primary flex-1" style="justify-content:center"><i class="fa-solid mr-1" :class="pwModal.busy?'fa-spinner fa-spin':'fa-check'"></i>পাসওয়ার্ড সেট করুন</button>
+        <button @click="closePwModal()" class="btn-ghost">বাতিল</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- RESELLER MESSAGE MODAL (NEW) -->
 <div x-show="msgModal.open" x-cloak class="modal-overlay" style="z-index:300" @click.self="closeMsgModal()">
   <div class="modal-body p-6">
@@ -2572,6 +2617,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
                     <button x-show="r.status==='pending'" @click="rejectReseller(r)" class="btn-danger !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-xmark"></i> বাতিল</button>
                     <button x-show="r.status==='approved'||r.status==='blocked'" @click="toggleBlockReseller(r)" class="btn-warn !text-xs !py-1.5 !px-2.5" x-text="r.status==='blocked'?'আনব্লক':'ব্লক করুন'"></button>
                     <button @click="openMsgModal(r)" class="btn-ghost !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-envelope"></i></button>
+                    <button x-show="r.status!=='pending'" @click="openPwModal(r)" class="btn-primary !text-xs !py-1.5 !px-2.5" title="নতুন পাসওয়ার্ড / PIN সেট করুন"><i class="fa-solid fa-key"></i> পাসওয়ার্ড</button>
                     <button @click="deleteReseller(r)" class="btn-ghost !text-xs !py-1.5 !px-2.5"><i class="fa-solid fa-trash"></i></button>
                   </div>
                 </td>
@@ -3857,7 +3903,7 @@ function Admin(){return{
       {id:'shopup',name:'ShopUp',icon:'🏬',type:'Local BD Wholesale/Reselling',intl:false,base:''}]},
 vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeePct:0,resellerMarginPct:0,status:'active'}},
   resellerSearch:'',resellerStatusF:'সব',withdrawF:'সব',depositF:'সব',ticketF:'সব',
-  msgModal:{open:false,resellerPhone:'',resellerName:'',text:''},teamModal:{open:false,phone:'',name:'',gen:1,q:''},tmSync:{busy:false,msg:'',last:0,denied:false},
+  msgModal:{open:false,resellerPhone:'',resellerName:'',text:''},pwModal:{open:false,phone:'',name:'',pin:'',show:false,busy:false,done:false,err:''},teamModal:{open:false,phone:'',name:'',gen:1,q:''},tmSync:{busy:false,msg:'',last:0,denied:false},
   totalUsers:0,
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
@@ -5847,6 +5893,29 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   // ══════════ RESELLER INBOX MESSAGING (NEW) ══════════
   openMsgModal(r){this.msgModal={open:true,resellerPhone:r.fbKey,resellerName:r.name||r.fbKey,text:''}},
   closeMsgModal(){this.msgModal.open=false},
+  // ══════════ রিসেলারের পাসওয়ার্ড/PIN অ্যাডমিন থেকে সেট ══════════
+  pwMinLen(){return Number(this.settings&&this.settings.minPinLength)||6},
+  openPwModal(r){this.pwModal={open:true,phone:r.fbKey,name:r.name||r.shopName||r.fbKey,pin:'',show:false,busy:false,done:false,err:''}},
+  closePwModal(){this.pwModal={open:false,phone:'',name:'',pin:'',show:false,busy:false,done:false,err:''}},
+  genPwPin(){const n=Math.max(this.pwMinLen(),6);let o='';const a=new Uint32Array(n);crypto.getRandomValues(a);a.forEach(v=>{o+=String(v%10)});if(/^(\d)\1+$/.test(o))return this.genPwPin();this.pwModal.pin=o;this.pwModal.show=true;this.pwModal.err=''},
+  async submitPwReset(){
+    const m=this.pwModal;if(m.busy)return;
+    const pin=String(m.pin||'');
+    if(!/^\d+$/.test(pin)){m.err='শুধু সংখ্যা দিন';return}
+    if(pin.length<this.pwMinLen()){m.err='কমপক্ষে '+this.pwMinLen()+' ডিজিট দিন';return}
+    if(/^(\d)\1+$/.test(pin)||'0123456789'.includes(pin)||'9876543210'.includes(pin)){m.err='খুব সহজ পাসওয়ার্ড (যেমন 111111 / 123456) দেওয়া যাবে না';return}
+    if(!confirm(m.name+' ('+m.phone+') এর পাসওয়ার্ড বদলাবেন?'))return;
+    m.busy=true;m.err='';
+    const r=await this.apiCall('POST','/admin/reseller/set-pin',{phone:m.phone,pin});
+    m.busy=false;
+    if(!r.ok){m.err=r.message||'পাসওয়ার্ড বদলানো যায়নি';return}
+    m.done=true;this.showToast('পাসওয়ার্ড বদলানো হয়েছে ✅','success');
+  },
+  copyPwNote(){
+    const m=this.pwModal;const t='আপনার '+((this.settings&&this.settings.siteName)||'Daily Deal')+' রিসেলার অ্যাকাউন্টের নতুন পাসওয়ার্ড: '+m.pin+'\nফোন: '+m.phone+'\nলগইন করার পর প্রোফাইল থেকে নিজের পছন্দমতো পাসওয়ার্ড দিয়ে বদলে নিন।';
+    const done=()=>this.showToast('কপি হয়েছে ✅','success');
+    try{navigator.clipboard.writeText(t).then(done,()=>{const i=document.createElement('textarea');i.value=t;document.body.appendChild(i);i.select();document.execCommand('copy');i.remove();done()})}catch(e){}
+  },
   async sendResellerMessage(){
     if(!this.msgModal.text.trim())return this.showToast('মেসেজ লিখুন!','error');
     try{
