@@ -2607,7 +2607,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
                   </button>
                 </td>
                 <td><span class="font-mono text-xs font-bold px-2 py-1 rounded-lg" style="background:var(--accentL);color:var(--accent)" x-text="r.myReferralCode||'—'"></span></td>
-                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span><span x-show="(r.referralBalance||0)>0" class="block font-mono text-xs font-bold" style="color:#7C3AED" x-text="'রেফারেল ৳'+(r.referralBalance||0).toLocaleString()"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span><span x-show="(r.referralBalance||0)>0" class="block font-mono text-xs font-bold" style="color:#7C3AED" x-text="'রেফারেল ৳'+(r.referralBalance||0).toLocaleString()"></span><span x-show="r.status==='approved'" class="block text-xs font-bold mt-0.5" :style="refSoldCount(r.fbKey)>=refMinSales?'color:#15803D':'color:#B45309'" x-text="(refSoldCount(r.fbKey)>=refMinSales?'✅ ':'🔒 ')+'সেল '+refSoldCount(r.fbKey)+'/'+refMinSales"></span></td>
                 <td>
                   <span class="text-xs font-bold px-2 py-1 rounded-full" :style="r.status==='pending'?'background:#FFF7ED;color:#C2410C':r.status==='approved'?'background:#F0FDF4;color:#15803D':r.status==='blocked'?'background:#FEF2F2;color:#B91C1C':'background:#F3F4F6;color:#6B7280'" x-text="r.status==='pending'?'পেন্ডিং':r.status==='approved'?'অ্যাপ্রুভড':r.status==='blocked'?'ব্লকড':'বাতিল'"></span>
                 </td>
@@ -2985,7 +2985,7 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
           <tbody>
             <template x-for="w in filteredWithdrawals" :key="w.fbKey">
               <tr>
-                <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="getResellerName(w.resellerPhone)"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="w.resellerPhone"></p></td>
+                <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="getResellerName(w.resellerPhone)"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="w.resellerPhone"></p><p class="text-xs font-bold mt-0.5" :style="refSoldCount(w.resellerPhone)>=refMinSales?'color:#15803D':'color:#B45309'" x-text="(refSoldCount(w.resellerPhone)>=refMinSales?'✅ ':'🔒 ')+'ডেলিভার্ড সেল: '+refSoldCount(w.resellerPhone)+' (শর্ত '+refMinSales+')'"></p></td>
                 <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(w.amount||0).toLocaleString()"></span></td>
                 <td class="text-xs" x-text="w.method||'—'"></td>
                 <td class="font-mono text-xs" x-text="w.number||'—'"></td>
@@ -5367,6 +5367,9 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
 
   // ══════════ RESELLER / MLM SYSTEM (NEW) ══════════
+  // ══ রেফারেল টাকা উইথড্রের শর্ত: রিসেলারের ডেলিভার্ড সেল সংখ্যা (ইউজার সাইটের সাথে একই নিয়ম) ══
+  get refMinSales(){return 2},
+  refSoldCount(phone){try{const a=this._tmBuild().agg.get(phone);return a?(a.delivered||0):0}catch(e){return 0}},
   generateReferralCode(phone){return 'RS'+String(phone).slice(-6)+Math.random().toString(36).slice(2,4).toUpperCase()},
   // রেফার কোড মেরামত: অ্যাপ্রুভড সব রিসেলারের কোড থাকা ও পাবলিক ইনডেক্সে (referralCodes) তোলা নিশ্চিত করে
   async repairReferralIndex(silent){
