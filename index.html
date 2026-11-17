@@ -1423,6 +1423,70 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       <p class="text-xs" x-show="!sup.intlCats.length" style="color:var(--fg3)">এখনও কোনো ইন্টারন্যাশনাল ক্যাটাগরি নেই।</p>
     </div>
 
+    <!-- ── 3a. দ্রুত (বাল্ক) ইন্টারন্যাশনাল পণ্য যোগ ── -->
+    <div x-show="activeTab==='sup_intl'" class="space-y-4" x-init="iqInit()">
+      <div class="dd-card p-4 space-y-3">
+        <p class="font-bold text-sm">⚡ দ্রুত ইন্টারন্যাশনাল পণ্য যোগ (API ছাড়াই)</p>
+        <p class="text-xs" style="color:var(--fg3)">১) ক্যাটাগরি বেছে নিন → ২) নাম ও দাম দিন (ছবি আপলোড/লিংক) → ৩) “সব সেভ করুন”। সেভ হলেই ইউজার সাইটের ইন্টারন্যাশনাল পাতায় সেই ক্যাটাগরিতে দেখাবে।</p>
+        <div>
+          <label class="dd-label">ক্যাটাগরি / সাব-ক্যাটাগরি *</label>
+          <select class="dd-input" x-model="iq.cat"><option value="">— বেছে নিন —</option><template x-for="c in sup.intlCats" :key="'iqc'+c.fbKey"><option :value="c.fbKey" x-text="(c.parent?'   ↳ ':'')+(c.emoji||'')+' '+c.name"></option></template></select>
+          <p class="text-xs mt-1 font-bold" x-show="!sup.intlCats.length" style="color:#DC2626">আগে উপরের ফর্ম থেকে ক্যাটাগরি যোগ করুন।</p>
+        </div>
+        <details class="rounded-xl p-3" style="background:var(--bg2)">
+          <summary class="text-xs font-bold cursor-pointer">📋 অনেকগুলো একসাথে পেস্ট করুন (প্রতি লাইনে একটা: নাম | দাম | ছবির লিংক)</summary>
+          <textarea class="dd-input mt-2 font-mono" rows="4" x-model="iq.paste" placeholder="Smart Watch X1 | 1850 | https://...jpg&#10;Wireless Earbuds | 990"></textarea>
+          <button type="button" class="btn-ghost text-xs mt-2" @click="iqParse()"><i class="fa-solid fa-wand-magic-sparkles"></i> সারি বানান</button>
+          <p class="text-xs mt-1" x-show="iq.msg" x-text="iq.msg" style="color:var(--fg2)"></p>
+        </details>
+        <div class="flex flex-wrap items-end gap-2">
+          <div><label class="dd-label">পুরনো দাম অটো (+%) — ফাঁকা সারিতে</label><input type="number" class="dd-input" style="max-width:150px" x-model.number="iq.mrp" placeholder="0 = বন্ধ"/></div>
+        </div>
+        <div class="space-y-3">
+          <template x-for="(r,i) in iq.rows" :key="r.id">
+            <div class="rounded-xl p-3 space-y-2" style="background:var(--bg2);border:1px solid var(--border)">
+              <div class="flex items-center justify-between gap-2"><span class="text-xs font-bold" x-text="'পণ্য '+(i+1)"></span><button type="button" class="btn-danger text-xs" @click="iqDelRow(i)" title="সারি মুছুন"><i class="fa-solid fa-xmark"></i></button></div>
+              <input class="dd-input" maxlength="150" x-model="r.name" placeholder="পণ্যের নাম *"/>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div><label class="dd-label">দাম ৳ *</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.price"/></div>
+                <div><label class="dd-label">পুরনো দাম ৳</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.oldPrice"/></div>
+                <div><label class="dd-label">রিসেলার দাম ৳</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.resellerPrice"/></div>
+                <div><label class="dd-label">স্টক</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.stock"/></div>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <template x-for="(im,k) in r.images" :key="'im'+k+im"><div class="relative"><img :src="im" alt="" class="w-12 h-12 rounded-lg object-cover" onerror="this.style.visibility='hidden'"/><button type="button" @click="r.images.splice(k,1)" class="absolute flex items-center justify-center rounded-full text-white" style="top:-5px;right:-5px;width:18px;height:18px;font-size:10px;background:#DC2626;border:none;cursor:pointer">×</button></div></template>
+                <label class="btn-ghost text-xs" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i class="fa-solid fa-upload"></i><span x-text="r.up>0?('আপলোড '+r.up+'%'):'ছবি আপলোড'"></span><input type="file" accept="image/*" class="hidden" @change="iqUpload(r,$event)"/></label>
+                <input class="dd-input" style="max-width:210px" x-model="r.img" @keydown.enter.prevent="iqAddUrl(r)" placeholder="ছবির লিংক + Enter"/>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="btn-ghost text-xs" @click="iqAddRow(1)"><i class="fa-solid fa-plus"></i> সারি</button>
+          <button type="button" class="btn-ghost text-xs" @click="iqAddRow(5)"><i class="fa-solid fa-plus"></i> ৫টি সারি</button>
+          <button type="button" class="btn-primary text-xs ml-auto" @click="iqSave()" :disabled="iq.busy||!iq.cat||!iqValidRows.length"><i class="fa-solid fa-floppy-disk"></i> <span x-text="iq.busy?'সেভ হচ্ছে…':('সব সেভ করুন ('+iqValidRows.length+')')"></span></button>
+        </div>
+      </div>
+
+      <div class="dd-card p-4 space-y-3">
+        <div class="flex items-center justify-between gap-2 flex-wrap"><p class="font-bold text-sm">📦 ইন্টারন্যাশনাল পণ্য <span class="text-xs font-normal" style="color:var(--fg3)" x-text="iqPick?('— '+iqPick.name):'— সব ক্যাটাগরি'"></span></p><input class="dd-input" style="max-width:200px" x-model="iq.filter" placeholder="নাম দিয়ে খুঁজুন"/></div>
+        <p class="text-xs" x-show="!iqList.length" style="color:var(--fg3)">এখনও কোনো পণ্য নেই।</p>
+        <div class="space-y-2">
+          <template x-for="p in iqList" :key="p.fbKey">
+            <div class="flex items-center gap-2 p-2 rounded-xl" style="background:var(--bg2)">
+              <img :src="p.img||(p.images&&p.images[0])" alt="" class="w-12 h-12 rounded-lg object-cover flex-shrink-0" onerror="this.style.visibility='hidden'"/>
+              <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate" x-text="p.name"></p><p class="text-xs truncate" style="color:var(--fg3)" x-text="(p.intlSub?p.intlCat+' › '+p.intlSub:p.intlCat)"></p></div>
+              <input type="number" inputmode="numeric" class="dd-input" style="width:84px" :value="iq.ed[p.fbKey]&&iq.ed[p.fbKey].price!==undefined?iq.ed[p.fbKey].price:p.price" @input="iqEd(p,'price',$event.target.value)" title="দাম ৳"/>
+              <input type="number" inputmode="numeric" class="dd-input" style="width:84px" :value="iq.ed[p.fbKey]&&iq.ed[p.fbKey].resellerPrice!==undefined?iq.ed[p.fbKey].resellerPrice:(p.resellerPrice||0)" @input="iqEd(p,'resellerPrice',$event.target.value)" title="রিসেলার দাম ৳"/>
+              <button type="button" class="btn-primary text-xs" x-show="iq.ed[p.fbKey]" @click="iqSavePrice(p)"><i class="fa-solid fa-check"></i></button>
+              <button type="button" class="btn-danger text-xs" @click="deleteProd(p.fbKey)"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </template>
+        </div>
+        <p class="text-xs" style="color:var(--fg3)">বামের ঘর = বিক্রয় দাম, ডানের ঘর = রিসেলার দাম। বদলালে ✓ চাপুন। বিস্তারিত এডিট (সাইজ/বিবরণ) “পণ্য → প্রোডাক্ট লিস্ট” থেকে।</p>
+      </div>
+    </div>
+
     <!-- ── 3b. International delivery / countries ── -->
     <div x-show="activeTab==='sup_ship'" class="space-y-4">
       <div class="dd-card p-4">
@@ -2858,6 +2922,32 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       </div>
     </template>
     <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between gap-2"><p class="font-bold text-sm"><i class="fa-solid fa-circle-play mr-1" style="color:var(--accent)"></i> কাজের ভিডিও (রিসেলার হোমে দেখাবে)</p><label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="rcfg.workVideo.active"/> চালু</label></div>
+      <div><label class="dd-label">ইউটিউব ভিডিও লিংক *</label><div class="flex gap-1"><input class="dd-input" x-model="rcfg.workVideo.url" placeholder="https://youtu.be/xxxxxxxxxxx"/><button type="button" @click="openLink(rcfg.workVideo.url)" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button></div>
+        <p class="text-xs mt-1 font-bold" x-show="rcfg.workVideo.url" :style="wvYtId(rcfg.workVideo.url)?'color:#16A34A':'color:#DC2626'" x-text="wvYtId(rcfg.workVideo.url)?'✓ লিংক ঠিক আছে':'✗ সঠিক ইউটিউব ভিডিও লিংক দিন'"></p></div>
+      <div><label class="dd-label">থাম্বনেইল ছবি (খালি রাখলে ইউটিউবের নিজস্ব থাম্বনেইল দেখাবে)</label>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="rounded-xl overflow-hidden flex items-center justify-center" style="width:128px;height:72px;background:var(--bg2);border:1px solid var(--border)"><img x-show="rcfg.workVideo.thumb" :src="rcfg.workVideo.thumb" alt="" style="width:100%;height:100%;object-fit:cover"/><i x-show="!rcfg.workVideo.thumb" class="fa-regular fa-image" style="color:var(--fg3)"></i></div>
+          <div class="space-y-1.5"><label class="btn-ghost text-xs" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i class="fa-solid fa-upload"></i><span x-text="wvUp>0?('আপলোড হচ্ছে… '+wvUp+'%'):'থাম্বনেইল আপলোড'"></span><input type="file" accept="image/*" class="hidden" @change="uploadWorkVideoThumb($event)"/></label><button type="button" x-show="rcfg.workVideo.thumb" @click="rcfg.workVideo.thumb=''" class="btn-danger text-xs block">সরান</button></div>
+        </div>
+        <input class="dd-input mt-2" x-model="rcfg.workVideo.thumb" placeholder="অথবা ছবির লিংক বসান (https://...)"/></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label class="dd-label">শিরোনাম (খালি = আমাদের কাজ সম্পর্কে জানুন)</label><input class="dd-input" maxlength="120" x-model="rcfg.workVideo.title"/></div><div><label class="dd-label">ছোট লেখা (খালি = ডিফল্ট)</label><input class="dd-input" maxlength="160" x-model="rcfg.workVideo.sub" placeholder="কীভাবে কাজ করবেন — ভিডিওতে দেখুন"/></div></div>
+      <p class="text-xs" style="color:var(--fg3)">নোট: ইউটিউবে ভিডিওর "এম্বেড করার অনুমতি" চালু থাকতে হবে, নইলে সাইটের ভেতরে চলবে না। লিংক ও ছবি দিয়ে নিচের "সব সেভ করুন" চাপুন।</p>
+    </div>
+    <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between gap-2"><p class="font-bold text-sm"><i class="fa-solid fa-hourglass-half mr-1" style="color:var(--accent)"></i> পেন্ডিং পেজের ভিডিও (অ্যাকাউন্ট যাচাই চলাকালীন দেখাবে)</p><label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="rcfg.pendingVideo.active"/> চালু</label></div>
+      <div><label class="dd-label">ইউটিউব ভিডিও লিংক *</label><div class="flex gap-1"><input class="dd-input" x-model="rcfg.pendingVideo.url" placeholder="https://youtu.be/xxxxxxxxxxx"/><button type="button" @click="openLink(rcfg.pendingVideo.url)" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button></div>
+        <p class="text-xs mt-1 font-bold" x-show="rcfg.pendingVideo.url" :style="wvYtId(rcfg.pendingVideo.url)?'color:#16A34A':'color:#DC2626'" x-text="wvYtId(rcfg.pendingVideo.url)?'✓ লিংক ঠিক আছে':'✗ সঠিক ইউটিউব ভিডিও লিংক দিন'"></p></div>
+      <div><label class="dd-label">থাম্বনেইল ছবি (খালি রাখলে ইউটিউবের নিজস্ব থাম্বনেইল দেখাবে)</label>
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="rounded-xl overflow-hidden flex items-center justify-center" style="width:128px;height:72px;background:var(--bg2);border:1px solid var(--border)"><img x-show="rcfg.pendingVideo.thumb" :src="rcfg.pendingVideo.thumb" alt="" style="width:100%;height:100%;object-fit:cover"/><i x-show="!rcfg.pendingVideo.thumb" class="fa-regular fa-image" style="color:var(--fg3)"></i></div>
+          <div class="space-y-1.5"><label class="btn-ghost text-xs" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i class="fa-solid fa-upload"></i><span x-text="wvUp>0?('আপলোড হচ্ছে… '+wvUp+'%'):'থাম্বনেইল আপলোড'"></span><input type="file" accept="image/*" class="hidden" @change="uploadWorkVideoThumb($event,'pendingVideo')"/></label><button type="button" x-show="rcfg.pendingVideo.thumb" @click="rcfg.pendingVideo.thumb=''" class="btn-danger text-xs block">সরান</button></div>
+        </div>
+        <input class="dd-input mt-2" x-model="rcfg.pendingVideo.thumb" placeholder="অথবা ছবির লিংক বসান (https://...)"/></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label class="dd-label">শিরোনাম (খালি = একটু অপেক্ষা করুন — যাচাই চলছে)</label><input class="dd-input" maxlength="120" x-model="rcfg.pendingVideo.title"/></div><div><label class="dd-label">ছোট লেখা (খালি = অ্যাডমিন যাচাই করে চালু করে দেবেন…)</label><input class="dd-input" maxlength="160" x-model="rcfg.pendingVideo.sub" placeholder="অ্যাডমিন আপনার তথ্য যাচাই করছেন…"/></div></div>
+      <p class="text-xs" style="color:var(--fg3)">নোট: নতুন রিসেলারের আবেদন পর্যালোচনাধীন থাকাকালীন এই ভিডিও পেন্ডিং পেজের একদম ওপরে দেখাবে। ইউটিউবে ভিডিওর "এম্বেড করার অনুমতি" চালু থাকতে হবে, নইলে সাইটের ভেতরে চলবে না। লিংক ও ছবি দিয়ে নিচের "সব সেভ করুন" চাপুন।</p>
+    </div>
+    <div class="dd-card p-4 space-y-3">
       <div class="flex items-center justify-between"><p class="font-bold text-sm"><i class="fa-solid fa-video mr-1" style="color:var(--accent)"></i> লার্নিং ভিডিও</p><button @click="rcfg.learning.push({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new'})" class="btn-ghost text-xs">+ যোগ করুন</button></div>
       <template x-for="(v,i) in rcfg.learning" :key="i"><div class="space-y-2 pb-3" style="border-bottom:1px dashed var(--border)"><div class="flex gap-2"><input class="dd-input" x-model="v.title" placeholder="ভিডিওর নাম"/><input class="dd-input" x-model="v.url" placeholder="ইউটিউব ভিডিও/প্লেলিস্ট লিংক"/><button @click="openLink(v.url)" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button><button @click="rcfg.learning.splice(i,1)" class="btn-danger"><i class="fa-solid fa-trash-can"></i></button></div>
 <div class="grid grid-cols-2 md:grid-cols-5 gap-2 items-center"><input class="dd-input" x-model="v.cat" placeholder="ক্যাটাগরি"/><input type="number" class="dd-input" x-model.number="v.order" placeholder="ক্রম"/><select class="dd-input" x-model="v.openIn"><option value="new">বাইরে খুলবে</option><option value="app">অ্যাপের ভেতরে চলবে</option></select><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="v.active"/> চালু</label><label class="text-xs font-bold flex items-center gap-1"><input type="checkbox" x-model="v.isNew"/> "নতুন" ব্যাজ</label></div></div></template>
@@ -3888,7 +3978,9 @@ function Admin(){return{
   fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],fbHanger:[],hgSel:[],hgDirty:false,hgSearch:'',hgBusy:false,
   fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],adj:{kind:'reseller',q:'',cq:'',cres:[],sel:null,mode:'add',amount:'',note:'',busy:false,cbusy:false},fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
-  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
+  wvUp:0,
+  iq:{cat:'',rows:[],paste:'',mrp:0,busy:false,msg:'',filter:'',ed:{}},
+  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],workVideo:{active:false,url:'',thumb:'',title:'',sub:''},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:''},...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
   fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',
   ic:{countries:[],features:[],notice:'',saving:false,loaded:false},
@@ -4159,13 +4251,13 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     if(p[0]==='suppliers'&&p[2]==='test'){await this._dAd(p[1]).search(await window.$db.getSupplierCfg(p[1]),'phone',1);return{ok:true}}
     if(p[0]==='suppliers'&&p[2]==='search'){const id=p[1],c=await window.$db.getSupplierCfg(id);if(!c.enabled)throw new Error('এই সাপ্লায়ার Disabled আছে');
       const it=await this._dAd(id).search(c,u.searchParams.get('q')||'',1);return it.map(x=>{const b=this._dBDT(x,c);return{...x,costBDT:Math.round(b),...this.supPrice(b,c.markup||{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20})}})}
-    if(p[0]==='import'){const{supplierId:id,items,global:gm}=body,c=await window.$db.getSupplierCfg(id),done=[],failed=[],intl=!!(this.sup.list.find(s=>s.id===id)||{}).intl;
+    if(p[0]==='import'){const{supplierId:id,items,global:gm}=body,c=await window.$db.getSupplierCfg(id),done=[],failed=[],intl=!!(this.sup.list.find(s=>s.id===id)||{}).intl;let nid=this.nextProductId;
       for(const it of items){try{const d=it.manual||await this._dAd(id).detail(c,it.supplierProductId),o=it.overrides||{},b=Math.round(this._dBDT(d,c)),pr=this.supPrice(b,gm||c.markup||{}),imgs=o.images?.length?o.images:(d.images||[]);
         const rec={name:o.name||d.title,desc:o.desc??(d.description||''),images:imgs,img:imgs[0]||'',price:N(o.price)||pr.price,oldPrice:N(o.oldPrice)||pr.oldPrice,resellEnabled:true,resellerPrice:N(o.resellerPrice)||pr.resellerPrice,marketPrice:N(o.marketPrice)||pr.marketPrice,
           designSKU:o.sku||(id.toUpperCase()+'-'+d.supplierProductId),cat:o.category||o.intlCat||'',intl,intlCat:intl?(o.intlCat||''):'',intlSub:intl?(o.intlSub||''):'',tags:o.tags||[],sizes:o.sizes||(d.variants||[]).map(v=>v.name).filter(Boolean),colors:o.colors||[],stock:o.stock??(d.stock||100),
           shipping:o.shipping||c.shipping||{method:'Standard',cost:0},source:{supplierId:id,supplierProductId:d.supplierProductId,url:d.url||'',costPrice:b,currency:d.currency||'BDT',variants:d.variants||[],importedAt:Date.now()}};
         const dup=this.fbProducts.find(x=>x.source&&x.source.supplierId===id&&x.source.supplierProductId===d.supplierProductId);
-        const key=await window.$db.saveProduct(dup?rec:{...rec,createdAt:Date.now()},dup?dup.fbKey:undefined);done.push({key})}catch(e){failed.push({id:it.supplierProductId,error:e.message})}}
+        const key=await window.$db.saveProduct(dup?rec:{...rec,createdAt:Date.now(),timestamp:Date.now(),productId:nid++,active:true,updatedAt:new Date().toISOString()},dup?dup.fbKey:undefined);done.push({key})}catch(e){failed.push({id:it.supplierProductId,error:e.message})}}
       return{done,failed}}
     if(p[0]==='reprice'){let n=0;for(const x of this.fbProducts.filter(x=>x.source&&x.source.supplierId===body.supplierId)){await window.$db.saveProduct(this.supPrice(x.source.costPrice,body.markup),x.fbKey);n++}await window.$db.setSupplierCfg(body.supplierId,{markup:body.markup});return{updated:n}}
     if(p[0]==='orders'&&p[2]==='route'){return this.supSyncQueue(p[1],true)}
@@ -4256,6 +4348,45 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   async supReprice(id){if(!confirm('ইমপোর্টেড সব পণ্যের দাম বদলে যাবে। নিশ্চিত?'))return;
     try{const d=await this.supApi('/reprice',{method:'POST',body:JSON.stringify({supplierId:id,markup:this.sup.cfg[id].markup})});this.showToast(d.updated+'টি পণ্যের দাম আপডেট ✅')}catch(e){this.showToast(e.message,'error')}},
+  // ══ ইন্টারন্যাশনাল: দ্রুত (বাল্ক) পণ্য যোগ — API/সাপ্লায়ার ছাড়াই ══
+  iqNewRow(){return{id:Math.random().toString(36).slice(2),name:'',price:'',oldPrice:'',resellerPrice:'',stock:100,images:[],img:'',up:0}},
+  iqInit(){if(!this.iq.rows.length)this.iq.rows=[this.iqNewRow(),this.iqNewRow(),this.iqNewRow()]},
+  iqAddRow(n){for(let i=0;i<(n||1);i++)this.iq.rows.push(this.iqNewRow())},
+  iqDelRow(i){this.iq.rows.splice(i,1);if(!this.iq.rows.length)this.iqAddRow(1)},
+  iqParse(){
+    const lines=String(this.iq.paste||'').split('\n').map(x=>x.trim()).filter(Boolean);let n=0;
+    for(const ln of lines){const p=ln.split(/\s*[|\t]\s*/),name=(p[0]||'').trim(),price=Number(String(p[1]||'').replace(/[^\d.]/g,''))||'';if(!name)continue;
+      const r=this.iqNewRow();r.name=name.slice(0,150);r.price=price;r.images=(p[2]||'').split(/[\s,]+/).filter(u=>/^https?:\/\//i.test(u));n++;
+      const f=this.iq.rows.findIndex(x=>!String(x.name).trim()&&!x.price&&!x.images.length);if(f>=0)this.iq.rows.splice(f,1,r);else this.iq.rows.push(r)}
+    this.iq.paste='';this.iq.msg=n?(n+'টি সারি যোগ হয়েছে — নিচে দাম/ছবি দেখে সেভ করুন'):'কিছু পাওয়া যায়নি (ফরম্যাট: নাম | দাম | ছবির লিংক)';
+  },
+  async iqUpload(r,e){const f=e.target.files&&e.target.files[0];if(!f)return;r.up=1;
+    try{const url=await this._uploadImg(f,'intlProducts',p=>{r.up=Math.max(1,Number(p)||1)});r.images.push(url)}catch(err){this.showToast((err&&err.message)||'আপলোড ব্যর্থ','error')}
+    r.up=0;try{e.target.value=''}catch(x){}},
+  iqAddUrl(r){const u=String(r.img||'').trim();if(!/^https?:\/\//i.test(u))return this.showToast('সঠিক ছবির লিংক দিন (https://...)','error');r.images.push(u);r.img=''},
+  get iqPick(){return this.sup.intlCats.find(c=>c.fbKey===this.iq.cat)||null},
+  get iqValidRows(){return this.iq.rows.filter(r=>String(r.name||'').trim()&&Number(r.price)>0)},
+  async iqSave(){
+    const pick=this.iqPick;if(!pick)return this.showToast('আগে ক্যাটাগরি বেছে নিন','error');
+    const rows=this.iqValidRows;if(!rows.length)return this.showToast('কমপক্ষে একটি পণ্যের নাম ও দাম দিন','error');
+    if(this.iq.rows.some(r=>r.up>0))return this.showToast('ছবি আপলোড শেষ হওয়া পর্যন্ত অপেক্ষা করুন','error');
+    const top=pick.parent?this.sup.intlCats.find(c=>c.fbKey===pick.parent):null,iCat=top?top.name:pick.name,iSub=top?pick.name:'';
+    this.iq.busy=true;let nid=this.nextProductId,ok=0,bad=0;const now=Date.now();
+    for(const r of rows){try{
+      const price=Math.round(Number(r.price)),mrp=Number(this.iq.mrp)||0,old=Number(r.oldPrice)>price?Math.round(Number(r.oldPrice)):(mrp>0?Math.round(price*(1+mrp/100)):0),rp=Number(r.resellerPrice)>0?Math.min(Math.round(Number(r.resellerPrice)),price):0,imgs=r.images.slice(0,10);
+      await window.$db.saveProduct({name:String(r.name).trim().slice(0,150),price,oldPrice:old,cat:iCat,intl:true,intlCat:iCat,intlSub:iSub,images:imgs,img:imgs[0]||'',desc:'',sizes:[],colors:[],tags:[],stock:Number(r.stock)>=0?Math.floor(Number(r.stock)):100,resellEnabled:rp>0,resellerPrice:rp,marketPrice:rp>0?price:0,gender:'both',active:true,productId:nid,timestamp:now+ok,createdAt:now+ok,updatedAt:new Date().toISOString()});
+      nid++;ok++;r._done=true}catch(e){bad++}}
+    this.iq.rows=this.iq.rows.filter(r=>!r._done);this.iqInit();this.iq.busy=false;
+    this.showToast(ok+'টি পণ্য যোগ হয়েছে ✅'+(bad?(' · '+bad+'টি ব্যর্থ'):''),bad?'error':'success');
+  },
+  get iqList(){const pk=this.iqPick;let L=this.fbProducts.filter(p=>p.intl);
+    if(pk){const names=new Set([pk.name,...this.sup.intlCats.filter(c=>c.parent===pk.fbKey).map(c=>c.name)]);L=L.filter(p=>names.has(p.intlCat)||names.has(p.intlSub))}
+    const q=String(this.iq.filter||'').trim().toLowerCase();if(q)L=L.filter(p=>String(p.name||'').toLowerCase().includes(q));
+    return L.slice().sort((a,b)=>(Number(b.timestamp)||0)-(Number(a.timestamp)||0)).slice(0,100)},
+  iqEd(p,k,v){this.iq.ed[p.fbKey]={...(this.iq.ed[p.fbKey]||{}),[k]:v}},
+  async iqSavePrice(p){const e=this.iq.ed[p.fbKey]||{},price=e.price!==undefined?Math.round(Number(e.price)):Number(p.price),rp=e.resellerPrice!==undefined?Math.round(Number(e.resellerPrice)||0):(Number(p.resellerPrice)||0);
+    if(!(price>0))return this.showToast('সঠিক দাম দিন','error');
+    try{await window.$db.saveProduct({price,resellerPrice:Math.min(rp,price),resellEnabled:rp>0,updatedAt:new Date().toISOString()},p.fbKey);delete this.iq.ed[p.fbKey];this.iq.ed={...this.iq.ed};this.showToast('দাম আপডেট ✅','success')}catch(err){this.showToast('আপডেট ব্যর্থ','error')}},
   supIsIntl(){return !!(this.sup.list.find(s=>s.id===this.sup.cur)||{}).intl},
   supCatReset(){this.sup.catForm={name:'',emoji:'',img:'',order:99,parent:'',editKey:null,pct:0}},
   supEditCat(c){this.sup.catForm={name:c.name||'',emoji:c.emoji||'',img:c.img||'',order:c.order??99,parent:c.parent||'',editKey:c.fbKey,pct:0};window.scrollTo({top:0,behavior:'smooth'})},
@@ -5807,7 +5938,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const features={...def.features,...(c.features||{})};
     const withdraw={...def.withdraw,...(c.withdraw||{})};withdraw.methods=arr(withdraw.methods);withdraw.methodsText=withdraw.methods.join(', ');
     const deposit={...def.deposit,...(c.deposit||{})};deposit.methods=arr(deposit.methods).map(m=>({name:'',number:'',type:'',...m}));
-    this.rcfg={...d,...c,pages,learning:arr(c.learning).map(v=>({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new',...v})),faq:arr(c.faq),buttons:arr(c.buttons).map(b=>({...b})),builtinOverrides:ov,contact,announce,features,withdraw,deposit,referral:{...def.referral,...(c.referral||{})}};
+    this.rcfg={...d,...c,pages,learning:arr(c.learning).map(v=>({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new',...v})),faq:arr(c.faq),workVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.workVideo||{})},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.pendingVideo||{})},buttons:arr(c.buttons).map(b=>({...b})),builtinOverrides:ov,contact,announce,features,withdraw,deposit,referral:{...def.referral,...(c.referral||{})}};
     window.__popSig=this._popSig(announce.popup);window.__popUpd=Number(announce.popup.updatedAt)||0;
   },
   addHelpline(){this.rcfg.contact.helplines.push({label:'',number:'',whatsapp:'',active:true})},
@@ -5830,6 +5961,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     Object.keys(c.pages||{}).forEach(k=>fix(c.pages[k],'btnLink','পেজ '+k+' বাটন লিংক'));
     (c.learning||[]).forEach((v,i)=>fix(v,'url','ভিডিও #'+(i+1)+' লিংক'));
     (c.buttons||[]).forEach((b,i)=>{if(b.type==='link')fix(b,'target','বাটন "'+(b.label||i+1)+'" লিংক');else if(b.type==='whatsapp'||b.type==='tel')b.target=String(b.target||'').replace(/[^\d+]/g,'')});
+    [['workVideo','কাজের ভিডিও'],['pendingVideo','পেন্ডিং পেজের ভিডিও']].forEach(([k,lb])=>{const w=c[k];if(!w)return;w.url=String(w.url||'').trim();w.title=String(w.title||'').trim().slice(0,120);w.sub=String(w.sub||'').trim().slice(0,160);fix(w,'thumb',lb+'র থাম্বনেইল');fix(w,'url',lb+' লিংক');if(w.url&&!this.wvYtId(w.url))bad.push(lb+' (সঠিক ইউটিউব ভিডিও লিংক দিন)');if(w.active&&!w.url)bad.push(lb+' (চালু করতে লিংক দিন)')});
     if(bad.length)return 'লিংক সঠিক/নিরাপদ নয়: '+bad.slice(0,3).join(', ');
     // মডেল পরিষ্কার
     c.buttons=(c.buttons||[]).filter(b=>b&&b.label).slice(0,50).map(b=>({...b,order:Number(b.order)||0}));
@@ -5846,6 +5978,15 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     c.deposit.min=Number(c.deposit.min)||0;c.deposit.methods=(c.deposit.methods||[]).filter(m=>m&&m.name&&m.number).map(m=>({name:m.name,number:String(m.number),type:m.type||''}));
     (c.learning||[]).forEach(v=>{v.order=Number(v.order)||0});
     return '';
+  },
+  // ══ কাজের ভিডিও ══
+  wvYtId(u){u=String(u||'').trim();let m;if((m=u.match(/youtu\.be\/([\w-]{11})/))||(m=u.match(/[?&]v=([\w-]{11})/))||(m=u.match(/youtube(?:-nocookie)?\.com\/(?:shorts|embed|live|v)\/([\w-]{11})/)))return m[1];return ''},
+  async uploadWorkVideoThumb(e,k){k=k||'workVideo';
+    const file=e.target.files&&e.target.files[0];if(!file)return;
+    this.wvUp=1;
+    try{const url=await this._uploadImg(file,'resell',p=>{this.wvUp=Math.max(1,Number(p)||1)});this.rcfg[k].thumb=url;this.showToast('থাম্বনেইল আপলোড হয়েছে — "সব সেভ করুন" চাপুন','success')}
+    catch(err){this.showToast((err&&err.message)||'আপলোড ব্যর্থ','error')}
+    this.wvUp=0;try{e.target.value=''}catch(x){}
   },
   async saveRcfg(){
     try{
