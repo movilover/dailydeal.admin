@@ -2934,7 +2934,31 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label class="dd-label">শিরোনাম (খালি = আমাদের কাজ সম্পর্কে জানুন)</label><input class="dd-input" maxlength="120" x-model="rcfg.workVideo.title"/></div><div><label class="dd-label">ছোট লেখা (খালি = ডিফল্ট)</label><input class="dd-input" maxlength="160" x-model="rcfg.workVideo.sub" placeholder="কীভাবে কাজ করবেন — ভিডিওতে দেখুন"/></div></div>
       <p class="text-xs" style="color:var(--fg3)">নোট: ইউটিউবে ভিডিওর "এম্বেড করার অনুমতি" চালু থাকতে হবে, নইলে সাইটের ভেতরে চলবে না। লিংক ও ছবি দিয়ে নিচের "সব সেভ করুন" চাপুন।</p>
     </div>
-    <div class="dd-card p-4 space-y-3">
+        <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center justify-between gap-2"><p class="font-bold text-sm"><i class="fa-solid fa-bullhorn mr-1" style="color:var(--accent)"></i> মার্কেটিং ভিডিও (কাজের ভিডিও পেজে ২টা করে পাশাপাশি দেখাবে)</p><button type="button" class="btn-primary text-xs" @click="mkAdd()"><i class="fa-solid fa-plus"></i> ভিডিও যোগ</button></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label class="dd-label">সেকশনের নাম (খালি = আপনার মার্কেটিং কীভাবে করবেন)</label><input class="dd-input" maxlength="80" x-model="rcfg.marketing.title"/></div><div><label class="dd-label">ছোট লেখা (খালি = ডিফল্ট)</label><input class="dd-input" maxlength="120" x-model="rcfg.marketing.sub" placeholder="মার্কেটিংয়ের ভিডিওগুলো দেখে শিখে নিন"/></div></div>
+      <p class="text-xs" x-show="!rcfg.marketing.items.length" style="color:var(--fg3)">এখনও কোনো ভিডিও নেই — “ভিডিও যোগ” চাপুন। যত খুশি যোগ করা যাবে।</p>
+      <div class="space-y-3">
+        <template x-for="(v,i) in rcfg.marketing.items" :key="i">
+          <div class="rounded-xl p-3 space-y-2" style="background:var(--bg2);border:1px solid var(--border)">
+            <div class="flex items-center gap-2">
+              <div style="width:64px"><label class="dd-label">ক্রম</label><input type="number" class="dd-input" x-model.number="v.order"/></div>
+              <div class="flex-1 min-w-0"><label class="dd-label">শিরোনাম (যেমন: ১. ফেসবুক মার্কেটিং)</label><input class="dd-input" maxlength="80" x-model="v.title"/></div>
+              <label class="flex items-center gap-1 text-xs font-bold" style="margin-top:18px"><input type="checkbox" x-model="v.active"/> চালু</label>
+              <button type="button" class="btn-danger text-xs" style="margin-top:18px" @click="mkDel(i)" title="মুছুন"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            <div><label class="dd-label">ইউটিউব লিংক *</label><input class="dd-input" x-model="v.url" placeholder="https://youtu.be/xxxxxxxxxxx"/><p class="text-xs mt-1 font-bold" x-show="v.url" :style="wvYtId(v.url)?'color:#16A34A':'color:#DC2626'" x-text="wvYtId(v.url)?'✓ লিংক ঠিক আছে':'✗ সঠিক ইউটিউব ভিডিও লিংক দিন'"></p></div>
+            <div class="flex items-center gap-3 flex-wrap">
+              <div class="rounded-lg overflow-hidden flex items-center justify-center" style="width:96px;height:54px;background:var(--card);border:1px solid var(--border)"><img x-show="v.thumb" :src="v.thumb" alt="" style="width:100%;height:100%;object-fit:cover"/><i x-show="!v.thumb" class="fa-regular fa-image" style="color:var(--fg3)"></i></div>
+              <label class="btn-ghost text-xs" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px"><i class="fa-solid fa-upload"></i><span x-text="v._up>0?('আপলোড '+v._up+'%'):'থাম্বনেইল আপলোড'"></span><input type="file" accept="image/*" class="hidden" @change="mkUpload(v,$event)"/></label>
+              <input class="dd-input" style="max-width:240px" x-model="v.thumb" placeholder="অথবা ছবির লিংক (খালি = ইউটিউবের)"/>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p class="text-xs" style="color:var(--fg3)">ক্রম অনুযায়ী ১, ২, ৩… সাজানো হবে। সব দিয়ে নিচের “সব সেভ করুন” চাপুন।</p>
+    </div>
+<div class="dd-card p-4 space-y-3">
       <div class="flex items-center justify-between gap-2"><p class="font-bold text-sm"><i class="fa-solid fa-hourglass-half mr-1" style="color:var(--accent)"></i> পেন্ডিং পেজের ভিডিও (অ্যাকাউন্ট যাচাই চলাকালীন দেখাবে)</p><label class="flex items-center gap-2 text-xs font-bold"><input type="checkbox" x-model="rcfg.pendingVideo.active"/> চালু</label></div>
       <div><label class="dd-label">ইউটিউব ভিডিও লিংক *</label><div class="flex gap-1"><input class="dd-input" x-model="rcfg.pendingVideo.url" placeholder="https://youtu.be/xxxxxxxxxxx"/><button type="button" @click="openLink(rcfg.pendingVideo.url)" class="btn-ghost" title="খুলে দেখুন"><i class="fa-solid fa-arrow-up-right-from-square"></i></button></div>
         <p class="text-xs mt-1 font-bold" x-show="rcfg.pendingVideo.url" :style="wvYtId(rcfg.pendingVideo.url)?'color:#16A34A':'color:#DC2626'" x-text="wvYtId(rcfg.pendingVideo.url)?'✓ লিংক ঠিক আছে':'✗ সঠিক ইউটিউব ভিডিও লিংক দিন'"></p></div>
@@ -3980,7 +4004,7 @@ function Admin(){return{
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   wvUp:0,
   iq:{cat:'',rows:[],paste:'',mrp:0,busy:false,msg:'',filter:'',ed:{}},
-  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],workVideo:{active:false,url:'',thumb:'',title:'',sub:''},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:''},...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
+  rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],workVideo:{active:false,url:'',thumb:'',title:'',sub:''},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:''},marketing:{title:'',sub:'',items:[]},...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
   fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',
   ic:{countries:[],features:[],notice:'',saving:false,loaded:false},
@@ -5938,7 +5962,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     const features={...def.features,...(c.features||{})};
     const withdraw={...def.withdraw,...(c.withdraw||{})};withdraw.methods=arr(withdraw.methods);withdraw.methodsText=withdraw.methods.join(', ');
     const deposit={...def.deposit,...(c.deposit||{})};deposit.methods=arr(deposit.methods).map(m=>({name:'',number:'',type:'',...m}));
-    this.rcfg={...d,...c,pages,learning:arr(c.learning).map(v=>({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new',...v})),faq:arr(c.faq),workVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.workVideo||{})},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.pendingVideo||{})},buttons:arr(c.buttons).map(b=>({...b})),builtinOverrides:ov,contact,announce,features,withdraw,deposit,referral:{...def.referral,...(c.referral||{})}};
+    this.rcfg={...d,...c,pages,learning:arr(c.learning).map(v=>({title:'',url:'',cat:'',order:0,active:true,isNew:false,openIn:'new',...v})),faq:arr(c.faq),workVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.workVideo||{})},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:'',...(c.pendingVideo||{})},marketing:{title:'',sub:'',...(c.marketing||{}),items:arr((c.marketing||{}).items).map(v=>({...v}))},buttons:arr(c.buttons).map(b=>({...b})),builtinOverrides:ov,contact,announce,features,withdraw,deposit,referral:{...def.referral,...(c.referral||{})}};
     window.__popSig=this._popSig(announce.popup);window.__popUpd=Number(announce.popup.updatedAt)||0;
   },
   addHelpline(){this.rcfg.contact.helplines.push({label:'',number:'',whatsapp:'',active:true})},
@@ -5962,6 +5986,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     (c.learning||[]).forEach((v,i)=>fix(v,'url','ভিডিও #'+(i+1)+' লিংক'));
     (c.buttons||[]).forEach((b,i)=>{if(b.type==='link')fix(b,'target','বাটন "'+(b.label||i+1)+'" লিংক');else if(b.type==='whatsapp'||b.type==='tel')b.target=String(b.target||'').replace(/[^\d+]/g,'')});
     [['workVideo','কাজের ভিডিও'],['pendingVideo','পেন্ডিং পেজের ভিডিও']].forEach(([k,lb])=>{const w=c[k];if(!w)return;w.url=String(w.url||'').trim();w.title=String(w.title||'').trim().slice(0,120);w.sub=String(w.sub||'').trim().slice(0,160);fix(w,'thumb',lb+'র থাম্বনেইল');fix(w,'url',lb+' লিংক');if(w.url&&!this.wvYtId(w.url))bad.push(lb+' (সঠিক ইউটিউব ভিডিও লিংক দিন)');if(w.active&&!w.url)bad.push(lb+' (চালু করতে লিংক দিন)')});
+    if(c.marketing){const m=c.marketing;m.title=String(m.title||'').trim().slice(0,80);m.sub=String(m.sub||'').trim().slice(0,120);m.items=(Array.isArray(m.items)?m.items:[]).filter(v=>v&&(String(v.url||'').trim()||String(v.title||'').trim())).map(v=>{delete v._up;v.order=Number(v.order)||0;v.active=v.active!==false;v.title=String(v.title||'').trim().slice(0,80);v.url=String(v.url||'').trim();fix(v,'thumb','মার্কেটিং ভিডিওর থাম্বনেইল');fix(v,'url','মার্কেটিং ভিডিও লিংক');if(v.url&&!this.wvYtId(v.url))bad.push('মার্কেটিং ভিডিও (সঠিক ইউটিউব লিংক দিন)');if(!v.url)bad.push('মার্কেটিং ভিডিও (লিংক খালি)');return v})}
     if(bad.length)return 'লিংক সঠিক/নিরাপদ নয়: '+bad.slice(0,3).join(', ');
     // মডেল পরিষ্কার
     c.buttons=(c.buttons||[]).filter(b=>b&&b.label).slice(0,50).map(b=>({...b,order:Number(b.order)||0}));
@@ -5981,6 +6006,11 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   // ══ কাজের ভিডিও ══
   wvYtId(u){u=String(u||'').trim();let m;if((m=u.match(/youtu\.be\/([\w-]{11})/))||(m=u.match(/[?&]v=([\w-]{11})/))||(m=u.match(/youtube(?:-nocookie)?\.com\/(?:shorts|embed|live|v)\/([\w-]{11})/)))return m[1];return ''},
+  mkAdd(){this.rcfg.marketing.items.push({title:'',url:'',thumb:'',order:this.rcfg.marketing.items.length+1,active:true,_up:0})},
+  mkDel(i){this.rcfg.marketing.items.splice(i,1)},
+  async mkUpload(v,e){const f=e.target.files&&e.target.files[0];if(!f)return;v._up=1;
+    try{const url=await this._uploadImg(f,'resell',p=>{v._up=Math.max(1,Number(p)||1)});v.thumb=url;this.showToast('থাম্বনেইল আপলোড হয়েছে — "সব সেভ করুন" চাপুন','success')}catch(err){this.showToast((err&&err.message)||'আপলোড ব্যর্থ','error')}
+    v._up=0;try{e.target.value=''}catch(x){}},
   async uploadWorkVideoThumb(e,k){k=k||'workVideo';
     const file=e.target.files&&e.target.files[0];if(!file)return;
     this.wvUp=1;
