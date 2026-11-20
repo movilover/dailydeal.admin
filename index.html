@@ -139,8 +139,9 @@ const _ok=r=>!!(r&&r.active!==false&&r.perms&&Object.keys(r.perms).some(k=>r.per
 onAuthStateChanged(auth,async u=>{
   const my=++_seq;
   if(_unsub){try{_unsub()}catch(e){}_unsub=null}
-  if(!u){window.$staff=null;_show(false);_chg();return}
-  if(u.email===ADMIN_EMAIL){window.$staff=null;_show(true);_chg();return}
+  if(!u){window.$staff=null;window.$owner=false;_show(false);_chg();return}
+  if(u.email===ADMIN_EMAIL){window.$staff=null;window.$owner=true;_show(true);_chg();return}
+  window.$owner=false;
   /* অ্যাডমিন নয় — স্টাফ রেকর্ড (staff/<uid>) আছে ও চালু থাকলে ঢুকতে দেওয়া হয়, নইলে আগের মতোই বের করে দেওয়া হয় */
   let rec=null;try{rec=(await get(ref(db,'staff/'+u.uid))).val()}catch(e){}
   if(my!==_seq)return;
@@ -501,6 +502,9 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
 </style>
 <script>(function(){function sync(){var a=document.querySelector('aside.sidebar');document.documentElement.classList.toggle('sb-lock',!!(a&&a.classList.contains('open')&&window.innerWidth<=768))}
 ['click','touchend','keyup'].forEach(function(e){document.addEventListener(e,function(){setTimeout(sync,60)},true)});window.addEventListener('resize',sync)})();</script>
+<script>/* Render backend. Set renderUrl ONCE (e.g. 'https://your-app.onrender.com'); empty = integration disabled, site behaves exactly as before. */
+window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};</script>
+<script defer src="assets/security/site-security.js"></script>
 </head>
 <body :class="'theme-'+activeTheme" class="theme-light">
 
@@ -1261,6 +1265,250 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   </div>
   <!-- ══ DASHBOARD ══ -->
   <!-- ═══ SUPPLIER API INTEGRATION ═══ -->
+<!-- ═══════════ Dropshipping Management (CJ) — talks ONLY to the Render backend ═══════════ -->
+<div x-show="String(activeTab).startsWith('cj_')" x-cloak x-data="cjMgr()" x-init="$watch('activeTab',t=>onTab(t));onTab(activeTab)" class="animate-fade-in space-y-4">
+
+  <!-- 1. API Connections -->
+  <div x-show="activeTab==='cj_api'" class="space-y-4">
+    <div class="dd-card p-4 space-y-3">
+      <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" :style="'background:'+dot.c"></span><b class="text-sm" x-text="dot.t"></b></div>
+      <div><label class="dd-label">Render backend URL</label>
+        <input class="dd-input" x-model.trim="api" @change="saveApi()" placeholder="https://your-app.onrender.com"/></div>
+      <p class="text-xs" style="color:var(--fg3)">CJ API key, Firebase service account and allowed origins are stored only in Render → Environment. Nothing secret is kept in this page.</p>
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-primary text-xs" @click="checkStatus()" :disabled="busy"><i class="fa-solid fa-rotate"></i> Check status</button>
+        <button class="btn-primary text-xs" @click="testConn()" :disabled="busy"><i class="fa-solid fa-plug-circle-check"></i> Test CJ connection</button>
+        <button class="btn-primary text-xs" @click="syncCats()" :disabled="busy"><i class="fa-solid fa-sitemap"></i> Sync categories</button>
+      </div>
+      <template x-if="st"><div class="text-xs space-y-1" style="color:var(--fg2)">
+        <p>CJ key configured: <b x-text="st.keyConfigured?'yes':'NO — set CJ_API_KEY on Render'"></b></p>
+        <p>Access token cached: <b x-text="st.tokenCached?'yes (expires '+new Date(st.tokenExpiresAt).toLocaleDateString()+')':'no'"></b></p>
+        <p>CJ calls since server start: <b x-text="st.calls"></b> <span x-show="st.lastError" class="text-red-600">· last error: <span x-text="st.lastError"></span></span></p></div></template>
+      <p class="text-xs text-red-600" x-text="stErr"></p>
+    </div>
+  </div>
+
+  <!-- 2. CJ Product Categories -->
+  <div x-show="activeTab==='cj_cats'" class="space-y-3">
+    <div class="dd-card p-3 flex flex-wrap gap-2 items-center">
+      <input class="dd-input flex-1" style="min-width:160px" x-model="catQ" placeholder="Search categories…"/>
+      <button class="btn-primary text-xs" @click="syncCats()" :disabled="busy"><i class="fa-solid fa-sitemap"></i> Sync from CJ</button>
+      <span class="text-xs" style="color:var(--fg3)" x-text="cats.list.length+' categories'+(cats.at?' · synced '+new Date(cats.at).toLocaleString():'')"></span>
+    </div>
+    <div x-show="!cats.list.length&&!busy" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">No categories yet. Connect CJ in “API Connections”, then press <b>Sync from CJ</b>.</div>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <template x-for="c in topCats()" :key="c.id">
+        <div class="dd-card p-3">
+          <button class="w-full flex items-center justify-between text-left" @click="openCat[c.id]=!openCat[c.id]">
+            <b class="text-sm" x-text="c.name"></b><span class="text-xs" style="color:var(--fg3)"><span x-text="leafCount(c.id)"></span> sub <i class="fa-solid" :class="openCat[c.id]?'fa-chevron-up':'fa-chevron-down'"></i></span></button>
+          <div x-show="openCat[c.id]||catQ" class="mt-2 space-y-2">
+            <template x-for="s in kids(c.id)" :key="s.id"><div>
+              <p class="text-xs font-bold" style="color:var(--fg2)" x-text="s.name"></p>
+              <template x-for="l in kids(s.id)" :key="l.id">
+                <div class="flex items-center gap-2 py-1 border-t" style="border-color:var(--border,#eee)" x-show="!catQ||l.name.toLowerCase().includes(catQ.toLowerCase())||s.name.toLowerCase().includes(catQ.toLowerCase())||c.name.toLowerCase().includes(catQ.toLowerCase())">
+                  <img x-show="l.image" :src="l.image" class="w-8 h-8 rounded object-cover" loading="lazy" alt=""/>
+                  <span class="text-xs flex-1" x-text="l.name"></span>
+                  <span class="text-xs" style="color:var(--fg3)" x-text="counts[l.id]!=null?counts[l.id]+' items':''"></span>
+                  <button class="btn-ghost text-xs" @click="countCat(l.id)" title="Count products">#</button>
+                  <button class="btn-primary text-xs" @click="browse(l.id)">Browse</button>
+                </div></template></div></template>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div class="dd-card p-3" x-show="cats.list.length">
+      <p class="font-bold text-sm mb-2">Map CJ category → website category</p>
+      <p class="text-xs mb-2" style="color:var(--fg3)">Mapped products import straight into the chosen website (international) category. CJ categories stay separate from yours.</p>
+      <div class="flex flex-wrap gap-2 items-center">
+        <select class="dd-input" style="max-width:260px" x-model="mapCat"><option value="">CJ category…</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
+        <select class="dd-input" style="max-width:260px" x-model="mapTo"><option value="">Website category…</option><template x-for="c in sup.intlCats" :key="c.fbKey"><option :value="c.fbKey" x-text="intlLabel(c)"></option></template></select>
+        <button class="btn-primary text-xs" @click="saveMap()" :disabled="!mapCat||!mapTo||busy">Save mapping</button>
+      </div>
+      <div class="mt-2 text-xs space-y-1"><template x-for="(m,id) in (settings&&settings.categoryMap)||{}" :key="id"><p><b x-text="nameOf(id)"></b> → <span x-text="m.intlCat+(m.intlSub?' › '+m.intlSub:'')"></span></p></template></div>
+    </div>
+  </div>
+
+  <!-- 3. All Supplier Products -->
+  <div x-show="activeTab==='cj_products'" class="space-y-3">
+    <div class="dd-card p-3 grid gap-2 sm:grid-cols-6">
+      <input class="dd-input sm:col-span-2" x-model="f.q" @keydown.enter="load(1)" placeholder="Search product name"/>
+      <select class="dd-input sm:col-span-2" x-model="f.cat" @change="load(1)"><option value="">All categories</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
+      <input class="dd-input" type="number" min="0" x-model="f.min" placeholder="Min $"/><input class="dd-input" type="number" min="0" x-model="f.max" placeholder="Max $"/>
+      <label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="f.stock"/> In stock only</label>
+      <button class="btn-primary text-xs sm:col-span-2" @click="load(1)" :disabled="loading"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+      <p class="text-xs sm:col-span-3" style="color:var(--fg3)" x-show="fx">1 USD = <b x-text="fx&&fx.rate.toFixed(2)"></b> (<span x-text="fx&&fx.source"></span>)</p>
+    </div>
+    <p class="text-xs text-red-600" x-text="err"></p>
+    <div x-show="loading" class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> Loading from CJ…</div>
+    <div x-show="!loading&&!items.length&&!err" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">No products. Pick a category or search by name.</div>
+    <div class="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+      <template x-for="p in items" :key="p.pid">
+        <div class="dd-card overflow-hidden flex flex-col" :class="sel[p.pid]?'ring-2':''">
+          <div class="relative"><img :src="p.image" class="w-full aspect-square object-cover" loading="lazy" alt="" @error="$el.style.visibility='hidden'"/>
+            <label class="absolute top-2 left-2 bg-white/90 rounded px-1.5 py-1"><input type="checkbox" :checked="!!sel[p.pid]" :disabled="p.imported" @change="toggle(p)"/></label>
+            <span class="absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded-full" :style="p.imported?'background:#16A34A;color:#fff':(p.warehouseInventory===0?'background:#B91C1C;color:#fff':'background:#fff;color:#111')" x-text="p.imported?'Imported':(p.warehouseInventory==null?'Stock ?':(p.warehouseInventory>0?'In stock':'Out'))"></span></div>
+          <div class="p-2 flex-1 flex flex-col gap-1">
+            <p class="text-xs font-bold line-clamp-2" x-text="p.name"></p>
+            <p class="text-xs" style="color:var(--fg3)">Supplier: <b x-text="'$'+p.priceMin+(p.priceMax>p.priceMin?'–$'+p.priceMax:'')"></b></p>
+            <p class="text-xs">Sell: <b x-text="'৳'+p.pricing.price.toLocaleString()"></b> <span style="color:var(--fg3)" x-text="'(+৳'+p.pricing.profit+' · '+p.pricing.ruleSource+')'"></span></p>
+            <p class="text-xs" style="color:var(--fg3)" x-text="'SKU '+p.sku"></p>
+            <div class="mt-auto flex gap-1 pt-1"><button class="btn-ghost text-xs flex-1" @click="openDetail(p.pid)">Details</button><button class="btn-primary text-xs flex-1" :disabled="p.imported" @click="quickImport(p)">Import</button></div>
+          </div></div></template>
+    </div>
+    <div class="flex items-center justify-center gap-3" x-show="total>size">
+      <button class="btn-ghost text-xs" :disabled="page<=1||loading" @click="load(page-1)">‹ Prev</button>
+      <span class="text-xs" x-text="'Page '+page+' / '+Math.ceil(total/size)+' · '+total.toLocaleString()+' products'"></span>
+      <button class="btn-ghost text-xs" :disabled="page>=Math.ceil(total/size)||loading" @click="load(page+1)">Next ›</button></div>
+    <div class="fixed bottom-3 left-1/2 -translate-x-1/2 z-40" x-show="selCount()>0"><button class="btn-primary text-xs shadow-lg" @click="goTab('cj_bulk')"><i class="fa-solid fa-boxes-packing"></i> Bulk import (<span x-text="selCount()"></span> selected)</button></div>
+  </div>
+
+  <!-- 5. Bulk Import -->
+  <div x-show="activeTab==='cj_bulk'" class="space-y-3">
+    <div class="dd-card p-4 space-y-3">
+      <p class="font-bold text-sm">Step 2 · Pricing &amp; delivery for <span x-text="selCount()"></span> selected product(s)</p>
+      <div class="grid gap-2 sm:grid-cols-4">
+        <select class="dd-input sm:col-span-2" x-model="imp.intlKey"><option value="">Website category (or use CJ mapping)</option><template x-for="c in sup.intlCats" :key="c.fbKey"><option :value="c.fbKey" x-text="intlLabel(c)"></option></template></select>
+        <select class="dd-input" x-model="imp.publish"><option :value="false">Import as Draft</option><option :value="true">Import &amp; Publish</option></select>
+        <select class="dd-input" x-model="imp.delivery"><option value="default">Delivery: site default</option><option value="fixed">Fixed fee</option><option value="free">Free delivery</option><option value="confirm">Confirm via WhatsApp</option></select>
+        <input class="dd-input" type="number" min="0" x-show="imp.delivery==='fixed'" x-model.number="imp.fee" placeholder="Fixed fee ৳"/>
+        <select class="dd-input" x-model="imp.rule.mode"><option value="">Profit: use rules</option><option value="percent">Override: %</option><option value="fixed">Override: fixed ৳</option></select>
+        <input class="dd-input" type="number" min="0" x-show="imp.rule.mode" x-model.number="imp.rule.value" placeholder="Profit value"/>
+        <button class="btn-ghost text-xs" x-show="imp.rule.mode" @click="bulkRule()" :disabled="busy">Save as rule for these products</button>
+      </div>
+      <div class="flex flex-wrap gap-2"><button class="btn-primary text-xs" @click="runImport(Object.keys(sel))" :disabled="imp.busy||!selCount()"><i class="fa-solid fa-download"></i> Step 3 · Import <span x-text="selCount()"></span></button>
+        <button class="btn-ghost text-xs" @click="sel={}" :disabled="!selCount()">Clear selection</button></div>
+    </div>
+    <div x-show="!selCount()" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">Nothing selected. Tick products in “All Supplier Products” first.</div>
+    <div class="dd-card divide-y" x-show="selCount()"><template x-for="s in Object.values(sel)" :key="s.pid"><div class="flex items-center gap-2 p-2"><img :src="s.image" class="w-10 h-10 rounded object-cover" alt=""/><span class="text-xs flex-1" x-text="s.name"></span><span class="text-xs" x-text="'$'+s.priceMin"></span><button class="btn-ghost text-xs" @click="delete sel[s.pid];sel={...sel}">✕</button></div></template></div>
+    <div class="dd-card p-3 text-xs space-y-1" x-show="imp.res"><p>✅ Imported: <b x-text="imp.res&&imp.res.done.length"></b> · ⏭ Skipped (duplicates): <b x-text="imp.res&&imp.res.skipped.length"></b> · ❌ Failed: <b x-text="imp.res&&imp.res.failed.length"></b></p>
+      <template x-for="r in (imp.res?imp.res.skipped:[])" :key="r.pid"><p style="color:var(--fg3)" x-text="r.pid+' — '+r.reason"></p></template>
+      <template x-for="r in (imp.res?imp.res.failed:[])" :key="r.pid"><p class="text-red-600" x-text="r.pid+' — '+r.error"></p></template></div>
+  </div>
+
+  <!-- 4. Imported Products -->
+  <div x-show="activeTab==='cj_imported'" class="space-y-3">
+    <div class="dd-card p-3 flex items-center gap-2"><input class="dd-input flex-1" x-model="impQ" placeholder="Search imported products"/><span class="text-xs" x-text="importedList().length+' products'"></span></div>
+    <div class="dd-card divide-y">
+      <template x-for="p in importedList()" :key="p.fbKey">
+        <div class="p-3 space-y-2">
+          <div class="flex items-center gap-2"><img :src="p.img" class="w-12 h-12 rounded object-cover" alt=""/>
+            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate" x-text="p.name"></p>
+              <p class="text-xs" style="color:var(--fg3)"><b x-text="'৳'+p.price"></b> · cost $<span x-text="p.pricing&&p.pricing.costUsd"></span> · profit ৳<span x-text="p.pricing&&p.pricing.profit"></span> · stock <span x-text="p.stock"></span><span x-show="p.stockKnown===false" title="CJ stock was not available at import"> (est.)</span></p>
+              <p class="text-xs"><span class="px-1.5 rounded" :style="p.active?'background:#DCFCE7;color:#166534':'background:#F3F4F6;color:#374151'" x-text="p.active?'Published':'Draft'"></span>
+                <span class="px-1.5 rounded ml-1" style="background:#FEF3C7;color:#92400E" x-show="p.pricing&&p.price!==p.pricing.finalPrice">custom price (protected from sync)</span>
+                <span class="px-1.5 rounded ml-1" style="background:#DBEAFE;color:#1E40AF" x-text="'delivery: '+((p.delivery&&p.delivery.mode)||'default')"></span></p></div></div>
+          <div class="flex flex-wrap gap-2 items-center">
+            <button class="btn-ghost text-xs" @click="prodSearch=p.name;goTab('products')">Edit in Product Management</button>
+            <button class="btn-ghost text-xs" @click="setActive(p,!p.active)" x-text="p.active?'Unpublish':'Publish'"></button>
+            <select class="dd-input text-xs" style="width:auto" @change="setDelivery(p,$event.target.value);$event.target.value=''"><option value="">Delivery…</option><option value="default">Site default</option><option value="fixed">Fixed fee</option><option value="free">Free</option><option value="confirm">Confirm via WhatsApp</option></select>
+            <input class="dd-input text-xs" style="width:90px" type="number" min="0" :id="'rp'+p.fbKey" placeholder="profit"/><select class="dd-input text-xs" style="width:auto" :id="'rm'+p.fbKey"><option value="percent">%</option><option value="fixed">৳</option></select>
+            <button class="btn-ghost text-xs" @click="reprice(p)">Re-price</button>
+            <button class="btn-ghost text-xs text-red-600" @click="removeProd(p)">Remove</button></div>
+        </div></template>
+      <div x-show="!importedList().length" class="p-6 text-center text-sm" style="color:var(--fg3)">No CJ products imported yet.</div>
+    </div>
+  </div>
+
+  <!-- 6. Profit & Pricing -->
+  <div x-show="activeTab==='cj_pricing'&&settings" class="space-y-3">
+    <template x-if="settings"><div class="space-y-3">
+      <div class="dd-card p-4 space-y-3"><p class="font-bold text-sm">Global default profit <span class="text-xs font-normal" style="color:var(--fg3)">(priority: product → category → global)</span></p>
+        <div class="grid gap-2 sm:grid-cols-4">
+          <div><label class="dd-label">Type</label><select class="dd-input" x-model="settings.pricing.global.mode"><option value="percent">Percentage of supplier price</option><option value="fixed">Fixed amount (৳)</option></select></div>
+          <div><label class="dd-label">Value</label><input class="dd-input" type="number" min="0" x-model.number="settings.pricing.global.value"/></div>
+          <div><label class="dd-label">Extra expenses (fixed ৳)</label><input class="dd-input" type="number" min="0" x-model.number="settings.pricing.extraFixed"/></div>
+          <div><label class="dd-label">Extra expenses (%)</label><input class="dd-input" type="number" min="0" x-model.number="settings.pricing.extraPct"/></div>
+          <div><label class="dd-label">Rounding</label><select class="dd-input" x-model="settings.pricing.rounding"><option value="integer">Whole number</option><option value="none">2 decimals</option><option value="nearest5">Nearest 5</option><option value="nearest10">Nearest 10</option></select></div>
+          <div><label class="dd-label">Strike-through price (+%)</label><input class="dd-input" type="number" min="0" x-model.number="settings.pricing.compareAtPct"/></div>
+          <label class="text-xs font-bold flex items-center gap-2 sm:col-span-2"><input type="checkbox" x-model="settings.pricing.includeShipping"/> Include CJ shipping cost in selling price (when known)</label></div>
+        <p class="text-xs" style="color:var(--fg3)">Example: $10 supplier + 30% → $13 · $10 + fixed $5 → $15 (converted to ৳ at the rate below).</p></div>
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm">Currency conversion (USD → site currency)</p>
+        <div class="grid gap-2 sm:grid-cols-4"><select class="dd-input" x-model="settings.fx.mode"><option value="auto">Automatic (open.er-api.com)</option><option value="manual">Manual rate</option></select>
+          <input class="dd-input" type="number" min="0" step="0.01" x-model.number="settings.fx.manualRate" placeholder="Manual rate (fallback)"/><input class="dd-input" x-model="settings.fx.currency" maxlength="5"/>
+          <p class="text-xs self-center" x-show="fx">Now: <b x-text="fx&&fx.rate.toFixed(2)"></b> (<span x-text="fx&&fx.source"></span>)</p></div></div>
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm">Category profit rules</p>
+        <div class="flex flex-wrap gap-2"><select class="dd-input" style="max-width:280px" x-model="newRule.id"><option value="">CJ category…</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
+          <select class="dd-input" style="width:auto" x-model="newRule.mode"><option value="percent">%</option><option value="fixed">৳ fixed</option></select><input class="dd-input" style="width:100px" type="number" min="0" x-model.number="newRule.value"/>
+          <button class="btn-primary text-xs" @click="addCatRule()" :disabled="!newRule.id">Add rule</button></div>
+        <template x-for="(r,id) in rules.categories" :key="id"><div class="flex items-center gap-2 text-xs"><b class="flex-1" x-text="nameOf(id)"></b><span x-text="r.value+(r.mode==='percent'?'%':' ৳')"></span><button class="btn-ghost text-xs" @click="delRule('categories',id)">Remove</button></div></template></div>
+      <div class="dd-card p-4 space-y-1"><p class="font-bold text-sm">Individual product rules</p>
+        <template x-for="(r,id) in rules.products" :key="id"><div class="flex items-center gap-2 text-xs"><span class="flex-1" x-text="id"></span><span x-text="r.value+(r.mode==='percent'?'%':' ৳')"></span><button class="btn-ghost text-xs" @click="delRule('products',id)">Remove</button></div></template>
+        <p class="text-xs" style="color:var(--fg3)" x-show="!Object.keys(rules.products).length">None. Set them from “Bulk Import” (select products → override → save as rule).</p></div>
+      <button class="btn-primary text-xs" @click="saveSettings(['pricing','fx'])" :disabled="busy"><i class="fa-solid fa-floppy-disk"></i> Save pricing settings</button>
+    </div></template>
+  </div>
+
+  <!-- 7. Delivery Charge Settings -->
+  <div x-show="activeTab==='cj_delivery'&&settings" class="space-y-3">
+    <template x-if="settings"><div class="space-y-3">
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm"><i class="fa-brands fa-whatsapp"></i> Option B · WhatsApp delivery-charge confirmation</p>
+        <label class="dd-label">Official WhatsApp business number (country code, digits only)</label>
+        <input class="dd-input" x-model="settings.delivery.whatsapp" placeholder="8801XXXXXXXXX"/>
+        <p class="text-xs" style="color:var(--fg3)">Products set to “Confirm via WhatsApp” show “Delivery: To Be Confirmed”, customers send an order request (saved as <code>deliveryRequests</code>) and a pre-filled WhatsApp message — nobody pays an unknown charge.</p></div>
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm">Option A · Fixed charge by category</p>
+        <p class="text-xs" style="color:var(--fg3)">Per-country / per-region charges already live in your existing “International Delivery” tab and are reused at checkout. Here you set overrides for a whole CJ category. Per-product overrides are on “Imported Products”.</p>
+        <div class="flex flex-wrap gap-2"><select class="dd-input" style="max-width:280px" x-model="newDel.id"><option value="">CJ category…</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
+          <select class="dd-input" style="width:auto" x-model="newDel.mode"><option value="fixed">Fixed</option><option value="free">Free</option><option value="confirm">Confirm via WhatsApp</option></select>
+          <input class="dd-input" style="width:100px" type="number" min="0" x-show="newDel.mode==='fixed'" x-model.number="newDel.fee" placeholder="৳"/>
+          <button class="btn-primary text-xs" @click="settings.delivery.byCategory[newDel.id]={mode:newDel.mode,fee:newDel.fee||0}" :disabled="!newDel.id">Add</button></div>
+        <template x-for="(r,id) in settings.delivery.byCategory" :key="id"><div class="flex items-center gap-2 text-xs"><b class="flex-1" x-text="nameOf(id)"></b><span x-text="r.mode+(r.mode==='fixed'?' ৳'+r.fee:'')"></span><button class="btn-ghost text-xs" @click="delete settings.delivery.byCategory[id]">Remove</button></div></template></div>
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm">CJ shipping-rate lookup</p>
+        <div class="flex flex-wrap gap-2"><input class="dd-input" style="width:200px" x-model.trim="detShip.vid" placeholder="Variant ID (vid)"/><input class="dd-input" style="width:90px" maxlength="2" x-model.trim="detShip.country" placeholder="AE"/>
+          <button class="btn-primary text-xs" @click="estimate()" :disabled="detShip.busy">Get rates</button></div>
+        <template x-for="o in (detShip.opts||[])" :key="o.name"><p class="text-xs"><b x-text="o.name"></b> — $<span x-text="o.priceUsd"></span> <span style="color:var(--fg3)" x-text="o.aging?('· '+o.aging+' days'):''"></span></p></template></div>
+      <div class="dd-card p-4 space-y-2"><p class="font-bold text-sm">Delivery-quote requests from customers <button class="btn-ghost text-xs" @click="loadReqs()">↻</button></p>
+        <template x-for="r in reqs" :key="r.ref"><div class="text-xs py-2 border-t space-y-1">
+          <div class="flex flex-wrap items-center gap-2"><b x-text="r.ref"></b><span x-text="r.name+' · '+r.phone"></span><span style="color:var(--fg3)" x-text="new Date(r.createdAt).toLocaleString()"></span>
+            <select class="dd-input text-xs" style="width:auto" :value="r.status" @change="setReq(r,$event.target.value)"><option value="awaiting_delivery_quote">Awaiting quote</option><option value="quoted">Quoted</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option></select>
+            <a class="btn-ghost text-xs" :href="'https://wa.me/'+String(r.phone).replace(/\D/g,'')" target="_blank" rel="noopener noreferrer">WhatsApp customer</a></div>
+          <p style="color:var(--fg2)" x-text="r.location+' — '+r.address"></p>
+          <p style="color:var(--fg3)" x-text="(r.items||[]).map(i=>i.name+' ×'+i.qty).join(', ')"></p></div></template>
+        <p class="text-xs" style="color:var(--fg3)" x-show="!reqs.length">No requests yet.</p></div>
+      <button class="btn-primary text-xs" @click="saveSettings(['delivery'])" :disabled="busy"><i class="fa-solid fa-floppy-disk"></i> Save delivery settings</button>
+    </div></template>
+  </div>
+
+  <!-- 8. Synchronization -->
+  <div x-show="activeTab==='cj_sync'&&settings" class="space-y-3">
+    <template x-if="settings"><div class="space-y-3">
+      <div class="dd-card p-4 space-y-2"><label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="settings.sync.autoStock"/> Update stock automatically</label>
+        <label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="settings.sync.autoPrice"/> Apply supplier price changes automatically (only to products whose price you never customised)</label>
+        <p class="text-xs" style="color:var(--fg3)">Custom prices are never overwritten silently; they wait here for your approval. Free Render instances sleep, so run scheduled syncs by calling <code>POST /cron/sync</code> (header <code>x-cron-secret</code>) from an external cron.</p>
+        <div class="flex gap-2"><button class="btn-primary text-xs" @click="saveSettings(['sync'])" :disabled="busy">Save</button><button class="btn-primary text-xs" @click="runSync()" :disabled="busy"><i class="fa-solid fa-rotate"></i> Run sync now</button></div>
+        <p class="text-xs" x-show="sync.last" x-text="sync.last?('Last run '+new Date(sync.last.at).toLocaleString()+' · checked '+sync.last.checked+' · stock updated '+sync.last.stockUpdated+' · prices applied '+sync.last.priceApplied):''"></p></div>
+      <div class="dd-card p-4"><p class="font-bold text-sm mb-2">Price changes awaiting review</p>
+        <template x-for="(e,k) in sync.pending" :key="k"><div class="flex flex-wrap items-center gap-2 text-xs py-1 border-t"><span class="flex-1 min-w-[160px]" x-text="e.name"></span><span x-text="'$'+e.oldCost+' → $'+e.newCost"></span><span x-text="'now ৳'+e.currentPrice+' → ৳'+e.suggestedPrice"></span>
+          <span class="px-1.5 rounded" style="background:#FEF3C7;color:#92400E" x-show="e.custom">custom price</span>
+          <button class="btn-primary text-xs" @click="applySync(k,true)">Apply new price</button><button class="btn-ghost text-xs" @click="applySync(k,false)">Keep my price</button></div></template>
+        <p class="text-xs" style="color:var(--fg3)" x-show="!Object.keys(sync.pending).length">Nothing pending.</p></div>
+      <div class="dd-card p-4"><p class="font-bold text-sm mb-2">Availability alerts</p>
+        <template x-for="(a,k) in sync.alerts" :key="k"><div class="flex items-center gap-2 text-xs py-1 border-t"><span class="flex-1" x-text="a.name"></span><b class="text-red-600" x-text="a.type.replace('_',' ')"></b><button class="btn-ghost text-xs" @click="dismiss(k)">Dismiss</button></div></template>
+        <p class="text-xs" style="color:var(--fg3)" x-show="!Object.keys(sync.alerts).length">No alerts.</p></div>
+    </div></template>
+  </div>
+
+  <!-- 9. Import History -->
+  <div x-show="activeTab==='cj_history'" class="dd-card overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-left" style="color:var(--fg3)"><th class="p-2">When</th><th>Type</th><th>Product / info</th><th>Price</th><th>By</th></tr></thead>
+    <tbody><template x-for="h in hist" :key="h.key"><tr class="border-t"><td class="p-2 whitespace-nowrap" x-text="new Date(h.at).toLocaleString()"></td><td x-text="h.type"></td><td x-text="h.name||h.error||(h.count!=null?h.count+' items':'')||h.pid||''"></td><td x-text="h.price?'৳'+h.price:''"></td><td x-text="h.by||''"></td></tr></template></tbody></table>
+    <p class="p-6 text-center text-sm" style="color:var(--fg3)" x-show="!hist.length">No history yet.</p></div>
+
+  <!-- Product detail modal -->
+  <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2" style="background:rgba(0,0,0,.55)" x-show="det||detBusy" x-cloak @click.self="det=null;detBusy=false">
+    <div class="dd-card w-full max-w-3xl max-h-[92vh] overflow-y-auto p-4 space-y-3">
+      <div x-show="detBusy" class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>
+      <template x-if="det"><div class="space-y-3">
+        <div class="flex justify-between gap-2"><p class="font-bold text-sm" x-text="det.product.name"></p><button class="btn-ghost text-xs" @click="det=null">✕</button></div>
+        <div class="flex gap-2 overflow-x-auto"><template x-for="im in det.product.images" :key="im"><img :src="im" class="h-28 rounded" loading="lazy" alt=""/></template></div>
+        <p class="text-xs">Supplier <b x-text="'$'+det.product.priceMin+(det.product.priceMax>det.product.priceMin?'–$'+det.product.priceMax:'')"></b> · Sell <b x-text="'৳'+det.pricing.price"></b> (profit ৳<span x-text="det.pricing.profit"></span>, <span x-text="det.pricing.ruleSource"></span> rule) · SKU <span x-text="det.product.sku"></span> · stock <b x-text="det.stockKnown?det.stockTotal:'unknown'"></b></p>
+        <div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-left" style="color:var(--fg3)"><th>Variant</th><th>SKU</th><th>Cost</th><th>Stock</th><th></th></tr></thead><tbody>
+          <template x-for="v in det.product.variants" :key="v.vid"><tr class="border-t"><td x-text="v.name"></td><td x-text="v.sku"></td><td x-text="'$'+v.cost"></td><td x-text="v.stock==null?'?':v.stock"></td><td><button class="btn-ghost text-xs" @click="detShip.vid=v.vid;estimate()">Shipping</button></td></tr></template></tbody></table></div>
+        <div class="flex flex-wrap gap-2 items-center"><input class="dd-input" style="width:80px" maxlength="2" x-model.trim="detShip.country" placeholder="AE"/><span class="text-xs" x-show="detShip.busy">…</span>
+          <template x-for="o in (detShip.opts||[])" :key="o.name"><span class="text-xs px-2 py-1 rounded" style="background:var(--accentL,#eee)" x-text="o.name+' $'+o.priceUsd+(o.aging?' · '+o.aging+'d':'')"></span></template></div>
+        <details class="text-xs"><summary class="cursor-pointer font-bold">Description</summary><div class="mt-1" style="color:var(--fg2)" x-html="safeDesc(det.product.description)"></div></details>
+        <div class="flex flex-wrap gap-2"><button class="btn-primary text-xs" @click="toggle({pid:det.product.pid,name:det.product.name,image:det.product.images[0],priceMin:det.product.priceMin});det=null">Add to bulk selection</button><button class="btn-primary text-xs" @click="quickImport({pid:det.product.pid});det=null">Import this product</button></div>
+      </div></template></div></div>
+</div>
+
   <div x-show="['sup_keys','sup_import','sup_intl','sup_ship','sup_orders'].includes(activeTab)" x-cloak class="animate-fade-in space-y-4">
 
     <!-- ── 1. API Credentials ── -->
@@ -1273,8 +1521,9 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
         </div>
         <button class="btn-primary text-xs mt-3" @click="supLoad()"><i class="fa-solid fa-rotate"></i> সাপ্লায়ার লোড করুন</button>
       </div>
+      <div class="dd-card p-4"><p class="font-bold text-sm">📦 CJdropshipping</p><p class="text-xs mt-1" style="color:var(--fg3)">CJ এখন শুধু Render ব্যাকএন্ডের মাধ্যমে চলে (API কী Render Environment-এ থাকে, ব্রাউজারে নয়)। সেটআপ: <b>Dropshipping Management → API Connections</b>।</p></div>
       <template x-for="s in sup.list" :key="s.id">
-        <div class="dd-card p-4" x-show="sup.cfg[s.id]">
+        <div class="dd-card p-4" x-show="sup.cfg[s.id]&&s.id!=='cj'">
           <div class="flex items-center justify-between mb-3">
             <div><p class="font-bold text-sm" x-text="s.icon+' '+s.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="s.type"></p></div>
             <label class="flex items-center gap-2 text-xs font-bold cursor-pointer"><input type="checkbox" x-model="sup.cfg[s.id].enabled"/> <span x-text="sup.cfg[s.id].enabled?'Enabled':'Disabled'"></span></label>
@@ -3990,7 +4239,6 @@ html.sb-lock,html.sb-lock body{overflow:hidden!important;height:100%!important}
   </div>
 </div>
 <script>
-const ADMIN_PASS='153781';
 const DD_INTL_DEFAULT_COUNTRIES=[{"code":"AE","name":"সংযুক্ত আরব আমিরাত (দুবাই)","en":"UAE","flag":"🇦🇪","fee":1800,"days":"৭–১২ দিন","phone":"971","regions":["দুবাই","আবুধাবি","শারজাহ","আজমান","রাস আল খাইমাহ","ফুজাইরাহ","উম্মুল কুওয়াইন","আল আইন"],"active":true,"order":10},{"code":"SA","name":"সৌদি আরব","en":"Saudi Arabia","flag":"🇸🇦","fee":1800,"days":"৭–১৪ দিন","phone":"966","regions":["রিয়াদ","জেদ্দা","মক্কা","মদিনা","দাম্মাম","আল খোবার","জুবাইল","তাবুক","আবহা","হাইল"],"active":true,"order":20},{"code":"QA","name":"কাতার","en":"Qatar","flag":"🇶🇦","fee":1900,"days":"৭–১২ দিন","phone":"974","regions":["দোহা","আল ওয়াকরাহ","আল খোর","আল রাইয়ান","উম্ম সালাল","মেসাইদ"],"active":true,"order":30},{"code":"KW","name":"কুয়েত","en":"Kuwait","flag":"🇰🇼","fee":1900,"days":"৭–১২ দিন","phone":"965","regions":["কুয়েত সিটি","হাওয়ালি","ফারওয়ানিয়া","আহমাদি","জাহরা","সালমিয়া"],"active":true,"order":40},{"code":"OM","name":"ওমান","en":"Oman","flag":"🇴🇲","fee":1900,"days":"৭–১৪ দিন","phone":"968","regions":["মাস্কাট","সালালাহ","সোহার","নিজওয়া","সুর"],"active":true,"order":50},{"code":"BH","name":"বাহরাইন","en":"Bahrain","flag":"🇧🇭","fee":1900,"days":"৭–১২ দিন","phone":"973","regions":["মানামা","মুহাররাক","রিফা","ইসা টাউন"],"active":true,"order":60},{"code":"MY","name":"মালয়েশিয়া","en":"Malaysia","flag":"🇲🇾","fee":2200,"days":"৭–১২ দিন","phone":"60","regions":["কুয়ালালামপুর","সেলাঙ্গর","পেনাং","জোহর বাহরু","মালাক্কা","ইপো"],"active":true,"order":70},{"code":"SG","name":"সিঙ্গাপুর","en":"Singapore","flag":"🇸🇬","fee":2400,"days":"৬–১০ দিন","phone":"65","regions":["সেন্ট্রাল","জুরং","টাম্পাইনস","উডল্যান্ডস","গেইলাং"],"active":true,"order":80},{"code":"US","name":"যুক্তরাষ্ট্র (আমেরিকা)","en":"USA","flag":"🇺🇸","fee":3800,"days":"১০–২০ দিন","phone":"1","regions":["নিউ ইয়র্ক","নিউ জার্সি","ক্যালিফোর্নিয়া","টেক্সাস","ফ্লোরিডা","মিশিগান","ইলিনয়","জর্জিয়া","ভার্জিনিয়া"],"active":true,"order":90},{"code":"GB","name":"যুক্তরাজ্য (ইউকে)","en":"United Kingdom","flag":"🇬🇧","fee":3500,"days":"১০–১৮ দিন","phone":"44","regions":["লন্ডন","বার্মিংহাম","ম্যানচেস্টার","ওল্ডহ্যাম","ব্র্যাডফোর্ড","লিডস","লুটন","কার্ডিফ"],"active":true,"order":100},{"code":"IT","name":"ইতালি","en":"Italy","flag":"🇮🇹","fee":3500,"days":"১০–১৮ দিন","phone":"39","regions":["রোম","মিলান","নেপলস","ফ্লোরেন্স","ভেনিস","তুরিন","ব্রেশিয়া"],"active":true,"order":110},{"code":"CA","name":"কানাডা","en":"Canada","flag":"🇨🇦","fee":3800,"days":"১০–২০ দিন","phone":"1","regions":["টরন্টো","মন্ট্রিয়ল","ভ্যাঙ্কুভার","ক্যালগারি","অটোয়া","উইনিপেগ"],"active":true,"order":120},{"code":"AU","name":"অস্ট্রেলিয়া","en":"Australia","flag":"🇦🇺","fee":3800,"days":"১০–২০ দিন","phone":"61","regions":["সিডনি","মেলবোর্ন","ব্রিসবেন","পার্থ","অ্যাডিলেড","ক্যানবেরা"],"active":true,"order":130},{"code":"JP","name":"জাপান","en":"Japan","flag":"🇯🇵","fee":2800,"days":"৭–১২ দিন","phone":"81","regions":["টোকিও","ওসাকা","ইয়োকোহামা","নাগোয়া","ফুকুওকা"],"active":true,"order":140},{"code":"KR","name":"দক্ষিণ কোরিয়া","en":"South Korea","flag":"🇰🇷","fee":2800,"days":"৭–১২ দিন","phone":"82","regions":["সিউল","বুসান","ইনচন","দাইগু"],"active":true,"order":150},{"code":"MV","name":"মালদ্বীপ","en":"Maldives","flag":"🇲🇻","fee":1800,"days":"৭–১২ দিন","phone":"960","regions":["মালে","হুলহুমালে","আড্ডু"],"active":true,"order":160},{"code":"DE","name":"জার্মানি","en":"Germany","flag":"🇩🇪","fee":3500,"days":"১০–১৮ দিন","phone":"49","regions":["বার্লিন","মিউনিখ","ফ্রাঙ্কফুর্ট","হামবুর্গ"],"active":true,"order":170},{"code":"FR","name":"ফ্রান্স","en":"France","flag":"🇫🇷","fee":3500,"days":"১০–১৮ দিন","phone":"33","regions":["প্যারিস","লিয়ঁ","মার্সেই"],"active":true,"order":180},{"code":"BN","name":"ব্রুনেই","en":"Brunei","flag":"🇧🇳","fee":2400,"days":"৮–১৪ দিন","phone":"673","regions":["বন্দর শ্রী বেগাওয়ান","কুয়ালা বেলাইত"],"active":true,"order":190}];
 const DD_INTL_DEFAULT_FEATS=[{"icon":"fa-plane-departure","title":"এয়ার এক্সপ্রেস","text":"দ্রুত আন্তর্জাতিক ডেলিভারি"},{"icon":"fa-ship","title":"সি-কার্গো","text":"বড়/ভারী পণ্যে সাশ্রয়ী"},{"icon":"fa-door-open","title":"ডোর ডেলিভারি","text":"প্রাপকের ঠিকানায় পৌঁছে দেওয়া"},{"icon":"fa-location-crosshairs","title":"ট্র্যাকিং","text":"অর্ডার আইডি দিয়ে ট্র্যাক করুন"},{"icon":"fa-shield-halved","title":"নিরাপদ পেমেন্ট","text":"bKash/Nagad প্রি-পেমেন্ট"},{"icon":"fa-headset","title":"সাপোর্ট","text":"সমস্যায় সাপোর্ট পাবেন"}];
 function Admin(){return{
@@ -4075,7 +4323,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'delivery',icon:'fa-solid fa-truck-fast',label:'ডেলিভারি'},
   ],
 
-  tabLabels:{subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
+  tabLabels:{cj_api:'API Connections',cj_cats:'CJ Product Categories',cj_products:'All Supplier Products',cj_imported:'Imported Products',cj_bulk:'Bulk Import',cj_pricing:'Profit & Pricing Settings',cj_delivery:'Delivery Charge Settings',cj_sync:'Product Synchronization',cj_history:'Import History',subs:'প্রোডাক্ট অ্যাপ্রুভাল',mysubs:'আমার জমা দেওয়া পণ্য',team:'স্টাফ ও অ্যাক্সেস',reslinks:'রিসেলার লিংক',blocklist:'ফ্রড ও ব্লকলিস্ট',sup_keys:'API কী',sup_import:'পণ্য ইমপোর্ট',sup_intl:'ইন্টারন্যাশনাল ক্যাটাগরি',sup_ship:'ইন্টারন্যাশনাল ডেলিভারি',sup_orders:'সাপ্লায়ার অর্ডার',
     dashboard:'ড্যাশবোর্ড',upload:'পণ্য আপলোড',products:'সব পণ্য',categories:'ক্যাটাগরি',sections:'সেকশন',
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appcfg:'অ্যান্ড্রয়েড অ্যাপ',signupguard:'অ্যাকাউন্ট লিমিট (আইপি/ডিভাইস)',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
@@ -4186,12 +4434,13 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'orders',label:'অর্ডার',ic:'fa-receipt',tabs:['orders','delivered','cancelled','history','reshist','blocklist']},
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
+    {id:'dropship',label:'Dropshipping Management',ic:'fa-boxes-packing',tabs:['cj_api', 'cj_cats', 'cj_products', 'cj_imported', 'cj_bulk', 'cj_pricing', 'cj_delivery', 'cj_sync', 'cj_history']},
     {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance','appcfg','signupguard']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{appcfg:'fa-mobile-screen-button',signupguard:'fa-shield-halved',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{cj_api:'fa-plug',cj_cats:'fa-sitemap',cj_products:'fa-store',cj_imported:'fa-box-open',cj_bulk:'fa-boxes-packing',cj_pricing:'fa-percent',cj_delivery:'fa-truck-fast',cj_sync:'fa-rotate',cj_history:'fa-clock-rotate-left',appcfg:'fa-mobile-screen-button',signupguard:'fa-shield-halved',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -4257,7 +4506,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     this.showToast(ok+'টি পণ্যে রিসেলিং চালু ✅'+(bad?' ('+bad+'টি ব্যর্থ)':''),bad?'error':'success');
   },
   get productsMissingResell(){return (this.fbProducts||[]).filter(p=>!p.resellEnabled)},
-  goTab(t){if(!this.canTab(t))return;if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
+  goTab(t){if(!this.canTab(t))return;if(t==='reslinks')this._tick();this.activeTab=t;if(String(t).startsWith('sup_')||String(t).startsWith('cj_'))this.supInit();this.sidebarOpen=false;if(t==='upload'&&!this.up.editKey)this.resetUp()},
   /* ═══ Supplier API module ═══ */
   supInit(){
     if(this._supInit)return;this._supInit=true;
@@ -4300,10 +4549,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
         return(gp(j,'aliexpress_ds_text_search_response.data.products.selection_search_product')||[]).map(x=>({supplierProductId:String(x.itemId),title:x.title,images:[x.itemMainPic&&(x.itemMainPic.startsWith('//')?'https:'+x.itemMainPic:x.itemMainPic)].filter(Boolean),cost:N(x.targetSalePrice||x.salePrice),currency:'USD',url:x.itemUrl||''}))},
       async detail(c,pid){const j=await this.call(c,'aliexpress.ds.product.get',{product_id:pid,ship_to_country:'BD',target_currency:'USD',target_language:'EN'});const d=gp(j,'aliexpress_ds_product_get_response.result')||{},b=d.ae_item_base_info_dto||{},sk=gp(d,'ae_item_sku_info_dtos.ae_item_sku_info_d_t_o')||[];
         return{supplierProductId:String(pid),title:b.subject,description:b.detail||'',images:String(gp(d,'ae_multimedia_info_dto.image_urls')||'').split(';').filter(Boolean),cost:N(sk[0]&&(sk[0].offer_sale_price||sk[0].sku_price)),currency:'USD',variants:sk.map(s=>({skuId:s.sku_id,name:s.sku_attr,cost:N(s.offer_sale_price||s.sku_price)})),url:'https://www.aliexpress.com/item/'+pid+'.html'}}};
-    const cj={b:c=>c.baseUrl||'https://developers.cjdropshipping.com/api2.0/v1',async tok(c){const j=await jf(this.b(c)+'/authentication/getAccessToken',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:c.email,password:c.apiKey})});if(!j.result)throw new Error(j.message||'CJ auth failed');return j.data.accessToken},
-      async req(c,p){const j=await jf(this.b(c)+p,{headers:{'CJ-Access-Token':await this.tok(c)}});if(j.result===false)throw new Error(j.message);return j.data},
-      async search(c,q,pg=1){const d=await this.req(c,'/product/list?productNameEn='+encodeURIComponent(q)+'&pageNum='+pg+'&pageSize=20');return(d.list||[]).map(x=>({supplierProductId:x.pid,title:x.productNameEn,images:[x.productImage],cost:N(String(x.sellPrice).split('--')[0]),currency:'USD',url:'https://cjdropshipping.com/product/'+x.pid}))},
-      async detail(c,pid){const d=await this.req(c,'/product/query?pid='+pid);return{supplierProductId:pid,title:d.productNameEn,description:d.description||'',images:[].concat(d.productImage||[],d.productImageSet||[]),cost:N(String(d.sellPrice).split('--')[0]),currency:'USD',variants:(d.variants||[]).map(v=>({skuId:v.vid,name:v.variantNameEn,cost:N(v.variantSellPrice)})),url:'https://cjdropshipping.com/product/'+pid}}};
+    const cj={async search(){throw new Error('CJ: Dropshipping Management ব্যবহার করুন (ব্রাউজার থেকে সরাসরি CJ কল বন্ধ)')},async detail(){throw new Error('CJ: Dropshipping Management ব্যবহার করুন')}};
     const gen={async req(c,ep,q){const g=c.generic||{},e=(g.endpoints||{})[ep];if(!e)throw new Error('"'+ep+'" endpoint কনফিগার করা নেই');const[m,pa]=e.split(' '),url=new URL((c.baseUrl||'').replace(/\/$/,'')+pa.replace(/\{(\w+)\}/g,(_,k)=>encodeURIComponent((q||{})[k]||'')));if(m==='GET'){Object.entries(q||{}).forEach(([k,v])=>url.searchParams.set((g.queryNames||{})[k]||k,v));Object.entries((g.extra||{})[ep]||{}).forEach(([k,v])=>url.searchParams.set(k,v));if(g.keyParam)url.searchParams.set(g.keyParam,c.apiKey||c.accessToken||'')}
         return jf(url,{method:m,headers:g.keyParam?{}:{[g.authHeader||'Authorization']:(g.authPrefix??'Bearer ')+(c.accessToken||c.apiKey)}})},
       norm(c,x){const m=(c.generic||{}).map||{},pk=(k,d)=>gp(x,m[k]||d);return{supplierProductId:String(pk('id','id')),title:pk('title','name'),description:pk('description','description')||'',images:[].concat(pk('images','images')||pk('image','image')||[]),cost:N(pk('cost','price')),currency:pk('currency','currency')||(c.generic||{}).currency||'BDT',variants:pk('variants','variants')||[],stock:N(pk('stock','stock')),url:pk('url','url')||''}},
@@ -4322,7 +4568,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   },
   async supApi(path,opt={}){
     if(!this.sup.url||!this.sup.token)return this.supDirect(path,opt);
-    const r=await fetch(this.sup.url.replace(/\/$/,'')+'/api/admin'+path,{...opt,headers:{'Content-Type':'application/json','x-admin-token':this.sup.token}});
+    const r=await fetch(this.sup.url.replace(/\/$/,'')+'/api/admin'+path,{...opt,headers:{'Content-Type':'application/json','x-admin-token':this.sup.token,'Authorization':'Bearer '+((window.$adminTok&&await window.$adminTok())||'')}});
     const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j;
   },
   async supLoad(){
@@ -4574,18 +4820,19 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   async teamRemove(m){if(!confirm((m.name||m.email)+' এর অ্যাক্সেস মুছে ফেলবেন? (সে আর প্যানেলে ঢুকতে পারবে না)'))return;try{await window.$db.deleteStaff(m.fbKey);this.showToast('মুছে ফেলা হয়েছে','success')}catch(e){this.showToast('ব্যর্থ','error')}},
 
   login(){
-    if(this.loginPw===ADMIN_PASS){this.authenticated=true;this.loginError='';sessionStorage.setItem('dd_admin_auth','1');}
-    else{this.loginError='❌ ভুল পাসওয়ার্ড!';}
+    /* হার্ড-কোডেড পাসওয়ার্ড সরানো হয়েছে — অ্যাক্সেস শুধু Firebase লগইন (অ্যাডমিন/স্টাফ) দিয়ে */
+    this.loginPw='';this.loginError=window.$owner?'':'❌ Firebase লগইন ফর্মে অ্যাডমিন ইমেইল ও পাসওয়ার্ড দিয়ে ঢুকুন';
+    if(window.$owner)this.authenticated=true;
   },
-  logout(){this.authenticated=false;sessionStorage.removeItem('dd_admin_auth');this.loginPw='';if(this.staff&&window.$signOut)window.$signOut()},
+  logout(){this.authenticated=false;try{sessionStorage.removeItem('dd_admin_auth')}catch(e){}this.loginPw='';if(window.$signOut)window.$signOut()},
 
   // ══════════ BOOT ══════════
   boot(){
     try{this.$watch('activeTab',()=>{window.scrollTo(0,0)})}catch(e){}try{this.$watch('fbProducts',()=>this._bkSchedule())}catch(e){}
     try{this.$watch('activeTab',t=>{if(this.staff&&!this.canTab(t))this.activeTab=this.firstTab()})}catch(e){}
-    const _applyStaff=()=>{this.staff=window.$staff||null;if(this.staff){this._wasStaff=true;this.authenticated=true;if(!this.canTab(this.activeTab))this.activeTab=this.firstTab()}else if(this._wasStaff){this._wasStaff=false;this.authenticated=sessionStorage.getItem('dd_admin_auth')==='1'}};
+    const _applyStaff=()=>{this.staff=window.$staff||null;if(this.staff){this._wasStaff=true;this.authenticated=true;if(!this.canTab(this.activeTab))this.activeTab=this.firstTab()}else{this._wasStaff=false;this.authenticated=!!window.$owner}};
     window.addEventListener('dd-staff-change',_applyStaff);_applyStaff();
-    if(sessionStorage.getItem('dd_admin_auth')==='1')this.authenticated=true;
+    try{sessionStorage.removeItem('dd_admin_auth')}catch(e){}
     const st=localStorage.getItem('dd_admin_theme');if(st)this.activeTheme=st;
     this.adminBanners=JSON.parse(JSON.stringify(this.banners));
     setTimeout(()=>{if(window.__fbReady&&!window.__fbBooted)window.dispatchEvent(new Event('firebase-ready'))},0);
@@ -6425,6 +6672,100 @@ window.addEventListener('load',run)})();</script>
   /* Firebase-এর মূল ফাইলই লোড না হলে (gstatic ব্লক/নেটওয়ার্ক/অ্যাড-ব্লকার) ডাটা আসে না, লগইন-বক্সও আসে না — তখন কারণ বলে দেয় */
   setTimeout(function(){if(!window.$db||!window.$adminTok){show('⚠️ Firebase লোড হয়নি, তাই কোনো ডাটা আসছে না। www.gstatic.com ব্লক আছে কিনা দেখুন — VPN/ডেটা-সেভার/অ্যাড-ব্লকার বন্ধ করুন, অন্য ব্রাউজার বা অন্য নেটওয়ার্কে খুলুন, তারপর রিলোড (Ctrl+F5) দিন।')}},12000);
 })();
+</script>
+<script>
+/* Dropshipping Management — admin module. All CJ traffic goes to the Render backend with the admin's Firebase ID token. */
+window.CJ_API_DEFAULT = window.CJ_API_DEFAULT || (window.DD_CONFIG && window.DD_CONFIG.renderUrl) || '';   // optional: hard-code your https://xxxx.onrender.com here
+function cjMgr(){return{
+  api:(localStorage.getItem('dd_cj_api')||window.CJ_API_DEFAULT||'').replace(/\/+$/,''),
+  get P(){return Alpine.$data(document.documentElement)},
+  busy:false,st:null,stErr:'',
+  cats:{list:[],at:0},catQ:'',openCat:{},counts:{},mapCat:'',mapTo:'',
+  f:{q:'',cat:'',min:'',max:'',stock:false},page:1,size:20,total:0,items:[],loading:false,err:'',fx:null,sel:{},
+  det:null,detBusy:false,detShip:{country:'',vid:'',opts:null,busy:false},
+  imp:{intlKey:'',publish:false,delivery:'default',fee:0,rule:{mode:'',value:0},busy:false,res:null},
+  settings:null,rules:{categories:{},products:{}},newRule:{id:'',mode:'percent',value:10},newDel:{id:'',mode:'fixed',fee:0},
+  sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],impQ:'',_loaded:{},
+  get dot(){if(!this.api)return{c:'#9CA3AF',t:'Not configured — enter the Render URL'};if(this.stErr)return{c:'#DC2626',t:'Backend unreachable / error'};if(!this.st)return{c:'#9CA3AF',t:'Unknown — press Check status'};
+    if(!this.st.keyConfigured)return{c:'#DC2626',t:'Backend up, CJ_API_KEY missing'};if(this.st.lastError&&!this.st.lastOkAt)return{c:'#DC2626',t:'CJ error: '+this.st.lastError};return this.st.tokenCached?{c:'#16A34A',t:'Connected to CJ'}:{c:'#F59E0B',t:'Backend up — run “Test CJ connection”'}},
+  async call(method,path,body){
+    if(!/^https:\/\/[^\s]+$/.test(this.api))throw new Error('Enter your Render backend URL (https://…) in API Connections');
+    const tok=window.$adminTok?await window.$adminTok():null;if(!tok)throw new Error('Sign in again (Firebase session missing)');
+    let r;const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),45000);try{r=await fetch(this.api+'/api/admin/cj'+path,{method,headers:{Authorization:'Bearer '+tok,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:ctl.signal,credentials:'omit'})}
+    catch(e){throw new Error(e&&e.name==='AbortError'?'Server is waking up or slow (Render free tier) — wait ~30s and retry':'Cannot reach the backend (check URL, Render is awake, ALLOWED_ORIGINS includes '+location.origin+')')}finally{clearTimeout(tm)}
+    const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw new Error(j.message||('HTTP '+r.status));return j},
+  toast(m,t){try{this.P.showToast(m,t||'success')}catch(e){alert(m)}},
+  async wrap(fn,errTarget){this.busy=true;try{return await fn()}catch(e){if(errTarget)this[errTarget]=e.message;this.toast(e.message,'error')}finally{this.busy=false}},
+  saveApi(){localStorage.setItem('dd_cj_api',this.api);this.toast('Saved')},
+  async onTab(t){if(!String(t).startsWith('cj_'))return;
+    if(!this._loaded.cats&&t!=='cj_api'){this._loaded.cats=1;this.loadCats()}
+    if(['cj_pricing','cj_delivery','cj_sync','cj_cats','cj_bulk'].includes(t)&&!this.settings)await this.loadSettings();
+    if(t==='cj_pricing'){try{this.fx=(await this.call('GET','/fx'))}catch(e){}}
+    if(t==='cj_delivery')this.loadReqs();if(t==='cj_sync')this.loadSync();if(t==='cj_history')this.loadHist();
+    if(t==='cj_products'&&!this.items.length&&this.api)this.load(1);if(t==='cj_api'&&this.api&&!this.st)this.checkStatus()},
+  async checkStatus(){this.stErr='';await this.wrap(async()=>{this.st=await this.call('GET','/status')},'stErr')},
+  async testConn(){await this.wrap(async()=>{await this.call('POST','/test');this.toast('CJ connection OK ✅');this.st=await this.call('GET','/status')},'stErr')},
+  /* categories */
+  async loadCats(){try{this.cats=await this.call('GET','/categories')}catch(e){}},
+  async syncCats(){await this.wrap(async()=>{const r=await this.call('POST','/categories/sync');await this.loadCats();this.toast(r.count+' categories synced ✅')})},
+  topCats(){return this.cats.list.filter(c=>c.level===1)},kids(id){return this.cats.list.filter(c=>c.parent===id)},
+  leaves(){return this.cats.list.filter(c=>c.level===3)},leafCount(id){return this.kids(id).reduce((s,x)=>s+this.kids(x.id).length,0)},
+  nameOf(id){const c=this.cats.list.find(x=>x.id===id);return c?c.name:id},
+  pathOf(l){const s=this.cats.list.find(x=>x.id===l.parent),t=s&&this.cats.list.find(x=>x.id===s.parent);return[t&&t.name,s&&s.name,l.name].filter(Boolean).join(' › ')},
+  async countCat(id){await this.wrap(async()=>{this.counts[id]=(await this.call('GET','/categories/'+encodeURIComponent(id)+'/count')).total;this.counts={...this.counts}})},
+  browse(id){this.f.cat=id;this.P.goTab('cj_products');this.load(1)},
+  intlLabel(c){const p=c.parent&&this.P.sup.intlCats.find(x=>x.fbKey===c.parent);return(p?p.name+' › ':'')+c.name},
+  intlPick(key){const pick=this.P.sup.intlCats.find(c=>c.fbKey===key);if(!pick)return{};const top=pick.parent?this.P.sup.intlCats.find(c=>c.fbKey===pick.parent):null;return{intlCat:top?top.name:pick.name,intlSub:top?pick.name:''}},
+  async saveMap(){await this.wrap(async()=>{const map={...(this.settings?this.settings.categoryMap:{})};map[this.mapCat]=this.intlPick(this.mapTo);await this.call('PUT','/settings',{categoryMap:map});await this.loadSettings();this.toast('Mapping saved ✅')})},
+  /* products */
+  async load(pg){this.loading=true;this.err='';this.page=pg;
+    try{const q=new URLSearchParams({page:pg,size:this.size});if(this.f.q)q.set('q',this.f.q);if(this.f.cat)q.set('categoryId',this.f.cat);if(this.f.min)q.set('minPrice',this.f.min);if(this.f.max)q.set('maxPrice',this.f.max);if(this.f.stock)q.set('inStock','1');
+      const r=await this.call('GET','/products?'+q);this.items=r.list;this.total=r.total;this.fx=r.fx;window.scrollTo(0,0)}catch(e){this.err=e.message;this.items=[]}this.loading=false},
+  toggle(p){if(this.sel[p.pid])delete this.sel[p.pid];else this.sel[p.pid]={pid:p.pid,name:p.name,image:p.image,priceMin:p.priceMin};this.sel={...this.sel}},
+  selCount(){return Object.keys(this.sel).length},
+  async openDetail(pid){this.detBusy=true;this.det=null;this.detShip={country:'',vid:'',opts:null,busy:false};try{this.det=await this.call('GET','/products/'+encodeURIComponent(pid))}catch(e){this.toast(e.message,'error')}this.detBusy=false},
+  safeDesc(h){const d=document.createElement('div');d.textContent=String(h||'');return d.innerHTML.replace(/\n/g,'<br>')},
+  async estimate(){const s=this.detShip;if(!s.vid||!/^[A-Za-z]{2}$/.test(s.country))return this.toast('Enter variant ID and 2-letter country code','error');s.busy=true;
+    try{s.opts=(await this.call('POST','/shipping/estimate',{vid:s.vid,country:s.country.toUpperCase(),quantity:1})).options;if(!s.opts.length)this.toast('CJ returned no shipping options for this route','error')}catch(e){this.toast(e.message,'error')}s.busy=false},
+  /* import */
+  async quickImport(p){if(!this.imp.intlKey&&!this.mappedFor(p)){this.toast('Open “Bulk Import”, choose a website category (or map the CJ category) first','error');this.sel[p.pid]=this.sel[p.pid]||{pid:p.pid,name:p.name||p.pid,image:p.image||'',priceMin:p.priceMin||0};this.sel={...this.sel};return this.P.goTab('cj_bulk')}
+    if(!confirm('Import this product as '+(this.imp.publish?'PUBLISHED':'DRAFT')+'?'))return;await this.runImport([p.pid])},
+  mappedFor(p){return !!(p.categoryId&&this.settings&&this.settings.categoryMap&&this.settings.categoryMap[p.categoryId])},
+  async runImport(pids){if(!pids.length)return;if(pids.length>1&&!confirm('Import '+pids.length+' products as '+(this.imp.publish===true||this.imp.publish==='true'?'PUBLISHED':'DRAFT')+'?'))return;
+    this.imp.busy=true;this.imp.res=null;const pick=this.imp.intlKey?this.intlPick(this.imp.intlKey):{};const pub=this.imp.publish===true||this.imp.publish==='true';
+    const rule=this.imp.rule.mode&&Number(this.imp.rule.value)>=0?{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)}:null;
+    const delivery=this.imp.delivery!=='default'?{mode:this.imp.delivery,fee:this.imp.delivery==='fixed'?Number(this.imp.fee)||0:0}:null;
+    const out={done:[],skipped:[],failed:[]};
+    try{for(let i=0;i<pids.length;i+=10){const r=await this.call('POST','/import',{items:pids.slice(i,i+10).map(pid=>({pid,publish:pub,...pick,ruleOverride:rule,delivery}))});['done','skipped','failed'].forEach(k=>out[k].push(...r[k]))}
+      this.imp.res=out;out.done.forEach(d=>delete this.sel[d.pid]);this.sel={...this.sel};this.toast(out.done.length+' imported'+(out.skipped.length?', '+out.skipped.length+' skipped':'')+(out.failed.length?', '+out.failed.length+' failed':''),out.failed.length?'error':'success');
+      if(this.P.activeTab==='cj_products')this.load(this.page)}catch(e){this.imp.res=out;this.toast(e.message,'error')}this.imp.busy=false},
+  async bulkRule(){await this.wrap(async()=>{await this.call('POST','/rules/bulk',{pids:Object.keys(this.sel),rule:{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)||0}});this.toast('Profit rule saved for '+this.selCount()+' products ✅');await this.loadSettings()})},
+  /* imported products (existing product database) */
+  importedList(){const q=this.impQ.toLowerCase();return(this.P.fbProducts||[]).filter(p=>p&&p.source&&p.source.supplierId==='cj'&&(!q||String(p.name).toLowerCase().includes(q)))},
+  async setActive(p,on){try{await window.$db.saveProduct({active:on,updatedAt:new Date().toISOString()},p.fbKey);this.toast(on?'Published':'Unpublished')}catch(e){this.toast('Failed','error')}},
+  async setDelivery(p,mode){if(!mode)return;let fee=0;if(mode==='fixed'){fee=Number(prompt('Fixed delivery fee (৳)','0'));if(!(fee>=0))return}
+    try{await window.$db.saveProduct({delivery:{mode,fee,method:''},deliveryConfirm:mode==='confirm',updatedAt:new Date().toISOString()},p.fbKey);this.toast('Delivery updated ✅')}catch(e){this.toast('Failed','error')}},
+  async reprice(p){const v=Number(document.getElementById('rp'+p.fbKey).value),m=document.getElementById('rm'+p.fbKey).value;if(!(v>=0)||document.getElementById('rp'+p.fbKey).value==='')return this.toast('Enter a profit value','error');
+    await this.wrap(async()=>{const r=await this.call('POST','/pricing/preview',{costUsd:p.pricing.costUsd,categoryId:p.source.categoryId,pid:p.source.supplierProductId,ruleOverride:{mode:m,value:v}});
+      if(!confirm('New selling price ৳'+r.price+' (profit ৳'+r.profit+'). Apply?'))return;
+      await window.$db.saveProduct({price:r.price,oldPrice:r.oldPrice,pricing:{...p.pricing,finalPrice:r.price,profit:r.profit,ruleSource:'product',rule:r.rule},updatedAt:new Date().toISOString()},p.fbKey);
+      await this.call('PUT','/rules/products/'+encodeURIComponent(p.source.supplierProductId),{rule:{mode:m,value:v}});this.toast('Price updated ✅')})},
+  async removeProd(p){if(!confirm('Remove “'+p.name+'” from your store? This cannot be undone.'))return;try{await window.$db.deleteProduct(p.fbKey);this.toast('Removed')}catch(e){this.toast('Failed','error')}},
+  /* settings / rules */
+  async loadSettings(){try{const r=await this.call('GET','/settings');this.settings=r.settings;this.rules=r.rules}catch(e){this.toast(e.message,'error')}},
+  async saveSettings(parts){await this.wrap(async()=>{const b={};parts.forEach(k=>b[k]=this.settings[k]);await this.call('PUT','/settings',b);await this.loadSettings();this.toast('Saved ✅')})},
+  async addCatRule(){await this.wrap(async()=>{await this.call('PUT','/rules/categories/'+encodeURIComponent(this.newRule.id),{rule:{mode:this.newRule.mode,value:Number(this.newRule.value)||0}});await this.loadSettings();this.toast('Rule added ✅')})},
+  async delRule(scope,id){await this.wrap(async()=>{await this.call('PUT','/rules/'+scope+'/'+encodeURIComponent(id),{rule:null});await this.loadSettings()})},
+  /* sync + history */
+  async loadSync(){try{this.sync=await this.call('GET','/sync')}catch(e){this.toast(e.message,'error')}},
+  async runSync(){await this.wrap(async()=>{const r=await this.call('POST','/sync/run');this.toast('Checked '+r.checked+' products');await this.loadSync()})},
+  async applySync(k,useSuggested){await this.wrap(async()=>{await this.call('POST','/sync/apply',{keys:[k],useSuggested});await this.loadSync()})},
+  async dismiss(k){await this.wrap(async()=>{await this.call('POST','/sync/dismiss',{keys:[k]});await this.loadSync()})},
+  async loadReqs(){try{this.reqs=(await this.call('GET','/delivery-requests')).list}catch(e){}},
+  async setReq(r,st){await this.wrap(async()=>{await this.call('PATCH','/delivery-requests/'+encodeURIComponent(r.ref),{status:st});r.status=st;this.toast('Updated ✅')})},
+  async loadHist(){try{this.hist=(await this.call('GET','/history?limit=200')).list}catch(e){this.toast(e.message,'error')}}
+}}
+
 </script>
 </body>
 </html>
