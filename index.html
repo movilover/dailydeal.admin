@@ -795,16 +795,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
             <p><b>ঠিকানা:</b> <span x-text="viewOrder.address||'—'"></span></p>
             <p x-show="viewOrder.upazila"><b>উপজেলা/থানা:</b> <span x-text="viewOrder.upazila"></span></p>
             <p><b>জেলা:</b> <span x-text="viewOrder.district||'—'"></span> &nbsp; <b>বিভাগ:</b> <span x-text="viewOrder.division||'—'"></span></p>
-<div x-show="viewOrder.intlDest&&(viewOrder.intlDest.chargePending||viewOrder.intlDest.chargeStatus)" class="dd-card-sm p-3" style="border:1.5px solid #F59E0B">
-<p class="text-sm font-bold">🌍 গ্লোবাল ডেলিভারি চার্জ <span class="text-xs" style="color:var(--fg3)" x-text="viewOrder.intlDest&&viewOrder.intlDest.countryName?'· '+viewOrder.intlDest.countryName:''"></span></p>
-<div x-show="viewOrder.intlDest.chargePending" class="mt-2"><p class="text-xs mb-1.5" style="color:#B45309">⏳ চার্জ নির্ধারণ বাকি — দিলেই কাস্টমার অ্যাপে দেখবে ও সেখান থেকে পেমেন্ট করবে (WhatsApp লাগবে না)।</p>
-<div class="flex gap-2"><input type="number" min="1" x-model="intlChg" placeholder="ডেলিভারি চার্জ ৳" class="flex-1 px-3 py-2 rounded-lg border text-sm" style="border-color:var(--border);background:var(--bg2);color:var(--fg)"/><button type="button" @click="setIntlCharge()" class="px-3 py-2 rounded-lg text-xs font-bold" style="background:#F59E0B;color:#fff;border:none;cursor:pointer">চার্জ পাঠান</button></div></div>
-<p x-show="viewOrder.intlDest.chargeStatus==='due'" class="text-xs mt-2" style="color:#B45309">📤 ৳<span x-text="viewOrder.intlDest.charge"></span> পাঠানো হয়েছে — কাস্টমারের পেমেন্টের অপেক্ষা।</p>
-<div x-show="viewOrder.intlDest.chargeStatus==='submitted'" class="mt-2 text-xs"><p>💳 <b x-text="viewOrder.intlDest.chargeMethod"></b> · TrxID: <b class="font-mono" x-text="viewOrder.intlDest.chargeTrx||'— (স্ক্রিনশট দেখুন)'"></b> · ৳<span x-text="viewOrder.intlDest.charge"></span></p>
-<a x-show="viewOrder.intlDest.chargeShot" :href="viewOrder.intlDest.chargeShot" target="_blank" rel="noopener" class="block mt-1.5"><img :src="viewOrder.intlDest.chargeShot" alt="পেমেন্ট স্ক্রিনশট" style="max-height:190px;max-width:100%;border-radius:12px;border:2px solid #F59E0B;object-fit:contain;background:#fff"/><span class="text-xs font-bold" style="color:#B45309">📎 পেমেন্ট স্ক্রিনশট — বড় করে দেখুন</span></a>
-<div class="flex gap-2 mt-1.5"><button type="button" @click="confirmIntlCharge(true)" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:#16A34A;color:#fff;border:none;cursor:pointer">✅ পেমেন্ট নিশ্চিত</button><button type="button" @click="confirmIntlCharge(false)" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">❌ ভুল TrxID</button></div></div>
-<p x-show="viewOrder.intlDest.chargeStatus==='paid'" class="text-xs mt-2" style="color:#16A34A">✅ চার্জ ৳<span x-text="viewOrder.intlDest.charge"></span> পরিশোধিত ও নিশ্চিত।</p>
-</div>
+            <p x-show="viewOrder.intlDest&&viewOrder.intlDest.chargePending" style="color:#B45309"><b>⏳ ডেলিভারি চার্জ:</b> কাস্টমারকে জানানো বাকি (WhatsApp/ফেসবুকে কনফার্ম করুন)</p>
   <p x-show="viewOrder.intlDest"><b>বিদেশ:</b> <span x-text="(viewOrder.intlDest&&viewOrder.intlDest.countryName)+' · '+(viewOrder.intlDest&&viewOrder.intlDest.city)+' · প্রাপক '+(viewOrder.intlDest&&viewOrder.intlDest.name)+' '+(viewOrder.intlDest&&viewOrder.intlDest.phone)"></span></p>
             <p><b>পেমেন্ট:</b> <span x-text="(viewOrder.payMethod||'')+(viewOrder.payType==='cod'?' — ডেলিভারিতে ৳'+Number(viewOrder.dueOnDelivery!==undefined?viewOrder.dueOnDelivery:(viewOrder.total||0)).toLocaleString():'')"></span></p>
           </div>
@@ -845,10 +836,10 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
         </div>
         <div class="dd-card-sm p-3">
           <p class="dd-label mb-2">পণ্য তালিকা</p>
-          <template x-for="(it,ix) in viewOrder.items||[]" :key="(it.id||'')+'_'+ix">
-<div class="flex items-center gap-2 py-2" style="border-bottom:1px dashed var(--border)">
-<a :href="it.variantImg||it.img||it.images?.[0]||'#'" target="_blank" rel="noopener" class="flex-shrink-0" style="position:relative;display:block" title="বড় করে দেখুন"><img :src="it.variantImg||it.img||it.images?.[0]||''" class="w-16 h-16 rounded-xl object-cover" style="background:var(--bg2);border:2px solid var(--accent)"/><span x-show="it.variantNo&&(it.images||[]).length>1" style="position:absolute;left:2px;bottom:2px;background:var(--accent);color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:99px" x-text="'#'+it.variantNo"></span></a>
-<div class="flex-1"><p class="text-xs font-semibold" style="color:var(--fg)" x-text="it.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="'×'+it.qty+(it.size?' · সাইজ: '+it.size:'')"></p><p class="text-xs font-bold" style="color:#B45309" x-show="it.variantNo&&(it.images||[]).length>1" x-text="'🎨 কাস্টমারের বাছাই: ডিজাইন #'+it.variantNo+' (ছবি দেখে পাঠান)'"></p></div>
+          <template x-for="it in viewOrder.items||[]" :key="it.id">
+            <div class="flex items-center gap-2 py-2" style="border-bottom:1px dashed var(--border)">
+              <img :src="it.images?.[0]||it.img||''" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)"/>
+              <div class="flex-1"><p class="text-xs font-semibold" style="color:var(--fg)" x-text="it.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="'×'+it.qty+(it.size?' · '+it.size:'')"></p></div>
               <p class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(it.price*it.qty).toLocaleString()"></p>
             </div>
           </template>
@@ -1293,7 +1284,6 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <template x-if="st"><div class="text-xs space-y-1" style="color:var(--fg2)">
         <p>CJ key configured: <b x-text="st.keyConfigured?'yes':'NO — set CJ_API_KEY on Render'"></b></p>
         <p>Access token cached: <b x-text="st.tokenCached?'yes (expires '+new Date(st.tokenExpiresAt).toLocaleDateString()+')':'no'"></b></p>
-        <p>Auto-import queue: <b x-text="st.queued||0"></b> · CJ cooldown: <b x-text="(st.cooldownSec||0)+'s'"></b></p>
         <p>CJ calls since server start: <b x-text="st.calls"></b> <span x-show="st.lastError" class="text-red-600">· last error: <span x-text="st.lastError"></span></span></p></div></template>
       <p class="text-xs text-red-600" x-text="stErr"></p>
     </div>
@@ -1346,11 +1336,10 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <select class="dd-input sm:col-span-2" x-model="f.cat" @change="load(1)"><option value="">All categories</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
       <input class="dd-input" type="number" min="0" x-model="f.min" placeholder="Min $"/><input class="dd-input" type="number" min="0" x-model="f.max" placeholder="Max $"/>
       <label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="f.stock"/> In stock only</label>
-      <button class="btn-primary text-xs sm:col-span-2" @click="load(1)" :disabled="loading||coolLeft>0"><i class="fa-solid fa-magnifying-glass"></i> <span x-text="coolLeft>0?('অপেক্ষা '+coolLeft+'s'):'Search'"></span></button>
+      <button class="btn-primary text-xs sm:col-span-2" @click="load(1)" :disabled="loading"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
       <p class="text-xs sm:col-span-3" style="color:var(--fg3)" x-show="fx">1 USD = <b x-text="fx&&fx.rate.toFixed(2)"></b> (<span x-text="fx&&fx.source"></span>)</p>
     </div>
     <p class="text-xs text-red-600" x-text="err"></p>
-    <p class="text-xs" style="color:var(--fg3)" x-show="loading">⏳ CJ থেকে ডাটা আনা হচ্ছে — লিমিট হলে অটো রিট্রাই হবে, আবার চাপার দরকার নেই।</p>
     <div x-show="loading" class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> Loading from CJ…</div>
     <div x-show="!loading&&!items.length&&!err" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">No products. Pick a category or search by name.</div>
     <div class="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
@@ -1392,19 +1381,13 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
     </div>
     <div x-show="!selCount()" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">Nothing selected. Tick products in “All Supplier Products” first.</div>
     <div class="dd-card divide-y" x-show="selCount()"><template x-for="s in Object.values(sel)" :key="s.pid"><div class="flex items-center gap-2 p-2"><img :src="s.image" class="w-10 h-10 rounded object-cover" alt=""/><span class="text-xs flex-1" x-text="s.name"></span><span class="text-xs" x-text="'$'+s.priceMin"></span><button class="btn-ghost text-xs" @click="delete sel[s.pid];sel={...sel}">✕</button></div></template></div>
-    <div class="dd-card p-3 text-xs space-y-2" x-show="queue.length"><p class="font-bold">⏳ অটো-ইমপোর্ট কিউ (<span x-text="queue.length"></span>) — CJ লিমিট কাটলে সার্ভার নিজে ইমপোর্ট করবে (প্রতি ১ মিনিটে চেক)</p>
-      <template x-for="q in queue" :key="q.pid"><div class="flex items-center gap-2"><span class="flex-1 truncate" x-text="q.pid"></span><button class="btn-ghost text-xs" @click="rmQueue(q.pid)">✕</button></div></template>
-      <div class="flex gap-2"><button class="btn-ghost text-xs" @click="runQueue()" :disabled="busy">এখনই চেষ্টা করুন</button><button class="btn-ghost text-xs" @click="loadQueue()">Refresh</button></div></div>
-    <div class="dd-card p-3 text-xs space-y-1" x-show="imp.res"><p>✅ Imported: <b x-text="imp.res&&imp.res.done.length"></b> · ⏭ Skipped (duplicates): <b x-text="imp.res&&imp.res.skipped.length"></b> · ⏳ Queued: <b x-text="imp.res&&(imp.res.queued||[]).length"></b> · ❌ Failed: <b x-text="imp.res&&imp.res.failed.length"></b></p>
+    <div class="dd-card p-3 text-xs space-y-1" x-show="imp.res"><p>✅ Imported: <b x-text="imp.res&&imp.res.done.length"></b> · ⏭ Skipped (duplicates): <b x-text="imp.res&&imp.res.skipped.length"></b> · ❌ Failed: <b x-text="imp.res&&imp.res.failed.length"></b></p>
       <template x-for="r in (imp.res?imp.res.skipped:[])" :key="r.pid"><p style="color:var(--fg3)" x-text="r.pid+' — '+r.reason"></p></template>
       <template x-for="r in (imp.res?imp.res.failed:[])" :key="r.pid"><p class="text-red-600" x-text="r.pid+' — '+r.error"></p></template></div>
   </div>
 
   <!-- 4. Imported Products -->
   <div x-show="activeTab==='cj_imported'" class="space-y-3">
-    <div class="dd-card p-3 text-xs space-y-2" x-show="queue.length"><p class="font-bold">⏳ অটো-ইমপোর্ট কিউ (<span x-text="queue.length"></span>) — CJ লিমিট কাটলে সার্ভার নিজে ইমপোর্ট করবে (প্রতি ১ মিনিটে চেক)</p>
-      <template x-for="q in queue" :key="q.pid"><div class="flex items-center gap-2"><span class="flex-1 truncate" x-text="q.pid"></span><button class="btn-ghost text-xs" @click="rmQueue(q.pid)">✕</button></div></template>
-      <div class="flex gap-2"><button class="btn-ghost text-xs" @click="runQueue()" :disabled="busy">এখনই চেষ্টা করুন</button><button class="btn-ghost text-xs" @click="loadQueue()">Refresh</button></div></div>
     <div class="dd-card p-3 flex items-center gap-2"><input class="dd-input flex-1" x-model="impQ" placeholder="Search imported products"/><span class="text-xs" x-text="importedList().length+' products'"></span></div>
     <div class="dd-card divide-y">
       <template x-for="p in importedList()" :key="p.fbKey">
@@ -1810,20 +1793,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
         </div>
         <div><label class="dd-label">নোটিশ / শর্ত (ইন্টারন্যাশনাল পাতায় দেখাবে)</label><textarea class="dd-input" rows="2" x-model="ic.notice" placeholder="যেমন: কাস্টমস চার্জ প্রযোজ্য হলে প্রাপক বহন করবেন"></textarea></div>
       </div>
-      <div class="mt-4 p-3 rounded-2xl" style="background:var(--bg2);border:1px solid var(--border)">
-<p class="font-bold text-sm">💳 প্রবাসী কাস্টমারের পেমেন্ট মাধ্যম <span class="text-xs font-normal" style="color:var(--fg3)">(ডেলিভারি চার্জ পেমেন্ট)</span></p>
-<p class="text-xs mt-1" style="color:var(--fg3)">ব্যাংক, bKash, Nagad, Rocket — যত খুশি যোগ করুন। কাস্টমার চার্জ দেওয়ার সময় এগুলো দেখে বেছে নেবে। কিছু না দিলে সাধারণ bKash/Nagad সেটিংস দেখাবে।</p>
-<template x-for="(m,ix) in (settings.intlPayMethods||[])" :key="m.id||ix">
-<div class="mt-2 p-2.5 rounded-xl space-y-2" style="background:var(--card);border:1px solid var(--border)">
-<div class="grid grid-cols-2 gap-2"><select class="dd-input" x-model="m.type"><option value="mobile">মোবাইল ব্যাংকিং</option><option value="bank">ব্যাংক অ্যাকাউন্ট</option></select><input class="dd-input" x-model="m.label" placeholder="নাম (bKash / ইসলামী ব্যাংক)"/></div>
-<input class="dd-input" x-model="m.number" :placeholder="m.type==='bank'?'অ্যাকাউন্ট নম্বর':'মোবাইল নম্বর'"/>
-<template x-if="m.type==='bank'"><div class="space-y-2"><input class="dd-input" x-model="m.holder" placeholder="অ্যাকাউন্ট হোল্ডারের নাম"/><div class="grid grid-cols-2 gap-2"><input class="dd-input" x-model="m.bank" placeholder="ব্যাংকের নাম"/><input class="dd-input" x-model="m.branch" placeholder="শাখা"/></div></div></template>
-<input class="dd-input" x-model="m.note" placeholder="নির্দেশনা (যেমন: Send Money করুন / SWIFT কোড …)"/>
-<div class="flex items-center justify-between"><label class="flex items-center gap-2 text-xs font-bold"><label class="tog"><input type="checkbox" x-model="m.enabled"/><span class="tog-sl"></span></label> চালু</label><button type="button" @click="ipmDel(ix)" class="text-xs font-bold px-2.5 py-1 rounded-lg" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">🗑 মুছুন</button></div>
-</div></template>
-<div class="flex flex-wrap gap-2 mt-3"><button type="button" class="btn-ghost text-xs" @click="ipmAdd('mobile')">+ bKash/Nagad/Rocket</button><button type="button" class="btn-ghost text-xs" @click="ipmAdd('bank')">+ ব্যাংক অ্যাকাউন্ট</button><button type="button" class="btn-primary text-xs" @click="ipmSave()"><i class="fa-solid fa-floppy-disk"></i> পেমেন্ট মাধ্যম সেভ</button></div>
-</div>
-<button class="btn-primary" @click="icSave()" :disabled="ic.saving"><i class="fa-solid fa-floppy-disk"></i> <span x-text="ic.saving?'সেভ হচ্ছে...':'ডেলিভারি সেটিংস সেভ করুন'"></span></button>
+      <button class="btn-primary" @click="icSave()" :disabled="ic.saving"><i class="fa-solid fa-floppy-disk"></i> <span x-text="ic.saving?'সেভ হচ্ছে...':'ডেলিভারি সেটিংস সেভ করুন'"></span></button>
     </div>
 
     <!-- ── 4. Order routing queue ── -->
@@ -4328,7 +4298,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
   orderSearch:'',oFilt:'সব',archVer:0,arch:{denied:false,last:0,written:0,count:0},histQ:'',histSel:'',histOpen:{},rhQ:'',rhSel:'',rhOpen:{},orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
-  orderDetailOpen:false,viewOrder:null,intlChg:'',adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
+  orderDetailOpen:false,viewOrder:null,adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
 
   assignSearch:'',draggedId:null,
   eidSearch:'',
@@ -4502,25 +4472,10 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
   orderCopyText(o){if(!o)return'';const L=[];L.push('অর্ডার #'+(o.id||''));L.push('নাম: '+(o.customerName||''));L.push('ফোন: '+(o.phone||''));L.push('ঠিকানা: '+(o.address||''));if(o.upazila)L.push('উপজেলা/থানা: '+o.upazila);L.push('জেলা: '+(o.district||''));L.push('বিভাগ: '+(o.division||''));
     if(o.intlDest)L.push('বিদেশ: '+(o.intlDest.countryName||'')+', '+(o.intlDest.city||'')+', প্রাপক: '+(o.intlDest.name||'')+' '+(o.intlDest.phone||''));
-    L.push('পণ্য: '+(o.items||[]).map(i=>i.name+' ×'+i.qty+(i.size?' ('+i.size+')':'')+((i.variantNo&&(i.images||[]).length>1)?' [ডিজাইন #'+i.variantNo+']':'')).join(', '));
+    L.push('পণ্য: '+(o.items||[]).map(i=>i.name+' ×'+i.qty+(i.size?' ('+i.size+')':'')).join(', '));
     L.push('মোট: ৳'+Number(o.total||0)+(o.payType==='cod'?' (ডেলিভারিতে ৳'+Number(o.dueOnDelivery!==undefined?o.dueOnDelivery:(o.total||0))+')':' — '+(o.payMethod||'প্রি-পেইড')));
     if(o.location&&o.location.lat)L.push('ম্যাপ: https://www.google.com/maps?q='+o.location.lat+','+o.location.lng);return L.join('\n')},
-  ipmAdd(t){this.settings.intlPayMethods=[...(this.settings.intlPayMethods||[]),{id:'pm'+Date.now().toString(36),type:t==='bank'?'bank':'mobile',label:t==='bank'?'':'bKash',number:'',holder:'',bank:'',branch:'',note:t==='bank'?'':'Send Money করুন',enabled:true}]},
-ipmDel(i){const l=[...(this.settings.intlPayMethods||[])];l.splice(i,1);this.settings.intlPayMethods=l},
-async ipmSave(){const T=(v,n)=>String(v||'').trim().slice(0,n);const list=(this.settings.intlPayMethods||[]).filter(m=>T(m.label,40)&&T(m.number,60)).map(m=>({id:m.id||('pm'+Date.now().toString(36)),type:m.type==='bank'?'bank':'mobile',label:T(m.label,40),number:T(m.number,60),holder:T(m.holder,80),bank:T(m.bank,60),branch:T(m.branch,60),note:T(m.note,200),enabled:m.enabled!==false}));
-try{this.settings.intlPayMethods=list;const curr=await this.getCurrentSettings();await window.$db.saveSettings(curr);this.showToast('পেমেন্ট মাধ্যম সেভ ✅','success')}catch(e){this.showToast('সেভ ব্যর্থ — ইন্টারনেট/রুলস দেখুন','error')}},
-async setIntlCharge(){const o=this.viewOrder;if(!o||!o.intlDest)return;
-const ch=Math.round(Number(this.intlChg)||0);if(ch<=0)return this.showToast('ডেলিভারি চার্জ লিখুন','error');if(ch>10000000)return this.showToast('পরিমাণ অনেক বেশি','error');
-const paid=Number(o.advancePaid)||0,nt=(Number(o.total)||0)+ch,msg='🚚 ডেলিভারি চার্জ নির্ধারিত: ৳'+ch+'। অর্ডার পেজ থেকে চার্জ পরিশোধ করুন।';
-const d={shipping:ch,total:nt,dueOnDelivery:Math.max(0,nt-paid),intlDest:{...o.intlDest,chargePending:false,charge:ch,chargeStatus:'due',chargeAt:Date.now()},trackLog:[...(o.trackLog||[]),{t:Date.now(),text:msg}],trackNote:msg,trackUpdatedAt:Date.now()};
-try{await window.$db.updateOrder(o.fbKey,d);Object.assign(o,d);this.intlChg='';this.showToast('চার্জ পাঠানো হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ! রুলস/ইন্টারনেট দেখুন','error')}},
-async confirmIntlCharge(ok){const o=this.viewOrder;if(!o||!o.intlDest)return;const c=Number(o.intlDest.charge)||0,paid=Number(o.advancePaid)||0;
-const msg=ok?'✅ ডেলিভারি চার্জ পেমেন্ট নিশ্চিত হয়েছে — অর্ডার প্রসেস হবে।':'❌ চার্জ পেমেন্টের TrxID মেলেনি — সঠিক TrxID দিয়ে আবার জমা দিন।';
-const nd={...o.intlDest,chargeStatus:ok?'paid':'due'};if(!ok){nd.chargeTrx=null;nd.chargeMethod=null}
-const d={intlDest:nd,trackLog:[...(o.trackLog||[]),{t:Date.now(),text:msg}],trackNote:msg,trackUpdatedAt:Date.now()};
-if(ok){d.advancePaid=paid+c;d.dueOnDelivery=Math.max(0,(Number(o.total)||0)-paid-c)}
-try{await window.$db.updateOrder(o.fbKey,d);Object.assign(o,d);this.showToast(ok?'নিশ্চিত ✅':'কাস্টমারকে জানানো হয়েছে','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
-async applyAdjust(){
+  async applyAdjust(){
     const o=this.viewOrder,a=this.adj;if(!o||a.busy)return;
     const amt=Math.round(Number(a.amount)||0);
     if(amt<=0)return this.showToast('টাকার পরিমাণ দিন','error');
@@ -5625,7 +5580,7 @@ async applyAdjust(){
   ordTabSummary(){const l=this.filteredOrders,s=l.reduce((a,o)=>a+(Number(o.total)||0),0);return (this.activeTab==='delivered'?'✅ ডেলিভারি সম্পন্ন: ':'❌ বাতিল অর্ডার: ')+l.length+'টি · মোট ৳'+s.toLocaleString()},
   _ph11(p){return String(p||'').replace(/\D/g,'').slice(-11)},
   _hd(ts){const n=Number(ts);return n?new Date(n).toLocaleDateString('bn-BD',{year:'numeric',month:'short',day:'numeric'}):'—'},
-  _itemsTxt(o){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});return it.map(i=>(i.name||'?')+' ×'+(i.qty||1)+(i.size?' ('+i.size+')':'')+((i.variantNo&&(i.images||[]).length>1)?' [ডিজাইন #'+i.variantNo+']':'')).join(', ')||'—'},
+  _itemsTxt(o){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});return it.map(i=>(i.name||'?')+' ×'+(i.qty||1)+(i.size?' ('+i.size+')':'')).join(', ')||'—'},
   _logArr(o){const l=Array.isArray(o.trackLog)?o.trackLog:Object.values(o.trackLog||{});return l.slice(-6)},
   _hist(o){const l=Array.isArray(o.statusHistory)?o.statusHistory:Object.values(o.statusHistory||{});return l.slice(-8)},
   _osig(o){const L=x=>Array.isArray(x)?x.length:(x&&typeof x==='object'?Object.keys(x).length:0);return [o.status,o.total,o.trackNote||'',L(o.trackLog),L(o.adjustments),o.userHidden?1:0,o.trackingLink||'',o.cancelledBy||'',o.deliveredAt||'',o.cancelledAt||'',o.customerName||'',o.phone||'',L(o.statusHistory)].join('|')},
@@ -6769,35 +6724,10 @@ function cjMgr(){return{
   det:null,detBusy:false,detShip:{country:'',vid:'',opts:null,busy:false},
   imp:{intlKey:'',publish:false,delivery:'default',fee:0,rule:{mode:'',value:0},busy:false,res:null},
   settings:null,rules:{categories:{},products:{}},newRule:{id:'',mode:'percent',value:10},newDel:{id:'',mode:'fixed',fee:0},
-  sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],queue:[],impQ:'',_loaded:{},
+  sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],impQ:'',_loaded:{},
   get dot(){if(!this.api)return{c:'#9CA3AF',t:'Not configured — enter the Render URL'};if(this.stErr)return{c:'#DC2626',t:'Backend unreachable / error'};if(!this.st)return{c:'#9CA3AF',t:'Unknown — press Check status'};
     if(!this.st.keyConfigured)return{c:'#DC2626',t:'Backend up, CJ_API_KEY missing'};if(this.st.lastError&&!this.st.lastOkAt)return{c:'#DC2626',t:'CJ error: '+this.st.lastError};return this.st.tokenCached?{c:'#16A34A',t:'Connected to CJ'}:{c:'#F59E0B',t:'Backend up — run “Test CJ connection”'}},
-  /* ═══ CJ রিকোয়েস্ট সেফগার্ড: কিউ (১.২ সেকেন্ড গ্যাপ) + ক্যাশ + ডুপ্লিকেট-রোধ + অটো রিট্রাই + কুলডাউন ═══ */
-  _q:Promise.resolve(),_last:0,_inflight:{},_cache:{},coolUntil:0,coolLeft:0,_coolT:null,
-  _isRL(m){return /too many|rate.?limit|\b429\b|one ip limit|frequen|qps|requests? too/i.test(String(m||''))},
-  _needsCJ(path){return /^\/(products|categories\/sync|test|import(?!\/queue)|shipping|categories\/[^/]+\/count)/.test(path)},
-  _ttl(path){if(/^\/status/.test(path))return 20000;if(/^\/categories$/.test(path))return 600000;if(/^\/products/.test(path))return 120000;if(/^\/(settings|fx)$/.test(path))return 300000;return 0},
-  _gate(){const p=this._q.then(async()=>{const w=this._last+1200-Date.now();if(w>0)await new Promise(r=>setTimeout(r,w));this._last=Date.now()});this._q=p.catch(()=>{});return p},
-  _startCool(sec){this.coolUntil=Date.now()+sec*1000;this.coolLeft=sec;clearInterval(this._coolT);this._coolT=setInterval(()=>{this.coolLeft=Math.max(0,Math.ceil((this.coolUntil-Date.now())/1000));if(!this.coolLeft)clearInterval(this._coolT)},1000)},
   async call(method,path,body){
-    const m=String(method||'GET').toUpperCase(),key=m+' '+path+(body?JSON.stringify(body):'');
-    if(m==='GET'){const ttl=this._ttl(path),c=this._cache[key];if(c&&Date.now()-c.t<ttl)return c.v;if(this._inflight[key])return this._inflight[key]}
-    else this._cache={};
-    if(this._needsCJ(path)&&Date.now()<this.coolUntil)throw new Error('CJ এই মুহূর্তে রিকোয়েস্ট লিমিটে আছে — '+this.coolLeft+' সেকেন্ড অপেক্ষা করে আবার চেষ্টা করুন (বারবার চাপলে সময় আরও বাড়ে)');
-    const retryable=m==='GET'||/^\/test/.test(path),waits=[6000,15000];
-    const run=(async()=>{
-      for(let i=0;;i++){
-        try{await this._gate();const j=await this._rawCall(method,path,body);if(m==='GET'&&this._ttl(path)>0)this._cache[key]={t:Date.now(),v:j};return j}
-        catch(e){
-          if(this._isRL(e.message)&&this._needsCJ(path)){
-            if(retryable&&i<waits.length){await new Promise(r=>setTimeout(r,waits[i]));continue}
-            this._startCool(60);
-            throw new Error('CJ সার্ভার এই মুহূর্তে অনেক রিকোয়েস্ট পাচ্ছে (একই আইপি লিমিট)। ৬০ সেকেন্ড পর নিজে থেকেই আবার চেষ্টা করা যাবে। CJ message: '+e.message)}
-          throw e}}
-    })();
-    if(m==='GET'){this._inflight[key]=run;run.then(()=>{delete this._inflight[key]},()=>{delete this._inflight[key]})}
-    return run},
-  async _rawCall(method,path,body){
     if(!/^https:\/\/[^\s]+$/.test(this.api))throw new Error('Enter your Render backend URL (https://…) in API Connections');
     const tok=window.$adminTok?await window.$adminTok():null;if(!tok)throw new Error('Sign in again (Firebase session missing)');
     let r;const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),45000);try{r=await fetch(this.api+'/api/admin/cj'+path,{method,headers:{Authorization:'Bearer '+tok,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:ctl.signal,credentials:'omit'})}
@@ -6810,7 +6740,7 @@ function cjMgr(){return{
     if(!this._loaded.cats&&t!=='cj_api'){this._loaded.cats=1;this.loadCats()}
     if(['cj_pricing','cj_delivery','cj_sync','cj_cats','cj_bulk'].includes(t)&&!this.settings)await this.loadSettings();
     if(t==='cj_pricing'){try{this.fx=(await this.call('GET','/fx'))}catch(e){}}
-    if(t==='cj_bulk'||t==='cj_imported')this.loadQueue();if(t==='cj_delivery')this.loadReqs();if(t==='cj_sync')this.loadSync();if(t==='cj_history')this.loadHist();
+    if(t==='cj_delivery')this.loadReqs();if(t==='cj_sync')this.loadSync();if(t==='cj_history')this.loadHist();
     if(t==='cj_products'&&!this.items.length&&this.api)this.load(1);if(t==='cj_api'&&this.api&&!this.st)this.checkStatus()},
   async checkStatus(){this.stErr='';await this.wrap(async()=>{this.st=await this.call('GET','/status')},'stErr')},
   async testConn(){await this.wrap(async()=>{await this.call('POST','/test');this.toast('CJ connection OK ✅');this.st=await this.call('GET','/status')},'stErr')},
@@ -6840,16 +6770,13 @@ function cjMgr(){return{
   async quickImport(p){if(!this.imp.intlKey&&!this.mappedFor(p)){this.toast('Open “Bulk Import”, choose a website category (or map the CJ category) first','error');this.sel[p.pid]=this.sel[p.pid]||{pid:p.pid,name:p.name||p.pid,image:p.image||'',priceMin:p.priceMin||0};this.sel={...this.sel};return this.P.goTab('cj_bulk')}
     if(!confirm('Import this product as '+(this.imp.publish?'PUBLISHED':'DRAFT')+'?'))return;await this.runImport([p.pid])},
   mappedFor(p){return !!(p.categoryId&&this.settings&&this.settings.categoryMap&&this.settings.categoryMap[p.categoryId])},
-  async loadQueue(){try{this.queue=(await this.call('GET','/import/queue')).list||[]}catch(e){}},
-  async runQueue(){await this.wrap(async()=>{const r=await this.call('POST','/import/queue/run');this.toast(r.waiting?'CJ এখনো লিমিটে — একটু পরে নিজে থেকেই হবে':(r.busy?'কিউ চলছে…':(r.processed||0)+' টি ইমপোর্ট হলো ✅'),r.waiting?'error':'success');await this.loadQueue()})},
-  async rmQueue(pid){await this.wrap(async()=>{await this.call('DELETE','/import/queue/'+encodeURIComponent(pid));await this.loadQueue()})},
   async runImport(pids){if(!pids.length)return;if(pids.length>1&&!confirm('Import '+pids.length+' products as '+(this.imp.publish===true||this.imp.publish==='true'?'PUBLISHED':'DRAFT')+'?'))return;
     this.imp.busy=true;this.imp.res=null;const pick=this.imp.intlKey?this.intlPick(this.imp.intlKey):{};const pub=this.imp.publish===true||this.imp.publish==='true';
     const rule=this.imp.rule.mode&&Number(this.imp.rule.value)>=0?{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)}:null;
     const delivery=this.imp.delivery!=='default'?{mode:this.imp.delivery,fee:this.imp.delivery==='fixed'?Number(this.imp.fee)||0:0}:null;
-    const out={done:[],skipped:[],failed:[],queued:[]};
-    try{for(let i=0;i<pids.length;i+=10){const r=await this.call('POST','/import',{items:pids.slice(i,i+10).map(pid=>({pid,publish:pub,...pick,ruleOverride:rule,delivery}))});['done','skipped','failed','queued'].forEach(k=>out[k].push(...(r[k]||[])))}
-      this.imp.res=out;out.done.forEach(d=>delete this.sel[d.pid]);this.sel={...this.sel};this.toast(out.done.length+' imported'+(out.skipped.length?', '+out.skipped.length+' skipped':'')+(out.queued.length?', '+out.queued.length+' queued — CJ limit কাটলে নিজে থেকেই ইমপোর্ট হবে ⏳':'')+(out.failed.length?', '+out.failed.length+' failed':''),out.failed.length?'error':'success');this.loadQueue();
+    const out={done:[],skipped:[],failed:[]};
+    try{for(let i=0;i<pids.length;i+=10){const r=await this.call('POST','/import',{items:pids.slice(i,i+10).map(pid=>({pid,publish:pub,...pick,ruleOverride:rule,delivery}))});['done','skipped','failed'].forEach(k=>out[k].push(...r[k]))}
+      this.imp.res=out;out.done.forEach(d=>delete this.sel[d.pid]);this.sel={...this.sel};this.toast(out.done.length+' imported'+(out.skipped.length?', '+out.skipped.length+' skipped':'')+(out.failed.length?', '+out.failed.length+' failed':''),out.failed.length?'error':'success');
       if(this.P.activeTab==='cj_products')this.load(this.page)}catch(e){this.imp.res=out;this.toast(e.message,'error')}this.imp.busy=false},
   async bulkRule(){await this.wrap(async()=>{await this.call('POST','/rules/bulk',{pids:Object.keys(this.sel),rule:{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)||0}});this.toast('Profit rule saved for '+this.selCount()+' products ✅');await this.loadSettings()})},
   /* imported products (existing product database) */
