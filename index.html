@@ -795,7 +795,16 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
             <p><b>ঠিকানা:</b> <span x-text="viewOrder.address||'—'"></span></p>
             <p x-show="viewOrder.upazila"><b>উপজেলা/থানা:</b> <span x-text="viewOrder.upazila"></span></p>
             <p><b>জেলা:</b> <span x-text="viewOrder.district||'—'"></span> &nbsp; <b>বিভাগ:</b> <span x-text="viewOrder.division||'—'"></span></p>
-            <p x-show="viewOrder.intlDest&&viewOrder.intlDest.chargePending" style="color:#B45309"><b>⏳ ডেলিভারি চার্জ:</b> কাস্টমারকে জানানো বাকি (WhatsApp/ফেসবুকে কনফার্ম করুন)</p>
+<div x-show="viewOrder.intlDest&&(viewOrder.intlDest.chargePending||viewOrder.intlDest.chargeStatus)" class="dd-card-sm p-3" style="border:1.5px solid #F59E0B">
+<p class="text-sm font-bold">🌍 গ্লোবাল ডেলিভারি চার্জ <span class="text-xs" style="color:var(--fg3)" x-text="viewOrder.intlDest&&viewOrder.intlDest.countryName?'· '+viewOrder.intlDest.countryName:''"></span></p>
+<div x-show="viewOrder.intlDest.chargePending" class="mt-2"><p class="text-xs mb-1.5" style="color:#B45309">⏳ চার্জ নির্ধারণ বাকি — দিলেই কাস্টমার অ্যাপে দেখবে ও সেখান থেকে পেমেন্ট করবে (WhatsApp লাগবে না)।</p>
+<div class="flex gap-2"><input type="number" min="1" x-model="intlChg" placeholder="ডেলিভারি চার্জ ৳" class="flex-1 px-3 py-2 rounded-lg border text-sm" style="border-color:var(--border);background:var(--bg2);color:var(--fg)"/><button type="button" @click="setIntlCharge()" class="px-3 py-2 rounded-lg text-xs font-bold" style="background:#F59E0B;color:#fff;border:none;cursor:pointer">চার্জ পাঠান</button></div></div>
+<p x-show="viewOrder.intlDest.chargeStatus==='due'" class="text-xs mt-2" style="color:#B45309">📤 ৳<span x-text="viewOrder.intlDest.charge"></span> পাঠানো হয়েছে — কাস্টমারের পেমেন্টের অপেক্ষা।</p>
+<div x-show="viewOrder.intlDest.chargeStatus==='submitted'" class="mt-2 text-xs"><p>💳 <b x-text="viewOrder.intlDest.chargeMethod"></b> · TrxID: <b class="font-mono" x-text="viewOrder.intlDest.chargeTrx||'— (স্ক্রিনশট দেখুন)'"></b> · ৳<span x-text="viewOrder.intlDest.charge"></span></p>
+<a x-show="viewOrder.intlDest.chargeShot" :href="viewOrder.intlDest.chargeShot" target="_blank" rel="noopener" class="block mt-1.5"><img :src="viewOrder.intlDest.chargeShot" alt="পেমেন্ট স্ক্রিনশট" style="max-height:190px;max-width:100%;border-radius:12px;border:2px solid #F59E0B;object-fit:contain;background:#fff"/><span class="text-xs font-bold" style="color:#B45309">📎 পেমেন্ট স্ক্রিনশট — বড় করে দেখুন</span></a>
+<div class="flex gap-2 mt-1.5"><button type="button" @click="confirmIntlCharge(true)" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:#16A34A;color:#fff;border:none;cursor:pointer">✅ পেমেন্ট নিশ্চিত</button><button type="button" @click="confirmIntlCharge(false)" class="px-3 py-1.5 rounded-lg text-xs font-bold" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">❌ ভুল TrxID</button></div></div>
+<p x-show="viewOrder.intlDest.chargeStatus==='paid'" class="text-xs mt-2" style="color:#16A34A">✅ চার্জ ৳<span x-text="viewOrder.intlDest.charge"></span> পরিশোধিত ও নিশ্চিত।</p>
+</div>
   <p x-show="viewOrder.intlDest"><b>বিদেশ:</b> <span x-text="(viewOrder.intlDest&&viewOrder.intlDest.countryName)+' · '+(viewOrder.intlDest&&viewOrder.intlDest.city)+' · প্রাপক '+(viewOrder.intlDest&&viewOrder.intlDest.name)+' '+(viewOrder.intlDest&&viewOrder.intlDest.phone)"></span></p>
             <p><b>পেমেন্ট:</b> <span x-text="(viewOrder.payMethod||'')+(viewOrder.payType==='cod'?' — ডেলিভারিতে ৳'+Number(viewOrder.dueOnDelivery!==undefined?viewOrder.dueOnDelivery:(viewOrder.total||0)).toLocaleString():'')"></span></p>
           </div>
@@ -836,10 +845,10 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
         </div>
         <div class="dd-card-sm p-3">
           <p class="dd-label mb-2">পণ্য তালিকা</p>
-          <template x-for="it in viewOrder.items||[]" :key="it.id">
-            <div class="flex items-center gap-2 py-2" style="border-bottom:1px dashed var(--border)">
-              <img :src="it.images?.[0]||it.img||''" class="w-10 h-10 rounded-xl object-cover flex-shrink-0" style="background:var(--bg2)"/>
-              <div class="flex-1"><p class="text-xs font-semibold" style="color:var(--fg)" x-text="it.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="'×'+it.qty+(it.size?' · '+it.size:'')"></p></div>
+          <template x-for="(it,ix) in viewOrder.items||[]" :key="(it.id||'')+'_'+ix">
+<div class="flex items-center gap-2 py-2" style="border-bottom:1px dashed var(--border)">
+<a :href="it.variantImg||it.img||it.images?.[0]||'#'" target="_blank" rel="noopener" class="flex-shrink-0" style="position:relative;display:block" title="বড় করে দেখুন"><img :src="it.variantImg||it.img||it.images?.[0]||''" class="w-16 h-16 rounded-xl object-cover" style="background:var(--bg2);border:2px solid var(--accent)"/><span x-show="it.variantNo&&(it.images||[]).length>1" style="position:absolute;left:2px;bottom:2px;background:var(--accent);color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:99px" x-text="'#'+it.variantNo"></span></a>
+<div class="flex-1"><p class="text-xs font-semibold" style="color:var(--fg)" x-text="it.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="'×'+it.qty+(it.size?' · সাইজ: '+it.size:'')"></p><p class="text-xs font-bold" style="color:#B45309" x-show="it.variantNo&&(it.images||[]).length>1" x-text="'🎨 কাস্টমারের বাছাই: ডিজাইন #'+it.variantNo+' (ছবি দেখে পাঠান)'"></p></div>
               <p class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(it.price*it.qty).toLocaleString()"></p>
             </div>
           </template>
@@ -1793,7 +1802,20 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
         </div>
         <div><label class="dd-label">নোটিশ / শর্ত (ইন্টারন্যাশনাল পাতায় দেখাবে)</label><textarea class="dd-input" rows="2" x-model="ic.notice" placeholder="যেমন: কাস্টমস চার্জ প্রযোজ্য হলে প্রাপক বহন করবেন"></textarea></div>
       </div>
-      <button class="btn-primary" @click="icSave()" :disabled="ic.saving"><i class="fa-solid fa-floppy-disk"></i> <span x-text="ic.saving?'সেভ হচ্ছে...':'ডেলিভারি সেটিংস সেভ করুন'"></span></button>
+      <div class="mt-4 p-3 rounded-2xl" style="background:var(--bg2);border:1px solid var(--border)">
+<p class="font-bold text-sm">💳 প্রবাসী কাস্টমারের পেমেন্ট মাধ্যম <span class="text-xs font-normal" style="color:var(--fg3)">(ডেলিভারি চার্জ পেমেন্ট)</span></p>
+<p class="text-xs mt-1" style="color:var(--fg3)">ব্যাংক, bKash, Nagad, Rocket — যত খুশি যোগ করুন। কাস্টমার চার্জ দেওয়ার সময় এগুলো দেখে বেছে নেবে। কিছু না দিলে সাধারণ bKash/Nagad সেটিংস দেখাবে।</p>
+<template x-for="(m,ix) in (settings.intlPayMethods||[])" :key="m.id||ix">
+<div class="mt-2 p-2.5 rounded-xl space-y-2" style="background:var(--card);border:1px solid var(--border)">
+<div class="grid grid-cols-2 gap-2"><select class="dd-input" x-model="m.type"><option value="mobile">মোবাইল ব্যাংকিং</option><option value="bank">ব্যাংক অ্যাকাউন্ট</option></select><input class="dd-input" x-model="m.label" placeholder="নাম (bKash / ইসলামী ব্যাংক)"/></div>
+<input class="dd-input" x-model="m.number" :placeholder="m.type==='bank'?'অ্যাকাউন্ট নম্বর':'মোবাইল নম্বর'"/>
+<template x-if="m.type==='bank'"><div class="space-y-2"><input class="dd-input" x-model="m.holder" placeholder="অ্যাকাউন্ট হোল্ডারের নাম"/><div class="grid grid-cols-2 gap-2"><input class="dd-input" x-model="m.bank" placeholder="ব্যাংকের নাম"/><input class="dd-input" x-model="m.branch" placeholder="শাখা"/></div></div></template>
+<input class="dd-input" x-model="m.note" placeholder="নির্দেশনা (যেমন: Send Money করুন / SWIFT কোড …)"/>
+<div class="flex items-center justify-between"><label class="flex items-center gap-2 text-xs font-bold"><label class="tog"><input type="checkbox" x-model="m.enabled"/><span class="tog-sl"></span></label> চালু</label><button type="button" @click="ipmDel(ix)" class="text-xs font-bold px-2.5 py-1 rounded-lg" style="background:#FEF2F2;color:#DC2626;border:none;cursor:pointer">🗑 মুছুন</button></div>
+</div></template>
+<div class="flex flex-wrap gap-2 mt-3"><button type="button" class="btn-ghost text-xs" @click="ipmAdd('mobile')">+ bKash/Nagad/Rocket</button><button type="button" class="btn-ghost text-xs" @click="ipmAdd('bank')">+ ব্যাংক অ্যাকাউন্ট</button><button type="button" class="btn-primary text-xs" @click="ipmSave()"><i class="fa-solid fa-floppy-disk"></i> পেমেন্ট মাধ্যম সেভ</button></div>
+</div>
+<button class="btn-primary" @click="icSave()" :disabled="ic.saving"><i class="fa-solid fa-floppy-disk"></i> <span x-text="ic.saving?'সেভ হচ্ছে...':'ডেলিভারি সেটিংস সেভ করুন'"></span></button>
     </div>
 
     <!-- ── 4. Order routing queue ── -->
@@ -4298,7 +4320,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
 
   prodSearch:'',prodSectionF:'',prodCatF:'',
   orderSearch:'',oFilt:'সব',archVer:0,arch:{denied:false,last:0,written:0,count:0},histQ:'',histSel:'',histOpen:{},rhQ:'',rhSel:'',rhOpen:{},orderSuspectOnly:false,custStats:{busy:false,msg:'',last:0},_ordersLoaded:false,unmigOpen:false,
-  orderDetailOpen:false,viewOrder:null,adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
+  orderDetailOpen:false,viewOrder:null,intlChg:'',adj:{kind:'product',sign:'-',amount:'',reason:'',busy:false},
 
   assignSearch:'',draggedId:null,
   eidSearch:'',
@@ -4472,10 +4494,25 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
   orderCopyText(o){if(!o)return'';const L=[];L.push('অর্ডার #'+(o.id||''));L.push('নাম: '+(o.customerName||''));L.push('ফোন: '+(o.phone||''));L.push('ঠিকানা: '+(o.address||''));if(o.upazila)L.push('উপজেলা/থানা: '+o.upazila);L.push('জেলা: '+(o.district||''));L.push('বিভাগ: '+(o.division||''));
     if(o.intlDest)L.push('বিদেশ: '+(o.intlDest.countryName||'')+', '+(o.intlDest.city||'')+', প্রাপক: '+(o.intlDest.name||'')+' '+(o.intlDest.phone||''));
-    L.push('পণ্য: '+(o.items||[]).map(i=>i.name+' ×'+i.qty+(i.size?' ('+i.size+')':'')).join(', '));
+    L.push('পণ্য: '+(o.items||[]).map(i=>i.name+' ×'+i.qty+(i.size?' ('+i.size+')':'')+((i.variantNo&&(i.images||[]).length>1)?' [ডিজাইন #'+i.variantNo+']':'')).join(', '));
     L.push('মোট: ৳'+Number(o.total||0)+(o.payType==='cod'?' (ডেলিভারিতে ৳'+Number(o.dueOnDelivery!==undefined?o.dueOnDelivery:(o.total||0))+')':' — '+(o.payMethod||'প্রি-পেইড')));
     if(o.location&&o.location.lat)L.push('ম্যাপ: https://www.google.com/maps?q='+o.location.lat+','+o.location.lng);return L.join('\n')},
-  async applyAdjust(){
+  ipmAdd(t){this.settings.intlPayMethods=[...(this.settings.intlPayMethods||[]),{id:'pm'+Date.now().toString(36),type:t==='bank'?'bank':'mobile',label:t==='bank'?'':'bKash',number:'',holder:'',bank:'',branch:'',note:t==='bank'?'':'Send Money করুন',enabled:true}]},
+ipmDel(i){const l=[...(this.settings.intlPayMethods||[])];l.splice(i,1);this.settings.intlPayMethods=l},
+async ipmSave(){const T=(v,n)=>String(v||'').trim().slice(0,n);const list=(this.settings.intlPayMethods||[]).filter(m=>T(m.label,40)&&T(m.number,60)).map(m=>({id:m.id||('pm'+Date.now().toString(36)),type:m.type==='bank'?'bank':'mobile',label:T(m.label,40),number:T(m.number,60),holder:T(m.holder,80),bank:T(m.bank,60),branch:T(m.branch,60),note:T(m.note,200),enabled:m.enabled!==false}));
+try{this.settings.intlPayMethods=list;const curr=await this.getCurrentSettings();await window.$db.saveSettings(curr);this.showToast('পেমেন্ট মাধ্যম সেভ ✅','success')}catch(e){this.showToast('সেভ ব্যর্থ — ইন্টারনেট/রুলস দেখুন','error')}},
+async setIntlCharge(){const o=this.viewOrder;if(!o||!o.intlDest)return;
+const ch=Math.round(Number(this.intlChg)||0);if(ch<=0)return this.showToast('ডেলিভারি চার্জ লিখুন','error');if(ch>10000000)return this.showToast('পরিমাণ অনেক বেশি','error');
+const paid=Number(o.advancePaid)||0,nt=(Number(o.total)||0)+ch,msg='🚚 ডেলিভারি চার্জ নির্ধারিত: ৳'+ch+'। অর্ডার পেজ থেকে চার্জ পরিশোধ করুন।';
+const d={shipping:ch,total:nt,dueOnDelivery:Math.max(0,nt-paid),intlDest:{...o.intlDest,chargePending:false,charge:ch,chargeStatus:'due',chargeAt:Date.now()},trackLog:[...(o.trackLog||[]),{t:Date.now(),text:msg}],trackNote:msg,trackUpdatedAt:Date.now()};
+try{await window.$db.updateOrder(o.fbKey,d);Object.assign(o,d);this.intlChg='';this.showToast('চার্জ পাঠানো হয়েছে ✅','success')}catch(e){this.showToast('ব্যর্থ! রুলস/ইন্টারনেট দেখুন','error')}},
+async confirmIntlCharge(ok){const o=this.viewOrder;if(!o||!o.intlDest)return;const c=Number(o.intlDest.charge)||0,paid=Number(o.advancePaid)||0;
+const msg=ok?'✅ ডেলিভারি চার্জ পেমেন্ট নিশ্চিত হয়েছে — অর্ডার প্রসেস হবে।':'❌ চার্জ পেমেন্টের TrxID মেলেনি — সঠিক TrxID দিয়ে আবার জমা দিন।';
+const nd={...o.intlDest,chargeStatus:ok?'paid':'due'};if(!ok){nd.chargeTrx=null;nd.chargeMethod=null}
+const d={intlDest:nd,trackLog:[...(o.trackLog||[]),{t:Date.now(),text:msg}],trackNote:msg,trackUpdatedAt:Date.now()};
+if(ok){d.advancePaid=paid+c;d.dueOnDelivery=Math.max(0,(Number(o.total)||0)-paid-c)}
+try{await window.$db.updateOrder(o.fbKey,d);Object.assign(o,d);this.showToast(ok?'নিশ্চিত ✅':'কাস্টমারকে জানানো হয়েছে','success')}catch(e){this.showToast('ব্যর্থ!','error')}},
+async applyAdjust(){
     const o=this.viewOrder,a=this.adj;if(!o||a.busy)return;
     const amt=Math.round(Number(a.amount)||0);
     if(amt<=0)return this.showToast('টাকার পরিমাণ দিন','error');
@@ -5580,7 +5617,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   ordTabSummary(){const l=this.filteredOrders,s=l.reduce((a,o)=>a+(Number(o.total)||0),0);return (this.activeTab==='delivered'?'✅ ডেলিভারি সম্পন্ন: ':'❌ বাতিল অর্ডার: ')+l.length+'টি · মোট ৳'+s.toLocaleString()},
   _ph11(p){return String(p||'').replace(/\D/g,'').slice(-11)},
   _hd(ts){const n=Number(ts);return n?new Date(n).toLocaleDateString('bn-BD',{year:'numeric',month:'short',day:'numeric'}):'—'},
-  _itemsTxt(o){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});return it.map(i=>(i.name||'?')+' ×'+(i.qty||1)+(i.size?' ('+i.size+')':'')).join(', ')||'—'},
+  _itemsTxt(o){const it=Array.isArray(o.items)?o.items:Object.values(o.items||{});return it.map(i=>(i.name||'?')+' ×'+(i.qty||1)+(i.size?' ('+i.size+')':'')+((i.variantNo&&(i.images||[]).length>1)?' [ডিজাইন #'+i.variantNo+']':'')).join(', ')||'—'},
   _logArr(o){const l=Array.isArray(o.trackLog)?o.trackLog:Object.values(o.trackLog||{});return l.slice(-6)},
   _hist(o){const l=Array.isArray(o.statusHistory)?o.statusHistory:Object.values(o.statusHistory||{});return l.slice(-8)},
   _osig(o){const L=x=>Array.isArray(x)?x.length:(x&&typeof x==='object'?Object.keys(x).length:0);return [o.status,o.total,o.trackNote||'',L(o.trackLog),L(o.adjustments),o.userHidden?1:0,o.trackingLink||'',o.cancelledBy||'',o.deliveredAt||'',o.cancelledAt||'',o.customerName||'',o.phone||'',L(o.statusHistory)].join('|')},
