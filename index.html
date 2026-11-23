@@ -1345,10 +1345,11 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <select class="dd-input sm:col-span-2" x-model="f.cat" @change="load(1)"><option value="">All categories</option><template x-for="l in leaves()" :key="l.id"><option :value="l.id" x-text="pathOf(l)"></option></template></select>
       <input class="dd-input" type="number" min="0" x-model="f.min" placeholder="Min $"/><input class="dd-input" type="number" min="0" x-model="f.max" placeholder="Max $"/>
       <label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" x-model="f.stock"/> In stock only</label>
-      <button class="btn-primary text-xs sm:col-span-2" @click="load(1)" :disabled="loading"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+      <button class="btn-primary text-xs sm:col-span-2" @click="load(1)" :disabled="loading||coolLeft>0"><i class="fa-solid fa-magnifying-glass"></i> <span x-text="coolLeft>0?('অপেক্ষা '+coolLeft+'s'):'Search'"></span></button>
       <p class="text-xs sm:col-span-3" style="color:var(--fg3)" x-show="fx">1 USD = <b x-text="fx&&fx.rate.toFixed(2)"></b> (<span x-text="fx&&fx.source"></span>)</p>
     </div>
     <p class="text-xs text-red-600" x-text="err"></p>
+    <p class="text-xs" style="color:var(--fg3)" x-show="loading">⏳ CJ থেকে ডাটা আনা হচ্ছে — লিমিট হলে অটো রিট্রাই হবে, আবার চাপার দরকার নেই।</p>
     <div x-show="loading" class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> Loading from CJ…</div>
     <div x-show="!loading&&!items.length&&!err" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">No products. Pick a category or search by name.</div>
     <div class="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
@@ -6764,7 +6765,32 @@ function cjMgr(){return{
   sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],impQ:'',_loaded:{},
   get dot(){if(!this.api)return{c:'#9CA3AF',t:'Not configured — enter the Render URL'};if(this.stErr)return{c:'#DC2626',t:'Backend unreachable / error'};if(!this.st)return{c:'#9CA3AF',t:'Unknown — press Check status'};
     if(!this.st.keyConfigured)return{c:'#DC2626',t:'Backend up, CJ_API_KEY missing'};if(this.st.lastError&&!this.st.lastOkAt)return{c:'#DC2626',t:'CJ error: '+this.st.lastError};return this.st.tokenCached?{c:'#16A34A',t:'Connected to CJ'}:{c:'#F59E0B',t:'Backend up — run “Test CJ connection”'}},
+  /* ═══ CJ রিকোয়েস্ট সেফগার্ড: কিউ (১.২ সেকেন্ড গ্যাপ) + ক্যাশ + ডুপ্লিকেট-রোধ + অটো রিট্রাই + কুলডাউন ═══ */
+  _q:Promise.resolve(),_last:0,_inflight:{},_cache:{},coolUntil:0,coolLeft:0,_coolT:null,
+  _isRL(m){return /too many|rate.?limit|\b429\b|one ip limit|frequen|qps|requests? too/i.test(String(m||''))},
+  _needsCJ(path){return /^\/(products|categories\/sync|test|import|shipping|categories\/[^/]+\/count)/.test(path)},
+  _ttl(path){if(/^\/status/.test(path))return 20000;if(/^\/categories$/.test(path))return 600000;if(/^\/products/.test(path))return 120000;if(/^\/(settings|fx)$/.test(path))return 300000;return 0},
+  _gate(){const p=this._q.then(async()=>{const w=this._last+1200-Date.now();if(w>0)await new Promise(r=>setTimeout(r,w));this._last=Date.now()});this._q=p.catch(()=>{});return p},
+  _startCool(sec){this.coolUntil=Date.now()+sec*1000;this.coolLeft=sec;clearInterval(this._coolT);this._coolT=setInterval(()=>{this.coolLeft=Math.max(0,Math.ceil((this.coolUntil-Date.now())/1000));if(!this.coolLeft)clearInterval(this._coolT)},1000)},
   async call(method,path,body){
+    const m=String(method||'GET').toUpperCase(),key=m+' '+path+(body?JSON.stringify(body):'');
+    if(m==='GET'){const ttl=this._ttl(path),c=this._cache[key];if(c&&Date.now()-c.t<ttl)return c.v;if(this._inflight[key])return this._inflight[key]}
+    else this._cache={};
+    if(this._needsCJ(path)&&Date.now()<this.coolUntil)throw new Error('CJ এই মুহূর্তে রিকোয়েস্ট লিমিটে আছে — '+this.coolLeft+' সেকেন্ড অপেক্ষা করে আবার চেষ্টা করুন (বারবার চাপলে সময় আরও বাড়ে)');
+    const retryable=m==='GET'||/^\/test/.test(path),waits=[6000,15000];
+    const run=(async()=>{
+      for(let i=0;;i++){
+        try{await this._gate();const j=await this._rawCall(method,path,body);if(m==='GET'&&this._ttl(path)>0)this._cache[key]={t:Date.now(),v:j};return j}
+        catch(e){
+          if(this._isRL(e.message)&&this._needsCJ(path)){
+            if(retryable&&i<waits.length){await new Promise(r=>setTimeout(r,waits[i]));continue}
+            this._startCool(60);
+            throw new Error('CJ সার্ভার এই মুহূর্তে অনেক রিকোয়েস্ট পাচ্ছে (একই আইপি লিমিট)। ৬০ সেকেন্ড পর নিজে থেকেই আবার চেষ্টা করা যাবে। CJ message: '+e.message)}
+          throw e}}
+    })();
+    if(m==='GET'){this._inflight[key]=run;run.then(()=>{delete this._inflight[key]},()=>{delete this._inflight[key]})}
+    return run},
+  async _rawCall(method,path,body){
     if(!/^https:\/\/[^\s]+$/.test(this.api))throw new Error('Enter your Render backend URL (https://…) in API Connections');
     const tok=window.$adminTok?await window.$adminTok():null;if(!tok)throw new Error('Sign in again (Firebase session missing)');
     let r;const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),45000);try{r=await fetch(this.api+'/api/admin/cj'+path,{method,headers:{Authorization:'Bearer '+tok,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:ctl.signal,credentials:'omit'})}
