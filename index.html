@@ -1293,6 +1293,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <template x-if="st"><div class="text-xs space-y-1" style="color:var(--fg2)">
         <p>CJ key configured: <b x-text="st.keyConfigured?'yes':'NO — set CJ_API_KEY on Render'"></b></p>
         <p>Access token cached: <b x-text="st.tokenCached?'yes (expires '+new Date(st.tokenExpiresAt).toLocaleDateString()+')':'no'"></b></p>
+        <p>Auto-import queue: <b x-text="st.queued||0"></b> · CJ cooldown: <b x-text="(st.cooldownSec||0)+'s'"></b></p>
         <p>CJ calls since server start: <b x-text="st.calls"></b> <span x-show="st.lastError" class="text-red-600">· last error: <span x-text="st.lastError"></span></span></p></div></template>
       <p class="text-xs text-red-600" x-text="stErr"></p>
     </div>
@@ -1391,13 +1392,19 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
     </div>
     <div x-show="!selCount()" class="dd-card p-6 text-center text-sm" style="color:var(--fg3)">Nothing selected. Tick products in “All Supplier Products” first.</div>
     <div class="dd-card divide-y" x-show="selCount()"><template x-for="s in Object.values(sel)" :key="s.pid"><div class="flex items-center gap-2 p-2"><img :src="s.image" class="w-10 h-10 rounded object-cover" alt=""/><span class="text-xs flex-1" x-text="s.name"></span><span class="text-xs" x-text="'$'+s.priceMin"></span><button class="btn-ghost text-xs" @click="delete sel[s.pid];sel={...sel}">✕</button></div></template></div>
-    <div class="dd-card p-3 text-xs space-y-1" x-show="imp.res"><p>✅ Imported: <b x-text="imp.res&&imp.res.done.length"></b> · ⏭ Skipped (duplicates): <b x-text="imp.res&&imp.res.skipped.length"></b> · ❌ Failed: <b x-text="imp.res&&imp.res.failed.length"></b></p>
+    <div class="dd-card p-3 text-xs space-y-2" x-show="queue.length"><p class="font-bold">⏳ অটো-ইমপোর্ট কিউ (<span x-text="queue.length"></span>) — CJ লিমিট কাটলে সার্ভার নিজে ইমপোর্ট করবে (প্রতি ১ মিনিটে চেক)</p>
+      <template x-for="q in queue" :key="q.pid"><div class="flex items-center gap-2"><span class="flex-1 truncate" x-text="q.pid"></span><button class="btn-ghost text-xs" @click="rmQueue(q.pid)">✕</button></div></template>
+      <div class="flex gap-2"><button class="btn-ghost text-xs" @click="runQueue()" :disabled="busy">এখনই চেষ্টা করুন</button><button class="btn-ghost text-xs" @click="loadQueue()">Refresh</button></div></div>
+    <div class="dd-card p-3 text-xs space-y-1" x-show="imp.res"><p>✅ Imported: <b x-text="imp.res&&imp.res.done.length"></b> · ⏭ Skipped (duplicates): <b x-text="imp.res&&imp.res.skipped.length"></b> · ⏳ Queued: <b x-text="imp.res&&(imp.res.queued||[]).length"></b> · ❌ Failed: <b x-text="imp.res&&imp.res.failed.length"></b></p>
       <template x-for="r in (imp.res?imp.res.skipped:[])" :key="r.pid"><p style="color:var(--fg3)" x-text="r.pid+' — '+r.reason"></p></template>
       <template x-for="r in (imp.res?imp.res.failed:[])" :key="r.pid"><p class="text-red-600" x-text="r.pid+' — '+r.error"></p></template></div>
   </div>
 
   <!-- 4. Imported Products -->
   <div x-show="activeTab==='cj_imported'" class="space-y-3">
+    <div class="dd-card p-3 text-xs space-y-2" x-show="queue.length"><p class="font-bold">⏳ অটো-ইমপোর্ট কিউ (<span x-text="queue.length"></span>) — CJ লিমিট কাটলে সার্ভার নিজে ইমপোর্ট করবে (প্রতি ১ মিনিটে চেক)</p>
+      <template x-for="q in queue" :key="q.pid"><div class="flex items-center gap-2"><span class="flex-1 truncate" x-text="q.pid"></span><button class="btn-ghost text-xs" @click="rmQueue(q.pid)">✕</button></div></template>
+      <div class="flex gap-2"><button class="btn-ghost text-xs" @click="runQueue()" :disabled="busy">এখনই চেষ্টা করুন</button><button class="btn-ghost text-xs" @click="loadQueue()">Refresh</button></div></div>
     <div class="dd-card p-3 flex items-center gap-2"><input class="dd-input flex-1" x-model="impQ" placeholder="Search imported products"/><span class="text-xs" x-text="importedList().length+' products'"></span></div>
     <div class="dd-card divide-y">
       <template x-for="p in importedList()" :key="p.fbKey">
@@ -6762,13 +6769,13 @@ function cjMgr(){return{
   det:null,detBusy:false,detShip:{country:'',vid:'',opts:null,busy:false},
   imp:{intlKey:'',publish:false,delivery:'default',fee:0,rule:{mode:'',value:0},busy:false,res:null},
   settings:null,rules:{categories:{},products:{}},newRule:{id:'',mode:'percent',value:10},newDel:{id:'',mode:'fixed',fee:0},
-  sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],impQ:'',_loaded:{},
+  sync:{last:null,pending:{},alerts:{}},hist:[],reqs:[],queue:[],impQ:'',_loaded:{},
   get dot(){if(!this.api)return{c:'#9CA3AF',t:'Not configured — enter the Render URL'};if(this.stErr)return{c:'#DC2626',t:'Backend unreachable / error'};if(!this.st)return{c:'#9CA3AF',t:'Unknown — press Check status'};
     if(!this.st.keyConfigured)return{c:'#DC2626',t:'Backend up, CJ_API_KEY missing'};if(this.st.lastError&&!this.st.lastOkAt)return{c:'#DC2626',t:'CJ error: '+this.st.lastError};return this.st.tokenCached?{c:'#16A34A',t:'Connected to CJ'}:{c:'#F59E0B',t:'Backend up — run “Test CJ connection”'}},
   /* ═══ CJ রিকোয়েস্ট সেফগার্ড: কিউ (১.২ সেকেন্ড গ্যাপ) + ক্যাশ + ডুপ্লিকেট-রোধ + অটো রিট্রাই + কুলডাউন ═══ */
   _q:Promise.resolve(),_last:0,_inflight:{},_cache:{},coolUntil:0,coolLeft:0,_coolT:null,
   _isRL(m){return /too many|rate.?limit|\b429\b|one ip limit|frequen|qps|requests? too/i.test(String(m||''))},
-  _needsCJ(path){return /^\/(products|categories\/sync|test|import|shipping|categories\/[^/]+\/count)/.test(path)},
+  _needsCJ(path){return /^\/(products|categories\/sync|test|import(?!\/queue)|shipping|categories\/[^/]+\/count)/.test(path)},
   _ttl(path){if(/^\/status/.test(path))return 20000;if(/^\/categories$/.test(path))return 600000;if(/^\/products/.test(path))return 120000;if(/^\/(settings|fx)$/.test(path))return 300000;return 0},
   _gate(){const p=this._q.then(async()=>{const w=this._last+1200-Date.now();if(w>0)await new Promise(r=>setTimeout(r,w));this._last=Date.now()});this._q=p.catch(()=>{});return p},
   _startCool(sec){this.coolUntil=Date.now()+sec*1000;this.coolLeft=sec;clearInterval(this._coolT);this._coolT=setInterval(()=>{this.coolLeft=Math.max(0,Math.ceil((this.coolUntil-Date.now())/1000));if(!this.coolLeft)clearInterval(this._coolT)},1000)},
@@ -6803,7 +6810,7 @@ function cjMgr(){return{
     if(!this._loaded.cats&&t!=='cj_api'){this._loaded.cats=1;this.loadCats()}
     if(['cj_pricing','cj_delivery','cj_sync','cj_cats','cj_bulk'].includes(t)&&!this.settings)await this.loadSettings();
     if(t==='cj_pricing'){try{this.fx=(await this.call('GET','/fx'))}catch(e){}}
-    if(t==='cj_delivery')this.loadReqs();if(t==='cj_sync')this.loadSync();if(t==='cj_history')this.loadHist();
+    if(t==='cj_bulk'||t==='cj_imported')this.loadQueue();if(t==='cj_delivery')this.loadReqs();if(t==='cj_sync')this.loadSync();if(t==='cj_history')this.loadHist();
     if(t==='cj_products'&&!this.items.length&&this.api)this.load(1);if(t==='cj_api'&&this.api&&!this.st)this.checkStatus()},
   async checkStatus(){this.stErr='';await this.wrap(async()=>{this.st=await this.call('GET','/status')},'stErr')},
   async testConn(){await this.wrap(async()=>{await this.call('POST','/test');this.toast('CJ connection OK ✅');this.st=await this.call('GET','/status')},'stErr')},
@@ -6833,13 +6840,16 @@ function cjMgr(){return{
   async quickImport(p){if(!this.imp.intlKey&&!this.mappedFor(p)){this.toast('Open “Bulk Import”, choose a website category (or map the CJ category) first','error');this.sel[p.pid]=this.sel[p.pid]||{pid:p.pid,name:p.name||p.pid,image:p.image||'',priceMin:p.priceMin||0};this.sel={...this.sel};return this.P.goTab('cj_bulk')}
     if(!confirm('Import this product as '+(this.imp.publish?'PUBLISHED':'DRAFT')+'?'))return;await this.runImport([p.pid])},
   mappedFor(p){return !!(p.categoryId&&this.settings&&this.settings.categoryMap&&this.settings.categoryMap[p.categoryId])},
+  async loadQueue(){try{this.queue=(await this.call('GET','/import/queue')).list||[]}catch(e){}},
+  async runQueue(){await this.wrap(async()=>{const r=await this.call('POST','/import/queue/run');this.toast(r.waiting?'CJ এখনো লিমিটে — একটু পরে নিজে থেকেই হবে':(r.busy?'কিউ চলছে…':(r.processed||0)+' টি ইমপোর্ট হলো ✅'),r.waiting?'error':'success');await this.loadQueue()})},
+  async rmQueue(pid){await this.wrap(async()=>{await this.call('DELETE','/import/queue/'+encodeURIComponent(pid));await this.loadQueue()})},
   async runImport(pids){if(!pids.length)return;if(pids.length>1&&!confirm('Import '+pids.length+' products as '+(this.imp.publish===true||this.imp.publish==='true'?'PUBLISHED':'DRAFT')+'?'))return;
     this.imp.busy=true;this.imp.res=null;const pick=this.imp.intlKey?this.intlPick(this.imp.intlKey):{};const pub=this.imp.publish===true||this.imp.publish==='true';
     const rule=this.imp.rule.mode&&Number(this.imp.rule.value)>=0?{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)}:null;
     const delivery=this.imp.delivery!=='default'?{mode:this.imp.delivery,fee:this.imp.delivery==='fixed'?Number(this.imp.fee)||0:0}:null;
-    const out={done:[],skipped:[],failed:[]};
-    try{for(let i=0;i<pids.length;i+=10){const r=await this.call('POST','/import',{items:pids.slice(i,i+10).map(pid=>({pid,publish:pub,...pick,ruleOverride:rule,delivery}))});['done','skipped','failed'].forEach(k=>out[k].push(...r[k]))}
-      this.imp.res=out;out.done.forEach(d=>delete this.sel[d.pid]);this.sel={...this.sel};this.toast(out.done.length+' imported'+(out.skipped.length?', '+out.skipped.length+' skipped':'')+(out.failed.length?', '+out.failed.length+' failed':''),out.failed.length?'error':'success');
+    const out={done:[],skipped:[],failed:[],queued:[]};
+    try{for(let i=0;i<pids.length;i+=10){const r=await this.call('POST','/import',{items:pids.slice(i,i+10).map(pid=>({pid,publish:pub,...pick,ruleOverride:rule,delivery}))});['done','skipped','failed','queued'].forEach(k=>out[k].push(...(r[k]||[])))}
+      this.imp.res=out;out.done.forEach(d=>delete this.sel[d.pid]);this.sel={...this.sel};this.toast(out.done.length+' imported'+(out.skipped.length?', '+out.skipped.length+' skipped':'')+(out.queued.length?', '+out.queued.length+' queued — CJ limit কাটলে নিজে থেকেই ইমপোর্ট হবে ⏳':'')+(out.failed.length?', '+out.failed.length+' failed':''),out.failed.length?'error':'success');this.loadQueue();
       if(this.P.activeTab==='cj_products')this.load(this.page)}catch(e){this.imp.res=out;this.toast(e.message,'error')}this.imp.busy=false},
   async bulkRule(){await this.wrap(async()=>{await this.call('POST','/rules/bulk',{pids:Object.keys(this.sel),rule:{mode:this.imp.rule.mode,value:Number(this.imp.rule.value)||0}});this.toast('Profit rule saved for '+this.selCount()+' products ✅');await this.loadSettings()})},
   /* imported products (existing product database) */
