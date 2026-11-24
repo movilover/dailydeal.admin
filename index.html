@@ -288,6 +288,9 @@ window.$db={
   updateCustTx:async(uid,key,data)=>update(ref(db,'customerWalletTx/'+uid+'/'+key),data),
   // ব্যালেন্স সমন্বয় — অ্যাটমিক ট্রানজ্যাকশন (একসাথে দুই জায়গা থেকে বদলালেও ভুল হয় না)
   adjustResellerWallet:async(phone,delta)=>{const path='resellers/'+phone+'/walletBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
+  // ── ডেলিভারি চার্জ বকেয়া (রিসেলারের কাছে আমাদের পাওনা): কখনো মাইনাসে নামে না, অ্যাটমিক ──
+  readNum:async(path)=>Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0,
+  adjustResellerDue:async(phone,delta)=>{const path='resellers/'+phone+'/deliveryDue';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.max(0,Math.round((base+delta)*100)/100);if(n>100000000)return;return n});if(!r.committed)throw new Error('due-failed');return r.snapshot.val()},
   adjustReferralWallet:async(phone,delta)=>{const path='resellers/'+phone+'/referralBalance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
   adjustCustWallet:async(uid,delta)=>{const path='customerWallets/'+uid+'/balance';const prime=Number(await new Promise((res,rej)=>onValue(ref(db,path),s=>res(s.val()),rej,{onlyOnce:true})))||0;const r=await runTransaction(ref(db,path),cur=>{const base=(cur===null||cur===undefined)?prime:(Number(cur)||0);const n=Math.round((base+delta)*100)/100;if(n<0||n>100000000)return;return n});if(!r.committed)throw new Error('insufficient');return r.snapshot.val()},
   setWalletExact:async(kind,id,target)=>{const path=(kind==='reseller'?'resellers/'+id+'/walletBalance':'customerWallets/'+id+'/balance');let oldV=0;const r=await runTransaction(ref(db,path),cur=>{oldV=Number(cur)||0;const n=Math.round(Number(target)*100)/100;if(!(n>=0)||n>100000000)return;return n});if(!r.committed)throw new Error('invalid');return {old:oldV,nb:r.snapshot.val()}},
@@ -812,7 +815,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
         <div class="grid grid-cols-2 gap-3">
           <div class="dd-card-sm p-3"><p class="dd-label">অর্ডার আইডি</p><p class="font-mono font-bold text-sm" style="color:var(--fg)" x-text="'#'+(viewOrder.id||'')"></p><p class="text-xs font-bold mt-1" style="color:#0F8F7A" x-show="viewOrder.linkOrder"><i class="fa-solid fa-link"></i> রিসেলার লিংক অর্ডার<span x-show="viewOrder.resellerShopName" x-text="' — '+viewOrder.resellerShopName"></span><span x-show="viewOrder.deliveryAdvanceVerified" style="color:#047857"> · ডেলিভারি অগ্রিম রিসেলার যাচাই করেছে ✅</span></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">স্ট্যাটাস</p>
-            <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-outfordelivery':viewOrder.status==='পাঠানো হচ্ছে','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'}" x-text="viewOrder.status"></span>
+            <span class="text-xs font-bold px-2 py-1 rounded-full" :class="{'chip-pending':viewOrder.status==='পেন্ডিং','chip-processing':viewOrder.status==='প্রসেসিং','chip-outfordelivery':viewOrder.status==='পাঠানো হচ্ছে','chip-delivered':viewOrder.status==='ডেলিভার্ড','chip-cancelled':viewOrder.status==='বাতিল'||viewOrder.status==='রিটার্ন'}" x-text="viewOrder.status"></span>
           </div>
           <div class="dd-card-sm p-3"><p class="dd-label">গ্রাহক</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="viewOrder.phone"></p></div>
           <div class="dd-card-sm p-3"><p class="dd-label">ঠিকানা</p><p class="text-xs font-semibold" style="color:var(--fg)" x-text="(viewOrder.district||'')+', '+(viewOrder.division||'')"></p>
@@ -820,9 +823,16 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
           <div class="dd-card-sm p-3" x-show="viewOrder.shipping>0"><p class="dd-label">ডেলিভারি চার্জ ৳<span x-text="viewOrder.shipping"></span></p><p class="text-sm font-bold" :style="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'color:#15803D':'color:#B45309'" x-text="(viewOrder.deliveryAdvance||viewOrder.advancePaid)?'✅ অগ্রিম পেইড'+(viewOrder.trxId?' (TrxID: '+viewOrder.trxId+')':'')+(viewOrder.advanceClaimedByCustomer?' — কাস্টমারের দাবি, রিসেলারের কাছে যাচাইকৃত':''):'⏳ ডেলিভারির সময় নিতে হবে'"></p><p class="text-xs mt-1" style="color:var(--fg3)" x-show="viewOrder.collectAmount!=null||viewOrder.dueOnDelivery!=null">কাস্টমার থেকে আদায়: ৳<span x-text="viewOrder.collectAmount!=null?viewOrder.collectAmount:viewOrder.dueOnDelivery"></span></p></div>
           <div class="dd-card-sm p-3" x-show="viewOrder.payMethod"><p class="dd-label">পেমেন্ট মাধ্যম</p><p class="text-sm font-semibold" style="color:var(--fg)" x-text="viewOrder.payMethod"></p></div>
         </div>
+        <div class="dd-card-sm p-3" x-show="viewOrder.orderType==='reseller'&&viewOrder.resellerPhone" :style="(viewOrder.dueState||_dueHeld(viewOrder))?'border-left:4px solid #DC2626;background:#FEF2F2':''">
+          <p class="dd-label"><i class="fa-solid fa-hand-holding-dollar mr-1" style="color:#DC2626"></i>ডেলিভারি চার্জ পাওনা (রিসেলারের কাছে)</p>
+          <p class="text-xs font-bold" style="color:#B91C1C;line-height:1.7" x-show="viewOrder.dueState" x-text="'৳'+(viewOrder.dueAmount||0)+' — '+(viewOrder.dueReason==='return'?'অর্ডার রিটার্ন':viewOrder.dueReason==='advance_held'?'রিসেলার চার্জ অগ্রিম নিয়েছে':'অ্যাডমিন ম্যানুয়াল')+' · কাটা হয়েছে ৳'+(viewOrder.dueRecovered||0)+' · '+(viewOrder.dueState==='settled'?'✅ শোধ':'⏳ বাকি আছে (রিসেলারের ব্যালেন্সে মাইনাস)')"></p>
+          <p class="text-xs font-semibold" style="color:#B91C1C;line-height:1.7" x-show="!viewOrder.dueState&&_dueHeld(viewOrder)" x-text="'⚠ রিসেলার কাস্টমারের কাছ থেকে নিজেই ডেলিভারি চার্জ ৳'+_dueShip(viewOrder)+' অগ্রিম নিয়েছে — অর্ডার ডেলিভার্ড হলে এর প্রফিট থেকে কাটা হবে, না কুলালে বাকিটা পাওনা থাকবে।'"></p>
+          <p class="text-xs" style="color:var(--fg3);line-height:1.7" x-show="!viewOrder.dueState&&!_dueHeld(viewOrder)">কোনো পাওনা ধরা নেই। অর্ডার ফেরত এলে স্ট্যাটাসে "রিটার্ন" দিন — ডেলিভারি চার্জ রিসেলার থেকে কাটা হবে।</p>
+          <button type="button" x-show="!viewOrder.dueState" @click="dueFromOrder(viewOrder)" class="mt-2 text-xs font-bold px-3 py-1.5 rounded-xl" style="background:#DC2626;color:#fff;border:none;cursor:pointer"><i class="fa-solid fa-plus mr-1"></i>ডেলিভারি চার্জ পাওনা ধরুন</button>
+        </div>
         <div class="dd-card-sm p-3 space-y-3">
           <p class="dd-label"><i class="fa-solid fa-truck-fast mr-1" style="color:var(--accent)"></i>কুরিয়ার ও ট্র্যাকিং</p>
-          <div class="flex flex-wrap gap-1.5"><template x-for="s in ['প্রসেসিং','পাঠানো হচ্ছে','ডেলিভার্ড']" :key="s"><button type="button" @click="updateOrderStatus(viewOrder.fbKey,s);viewOrder.status=s" class="px-3 py-1.5 rounded-full text-xs font-bold" :style="viewOrder.status===s?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:none'" x-text="s"></button></template></div>
+          <div class="flex flex-wrap gap-1.5"><template x-for="s in ['প্রসেসিং','পাঠানো হচ্ছে','ডেলিভার্ড','রিটার্ন']" :key="s"><button type="button" @click="updateOrderStatus(viewOrder.fbKey,s);viewOrder.status=s" class="px-3 py-1.5 rounded-full text-xs font-bold" :style="viewOrder.status===s?'background:var(--accent);color:#fff;border:none':'background:var(--bg2);color:var(--fg2);border:none'" x-text="s"></button></template></div>
           <div class="grid grid-cols-2 gap-2">
             <select class="dd-input" :value="viewOrder.courier||''" @change="trkSet('courier',$event.target.value)"><option value="">কুরিয়ার বেছে নিন</option><option>ShopBase BD</option><option>Steadfast</option><option>Pathao</option><option>RedX</option><option>Paperfly</option><option>অন্য</option></select>
             <input class="dd-input" :value="viewOrder.trackId||''" @change="trkSet('trackId',$event.target.value.trim())" placeholder="ট্র্যাকিং/পার্সেল ID"/>
@@ -1880,10 +1890,10 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
                 <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span></td>
                 <td><p class="font-semibold text-xs" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td><span class="font-mono font-bold text-xs" style="color:var(--accent)" x-text="'৳'+(o.total||0).toLocaleString()"></span></td>
-                <td><span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" x-text="o.status"></span></td>
+                <td><span class="text-xs font-bold px-2.5 py-1 rounded-full" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'||o.status==='রিটার্ন'}" x-text="o.status"></span></td>
                 <td>
                   <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-semibold" style="border-color:var(--border);background:var(--bg2);color:var(--fg)">
-                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option><option>রিটার্ন</option>
                   </select>
                 </td>
               </tr>
@@ -2731,15 +2741,15 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
           <tbody>
             <template x-for="o in filteredOrders" :key="o.fbKey">
               <tr>
-                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.userHidden"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA">🗑 ইউজার ডিলিট করেছে</span></div></template><template x-if="o.cancelledBy==='reseller'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">রিসেলার বাতিল</span></div></template><template x-if="o.orderType==='reseller'||o.orderType==='referral'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" x-text="'রিসেলার: '+getResellerName(o.resellerPhone)"></span></div></template><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template></td>
+                <td><span class="font-mono text-xs font-bold" style="color:var(--fg)">#<span x-text="o.id"></span></span><br><span class="text-xs" style="color:var(--fg3)" x-text="o.date"></span><template x-if="o.userHidden"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FFF7ED;color:#C2410C;border:1px solid #FED7AA">🗑 ইউজার ডিলিট করেছে</span></div></template><template x-if="o.cancelledBy==='reseller'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">রিসেলার বাতিল</span></div></template><template x-if="o.orderType==='reseller'||o.orderType==='referral'"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE" x-text="'রিসেলার: '+getResellerName(o.resellerPhone)"></span></div></template><template x-if="o.trxId&&trxDup(o.trxId)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA">⚠ ডুপ্লিকেট TrxID</span></div></template><template x-if="orderSuspect(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full cursor-help" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" :title="orderSuspect(o)">⚠ যাচাই করুন</span><p class="text-xs mt-1" style="color:#B91C1C;max-width:190px" x-text="orderSuspect(o)"></p></div></template><template x-if="o.dueState||_dueHeld(o)"><div class="mt-1"><span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA" x-text="o.dueState?('ডেলিভারি পাওনা ৳'+(o.dueAmount||0)+(o.dueState==='settled'?' (কাটা হয়েছে)':'')):('অগ্রিম চার্জ রিসেলার নিয়েছে ৳'+_dueShip(o))"></span></div></template></td>
                 <td><p class="font-semibold text-xs" style="color:var(--fg)" x-text="o.customerName"></p><p class="text-xs" style="color:var(--fg3)" x-text="o.phone"></p></td>
                 <td class="text-xs" x-text="(o.upazila?o.upazila+', ':'')+(o.district||'')"></td>
                 <td><p class="text-xs" x-text="(o.items||[]).length+'টি'"></p></td>
                 <td><span class="font-mono text-xs font-bold" style="color:var(--accent)" x-text="'৳'+(o.total||0).toLocaleString()"></span></td>
                 <td class="text-xs" style="color:var(--fg3)" x-text="o.payMethod||'—'"></td>
                 <td>
-                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-bold" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'}" style="border:none">
-                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option>
+                  <select @change="updateOrderStatus(o.fbKey,$event.target.value)" :value="o.status" class="text-xs px-2 py-1.5 rounded-lg cursor-pointer border font-bold" :class="{'chip-pending':o.status==='পেন্ডিং','chip-processing':o.status==='প্রসেসিং','chip-outfordelivery':o.status==='পাঠানো হচ্ছে','chip-delivered':o.status==='ডেলিভার্ড','chip-cancelled':o.status==='বাতিল'||o.status==='রিটার্ন'}" style="border:none">
+                    <option>পেন্ডিং</option><option>প্রসেসিং</option><option>পাঠানো হচ্ছে</option><option>ডেলিভার্ড</option><option>বাতিল</option><option>রিটার্ন</option>
                   </select>
                 </td>
                 <td style="min-width:160px">
@@ -2900,6 +2910,10 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <button @click="syncTeamNow()" :disabled="tmSync.busy" class="btn-ghost text-xs"><i class="fa-solid" :class="tmSync.busy?'fa-spinner fa-spin':'fa-people-arrows'"></i> টিম সিঙ্ক (ইউজার সাইটের জন্য)</button>
       <span class="text-xs font-semibold" :style="tmSync.denied?'color:#B91C1C':'color:var(--fg3)'" x-show="tmSync.msg" x-text="tmSync.msg"></span>
     </div>
+    <div x-show="totalResellerDue>0" x-cloak class="dd-card-sm p-3 mb-4 flex items-center justify-between gap-3 flex-wrap" style="border-left:4px solid #DC2626;background:#FEF2F2">
+      <p class="text-xs font-bold" style="color:#B91C1C;line-height:1.7"><i class="fa-solid fa-triangle-exclamation mr-1"></i>ডেলিভারি চার্জ পাওনা: <span x-text="'৳'+totalResellerDue.toLocaleString()"></span> — <span x-text="dueResellers.length"></span> জন রিসেলারের কাছে</p>
+      <button type="button" @click="goTab('dues')" class="text-xs font-bold px-3 py-1.5 rounded-xl" style="background:#DC2626;color:#fff;border:none;cursor:pointer">দেখুন ›</button>
+    </div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
       <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট রিসেলার</p><p class="font-display text-3xl" style="color:var(--fg)" x-text="approvedResellers.length"></p><i class="fa-solid fa-store absolute bottom-4 right-4 text-2xl opacity-10" style="color:var(--accent)"></i></div>
       <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">পেন্ডিং আবেদন</p><p class="font-display text-3xl" style="color:#EA580C" x-text="pendingResellers.length"></p><i class="fa-solid fa-hourglass-half absolute bottom-4 right-4 text-2xl opacity-10" style="color:#EA580C"></i></div>
@@ -2976,7 +2990,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
                   </button>
                 </td>
                 <td><span class="font-mono text-xs font-bold px-2 py-1 rounded-lg" style="background:var(--accentL);color:var(--accent)" x-text="r.myReferralCode||'—'"></span></td>
-                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span><span x-show="(r.referralBalance||0)>0" class="block font-mono text-xs font-bold" style="color:#7C3AED" x-text="'রেফারেল ৳'+(r.referralBalance||0).toLocaleString()"></span><span x-show="r.status==='approved'" class="block text-xs font-bold mt-0.5" :style="refSoldCount(r.fbKey)>=refMinSales?'color:#15803D':'color:#B45309'" x-text="(refSoldCount(r.fbKey)>=refMinSales?'✅ ':'🔒 ')+'সেল '+refSoldCount(r.fbKey)+'/'+refMinSales"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span><span x-show="(r.deliveryDue||0)>0" class="block font-mono text-xs font-bold" style="color:#DC2626" x-text="'⚠ ডেলিভারি বকেয়া −৳'+(r.deliveryDue||0).toLocaleString()"></span><span x-show="(r.referralBalance||0)>0" class="block font-mono text-xs font-bold" style="color:#7C3AED" x-text="'রেফারেল ৳'+(r.referralBalance||0).toLocaleString()"></span><span x-show="r.status==='approved'" class="block text-xs font-bold mt-0.5" :style="refSoldCount(r.fbKey)>=refMinSales?'color:#15803D':'color:#B45309'" x-text="(refSoldCount(r.fbKey)>=refMinSales?'✅ ':'🔒 ')+'সেল '+refSoldCount(r.fbKey)+'/'+refMinSales"></span></td>
                 <td>
                   <span class="text-xs font-bold px-2 py-1 rounded-full" :style="r.status==='pending'?'background:#FFF7ED;color:#C2410C':r.status==='approved'?'background:#F0FDF4;color:#15803D':r.status==='blocked'?'background:#FEF2F2;color:#B91C1C':'background:#F3F4F6;color:#6B7280'" x-text="r.status==='pending'?'পেন্ডিং':r.status==='approved'?'অ্যাপ্রুভড':r.status==='blocked'?'ব্লকড':'বাতিল'"></span>
                 </td>
@@ -3040,6 +3054,61 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
     </div>
   </div>
 
+
+  <!-- ══ ডেলিভারি চার্জ পাওনা (রিসেলারের কাছে আমরা যা পাবো) ══ -->
+  <div x-show="activeTab==='dues'" x-cloak class="animate-fade-in">
+    <div class="dd-card-sm p-3 mb-4" style="border-left:4px solid #DC2626"><p class="text-xs" style="color:var(--fg2);line-height:1.7"><i class="fa-solid fa-circle-info mr-1" style="color:#DC2626"></i>এখানে সেই রিসেলারদের তালিকা যাদের কাছ থেকে আমরা ডেলিভারি চার্জ পাবো — (১) রিসেলার কাস্টমারের কাছ থেকে নিজেই ডেলিভারি চার্জ অগ্রিম নিয়েছে, অথবা (২) অর্ডার রিটার্ন এসেছে। ওয়ালেটে/প্রফিটে টাকা থাকলে স্বয়ংক্রিয়ভাবে কাটা হয়; না থাকলে রিসেলারের ব্যালেন্সে মাইনাস ও লাল সতর্কবার্তা দেখায় এবং পরের প্রফিট থেকে কাটা হবে।</p></div>
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">মোট পাওনা</p><p class="font-display text-2xl" style="color:#DC2626" x-text="'৳'+totalResellerDue.toLocaleString()"></p></div>
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">বকেয়া রিসেলার</p><p class="font-display text-3xl" style="color:var(--fg)" x-text="dueResellers.length"></p></div>
+      <div class="stat-card"><p class="text-xs font-bold uppercase tracking-widest mb-2" style="color:var(--fg3)">ওয়ালেট থেকে কাটা যাবে</p><p class="font-display text-2xl" style="color:#16A34A" x-text="'৳'+dueRecoverable.toLocaleString()"></p></div>
+    </div>
+    <div class="dd-card overflow-hidden mb-5">
+      <div class="px-5 py-4" style="border-bottom:1px solid var(--border)"><p class="font-bold text-sm" style="color:var(--fg)">রিসেলারদের বকেয়া</p></div>
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>রিসেলার</th><th>ওয়ালেট</th><th>বকেয়া</th><th>নেট ব্যালেন্স</th><th>এক্সন</th></tr></thead>
+          <tbody>
+            <template x-for="r in dueResellers" :key="r.fbKey">
+              <tr>
+                <td><p class="font-semibold text-xs" x-text="r.name||r.shopName||'—'"></p><p class="font-mono text-xs" style="color:var(--fg3)" x-text="r.fbKey+(r.shopName?' · '+r.shopName:'')"></p></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(r.walletBalance||0).toLocaleString()"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#DC2626" x-text="'৳'+(r.deliveryDue||0).toLocaleString()"></span></td>
+                <td><span class="font-mono text-xs font-bold px-2 py-1 rounded-lg" :style="dueNet(r)<0?'background:#FEF2F2;color:#B91C1C':'background:#F0FDF4;color:#15803D'" x-text="(dueNet(r)<0?'−':'')+'৳'+Math.abs(dueNet(r)).toLocaleString()"></span></td>
+                <td><div class="flex gap-1.5 flex-wrap">
+                  <button type="button" @click="dueRecoverNow(r.fbKey)" class="text-xs font-bold px-2.5 py-1.5 rounded-lg" style="background:#DC2626;color:#fff;border:none;cursor:pointer">ওয়ালেট থেকে কাটুন</button>
+                  <button type="button" @click="dueWaive(r.fbKey)" class="btn-ghost text-xs">কমান/মওকুফ</button>
+                  <button type="button" @click="dueAddManual(r.fbKey)" class="btn-ghost text-xs">+ যোগ</button>
+                </div></td>
+              </tr>
+            </template>
+            <tr x-show="dueResellers.length===0"><td colspan="5" class="text-center text-xs py-6" style="color:var(--fg3)">কোনো ডেলিভারি পাওনা নেই ✅</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="dd-card overflow-hidden">
+      <div class="px-5 py-4" style="border-bottom:1px solid var(--border)"><p class="font-bold text-sm" style="color:var(--fg)">পাওনা ধরা অর্ডার</p></div>
+      <div class="overflow-x-auto">
+        <table class="dd-table">
+          <thead><tr><th>অর্ডার</th><th>রিসেলার</th><th>কারণ</th><th>চার্জ</th><th>কাটা হয়েছে</th><th>অবস্থা</th></tr></thead>
+          <tbody>
+            <template x-for="o in dueOrders" :key="o.fbKey">
+              <tr>
+                <td><button type="button" @click="viewOrder=o" class="font-mono text-xs font-bold" style="color:var(--accent);background:none;border:none;cursor:pointer" x-text="'#'+o.id"></button></td>
+                <td class="text-xs" x-text="getResellerName(o.resellerPhone)"></td>
+                <td class="text-xs" x-text="o.dueReason==='return'?'অর্ডার রিটার্ন':o.dueReason==='advance_held'?'রিসেলার চার্জ অগ্রিম নিয়েছে':'ম্যানুয়াল'"></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#DC2626" x-text="'৳'+(o.dueAmount||0)"></span></td>
+                <td><span class="font-mono text-xs font-bold" style="color:#16A34A" x-text="'৳'+(o.dueRecovered||0)"></span></td>
+                <td><span class="text-xs font-bold px-2 py-1 rounded-full" :style="o.dueState==='settled'?'background:#F0FDF4;color:#15803D':'background:#FEF2F2;color:#B91C1C'" x-text="o.dueState==='settled'?'শোধ':'বাকি'"></span></td>
+              </tr>
+            </template>
+            <tr x-show="dueOrders.length===0"><td colspan="6" class="text-center text-xs py-6" style="color:var(--fg3)">এখনো কোনো অর্ডারে পাওনা ধরা হয়নি</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <!-- ══ ব্যালেন্স সমন্বয় (অ্যাডমিন: রিসেলার/গ্রাহকের ব্যালেন্সে টাকা যোগ বা বিয়োগ) ══ -->
   <div x-show="activeTab==='baladj'" x-cloak class="animate-fade-in">
@@ -3668,6 +3737,49 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
   </div>
   <!-- ══ BANNERS & COVER ══ -->
   <div x-show="activeTab==='banners'" class="animate-fade-in">
+    <!-- ══ ওয়েলকাম ব্যানার কন্ট্রোল + অফার HTML বক্স ══ -->
+    <div class="dd-card p-5 mb-5">
+      <p class="font-bold text-sm mb-1" style="color:var(--fg)"><i class="fa-solid fa-handshake mr-2" style="color:var(--accent)"></i>ওয়েলকাম ব্যানার (মালিক / সিইও / ম্যানেজার পপআপ)</p>
+      <p class="text-xs mb-4" style="color:var(--fg3);line-height:1.7">যেখানে যেখানে চান সুইচ চালু/বন্ধ করুন। সুইচ বন্ধ করলে ওই সাইটে এই ব্যানার আর আসবে না। সেভ করতে নিচের "সেভ করুন" চাপুন।</p>
+      <div class="space-y-3 mb-5">
+        <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)">
+          <div class="min-w-0"><p class="text-sm font-bold" style="color:var(--fg)">ইউজার সাইটে দেখাবে</p><p class="text-xs" style="color:var(--fg3)">সাধারণ গ্রাহকদের হোম পেজে</p></div>
+          <label class="tog"><input type="checkbox" x-model="settings.ownerIntroUser"/><span class="tog-sl"></span></label>
+        </div>
+        <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)">
+          <div class="min-w-0"><p class="text-sm font-bold" style="color:var(--fg)">রিসেলিং সাইটে দেখাবে</p><p class="text-xs" style="color:var(--fg3)">রিসেলারদের প্যানেলের হোমে</p></div>
+          <label class="tog"><input type="checkbox" x-model="settings.ownerIntroReseller"/><span class="tog-sl"></span></label>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border)" class="pt-4">
+        <p class="font-bold text-sm mb-1" style="color:var(--fg)"><i class="fa-solid fa-code mr-2" style="color:var(--accent)"></i>অফার / ব্যানার HTML বক্স</p>
+        <p class="text-xs mb-3" style="color:var(--fg3);line-height:1.7">অফার বা ব্যানার HTML কোড (যেমন AI দিয়ে বানানো) এখানে পেস্ট করুন — সেভ করলে সাইটে সুন্দরভাবে দেখাবে। কোড আলাদা সুরক্ষিত বক্সে চলে, তাই সাইটের অন্য কিছুতে প্রভাব ফেলবে না। ছবি/ফন্ট ইন্টারনেট লিংক হলে লোড হবে; লিংকে ক্লিক করলে নতুন ট্যাবে খুলবে।</p>
+        <div class="space-y-3 mb-3">
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)">
+            <p class="text-sm font-bold" style="color:var(--fg)">অফার বক্স চালু</p>
+            <label class="tog"><input type="checkbox" x-model="settings.offerHtmlOn"/><span class="tog-sl"></span></label>
+          </div>
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)" x-show="settings.offerHtmlOn">
+            <p class="text-sm font-bold" style="color:var(--fg)">ইউজার সাইটে দেখাবে</p>
+            <label class="tog"><input type="checkbox" x-model="settings.offerHtmlUser"/><span class="tog-sl"></span></label>
+          </div>
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl" style="background:var(--bg2)" x-show="settings.offerHtmlOn">
+            <p class="text-sm font-bold" style="color:var(--fg)">রিসেলিং সাইটে দেখাবে</p>
+            <label class="tog"><input type="checkbox" x-model="settings.offerHtmlReseller"/><span class="tog-sl"></span></label>
+          </div>
+        </div>
+        <textarea x-model="settings.offerHtml" rows="10" spellcheck="false" class="dd-input w-full" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;resize:vertical" placeholder="&lt;div&gt; ... আপনার অফারের HTML কোড এখানে পেস্ট করুন ... &lt;/div&gt;"></textarea>
+        <div x-show="(settings.offerHtml||'').trim()" class="mt-3">
+          <p class="text-xs font-bold mb-2" style="color:var(--fg2)">লাইভ প্রিভিউ</p>
+          <iframe sandbox="allow-scripts" :srcdoc="offerPreviewDoc" style="width:100%;height:320px;border:1px dashed var(--border);border-radius:14px;background:#fff" title="প্রিভিউ"></iframe>
+        </div>
+        <div class="flex gap-2 mt-3 flex-wrap">
+          <button type="button" @click="saveSettings()" class="btn-primary text-xs"><i class="fa-solid fa-check"></i> সেভ করুন</button>
+          <button type="button" @click="if(confirm('HTML বক্স খালি করবেন?')){settings.offerHtml='';settings.offerHtmlOn=false}" class="btn-ghost text-xs">খালি করুন</button>
+        </div>
+      </div>
+    </div>
     <!-- Profile Cover Photo -->
     <div class="dd-card p-5 mb-5">
       <p class="font-bold text-sm mb-4" style="color:var(--fg)"><i class="fa-solid fa-image mr-2" style="color:var(--accent)"></i>প্রোফাইল কভার ফটো</p>
@@ -4347,7 +4459,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
       upay:{enabled:false,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'উপায়'},
       bank:{enabled:false,number:'',prepaidDiscountPct:0,codFeeAdjust:0,label:'ব্যাংক ট্রান্সফার'},
     },
-    codSettings:{extraCharge:0,discountOnAdvance:0},
+    codSettings:{extraCharge:0,discountOnAdvance:0},ownerIntroUser:true,ownerIntroReseller:true,offerHtmlOn:false,offerHtmlUser:true,offerHtmlReseller:true,offerHtml:'',
     checkoutPromoBanners:[],
     supportPhone:'',telegramLink:'',
     shipping:{dhaka:80,outside:150},orderRateLimit:false,forcePinChange:false,legacyMigrationOpen:true,minPinLength:6,apiBase:'',phoneVerify:false,verifyAtSignup:false,verifyResellerSignup:false,verifyAtOrder:false,verifyWithdraw:false,verifyPinReset:false,serverStatsOnly:false,verifyPrices:false,maxDiscountPct:100,
@@ -4384,7 +4496,7 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     assignment:'পণ্য অ্যাসাইনমেন্ট',eid:'ঈদ কালেকশন',pinned:'পিন করা পণ্য',hanger:'হ্যাঙ্গার পণ্য',orders:'নতুন অর্ডার',delivered:'ডেলিভারি',cancelled:'বাতিল অর্ডার',history:'গ্রাহক ইতিহাস',reshist:'রিসেলার ইতিহাস',
     notifications:'নোটিফিকেশন',buttons:'কাস্টম বাটন',banners:'ব্যানার ও কভার',settings:'সেটিংস',fbmeta:'Facebook/Meta Settings',appcfg:'অ্যান্ড্রয়েড অ্যাপ',signupguard:'অ্যাকাউন্ট লিমিট (আইপি/ডিভাইস)',refpay:'রেফারেল পেআউট',appearance:'থিম ও কালার',
     resellers:'রিসেলার ম্যানেজমেন্ট',withdrawals:'রিসেলার উইথড্র',deposits:'রিসেলার ডিপোজিট',tickets:'সাপোর্ট টিকেট',
-    vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
+    dues:'ডেলিভারি পাওনা',vendors:'ভেন্ডর/সাপ্লায়ার',custwallet:'গ্রাহক ওয়ালেট',baladj:'ব্যালেন্স সমন্বয়',
     recharges:'মোবাইল রিচার্জ',services:'ফ্রিল্যান্সিং সার্ভিস',svcorders:'সার্ভিস অর্ডার',resellcfg:'রিসেলার কনটেন্ট'
   },
 
@@ -4491,12 +4603,12 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
     {id:'money',label:'ওয়ালেট ও টাকা',ic:'fa-wallet',tabs:['custwallet','deposits','withdrawals','baladj']},
     {id:'supplier',label:'সাপ্লায়ার API',ic:'fa-plug',tabs:['sup_keys','sup_import','sup_intl','sup_ship','sup_orders']},
     {id:'dropship',label:'Dropshipping Management',ic:'fa-boxes-packing',tabs:['cj_api', 'cj_cats', 'cj_products', 'cj_imported', 'cj_bulk', 'cj_pricing', 'cj_delivery', 'cj_sync', 'cj_history']},
-    {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
+    {id:'resell',label:'রিসেলিং',ic:'fa-store',tabs:['resellers','dues','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {id:'content',label:'কনটেন্ট ও সাপোর্ট',ic:'fa-bullhorn',tabs:['notifications','buttons','banners','tickets']},
     {id:'settings',label:'সেটিংস ও থিম',ic:'fa-gear',tabs:['settings','fbmeta','appearance','appcfg','signupguard']},
     {id:'team',label:'স্টাফ ও অ্যাক্সেস',ic:'fa-user-shield',tabs:['team']}
   ],
-  tabIcons:{cj_api:'fa-plug',cj_cats:'fa-sitemap',cj_products:'fa-store',cj_imported:'fa-box-open',cj_bulk:'fa-boxes-packing',cj_pricing:'fa-percent',cj_delivery:'fa-truck-fast',cj_sync:'fa-rotate',cj_history:'fa-clock-rotate-left',appcfg:'fa-mobile-screen-button',signupguard:'fa-shield-halved',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
+  tabIcons:{dues:'fa-hand-holding-dollar',cj_api:'fa-plug',cj_cats:'fa-sitemap',cj_products:'fa-store',cj_imported:'fa-box-open',cj_bulk:'fa-boxes-packing',cj_pricing:'fa-percent',cj_delivery:'fa-truck-fast',cj_sync:'fa-rotate',cj_history:'fa-clock-rotate-left',appcfg:'fa-mobile-screen-button',signupguard:'fa-shield-halved',fbmeta:'fa-bullhorn',refpay:'fa-users',subs:'fa-clipboard-check',mysubs:'fa-paper-plane',team:'fa-user-shield',delivered:'fa-truck-fast',cancelled:'fa-ban',history:'fa-clock-rotate-left',reshist:'fa-people-group',reslinks:'fa-link',blocklist:'fa-user-slash',sup_keys:'fa-key',sup_import:'fa-cloud-arrow-down',sup_intl:'fa-earth-asia',sup_ship:'fa-plane-departure',sup_orders:'fa-truck-arrow-right',dashboard:'fa-chart-line',upload:'fa-cloud-arrow-up',products:'fa-boxes-stacked',categories:'fa-tags',sections:'fa-layer-group',assignment:'fa-arrows-up-down-left-right',eid:'fa-moon',pinned:'fa-thumbtack',hanger:'fa-star',orders:'fa-receipt',custwallet:'fa-user-clock',deposits:'fa-arrow-down',withdrawals:'fa-arrow-up',resellers:'fa-store',vendors:'fa-industry',notifications:'fa-bell',buttons:'fa-hand-pointer',banners:'fa-images',tickets:'fa-headset',settings:'fa-gear',appearance:'fa-palette',recharges:'fa-mobile-screen',services:'fa-briefcase',svcorders:'fa-clipboard-list',resellcfg:'fa-sliders'},
   get activeHub(){return this.visibleHubs.find(h=>h.tabs.includes(this.activeTab))||null},
   goHub(h){const t=h.tabs.includes(this.activeTab)?this.activeTab:h.tabs[0];this.goTab(t)},
   // ══════════ কুরিয়ার ট্র্যাকিং (ম্যানুয়াল, API ছাড়া) ══════════
@@ -4775,7 +4887,7 @@ async applyAdjust(){
     this.ic.saving=false;
   },
   async supRoute(k){try{await this.supApi('/orders/'+k+'/route',{method:'POST'});this.showToast('সাপ্লায়ারে পাঠানো হয়েছে ✅')}catch(e){this.showToast(e.message,'error')}},
-  tabBadge(t){const m={subs:this.pendingSubs.length,orders:this.pendingCount,resellers:this.pendingResellers.length,withdrawals:this.pendingWithdrawals.length,deposits:this.pendingDeposits.length,tickets:this.pendingTickets.length,recharges:this.fbRecharges.filter(r=>r.status==='pending').length,svcorders:this.fbSvcOrders.filter(o=>o.status==='pending').length,custwallet:this.custPendingCount('deposit')+this.custPendingCount('withdraw')};return m[t]||0},
+  tabBadge(t){const m={dues:this.dueResellers.length,subs:this.pendingSubs.length,orders:this.pendingCount,resellers:this.pendingResellers.length,withdrawals:this.pendingWithdrawals.length,deposits:this.pendingDeposits.length,tickets:this.pendingTickets.length,recharges:this.fbRecharges.filter(r=>r.status==='pending').length,svcorders:this.fbSvcOrders.filter(o=>o.status==='pending').length,custwallet:this.custPendingCount('deposit')+this.custPendingCount('withdraw')};return m[t]||0},
   hubBadge(h){return h.tabs.reduce((a,t)=>a+this.tabBadge(t),0)},
   // ══════════ গ্রাহক ওয়ালেট ══════════
   get filteredCust(){return [...this.fbCustDeposits,...this.fbCustWithdrawals].filter(r=>(this.custKind==='সব'||r.kind===this.custKind)&&(this.custF==='সব'||(this.custF==='pending'?r.status==='pending':r.status!=='pending'))).sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0))},
@@ -4811,7 +4923,7 @@ async applyAdjust(){
     {k:'approve',label:'প্রোডাক্ট অ্যাপ্রুভাল',desc:'জমা দেওয়া পণ্য অনুমোদন বা বাতিল করতে পারবে',tabs:['subs']},
     {k:'catalog',label:'নতুন প্রোডাক্ট অ্যাড/এডিট',desc:'সরাসরি পণ্য, ক্যাটাগরি, সেকশন যোগ ও এডিট (অনুমোদন লাগবে না)',tabs:['upload','products','categories','sections','assignment','eid','pinned','hanger']},
     {k:'importer',label:'ইম্পোর্টিং',desc:'সাপ্লায়ার থেকে পণ্য ইম্পোর্ট ও সাপ্লায়ার অর্ডার (API কী শুধু অ্যাডমিন)',tabs:['sup_import','sup_orders']},
-    {k:'resell',label:'রিসেলিং',desc:'রিসেলার, লিংক, ভেন্ডর, রিচার্জ, সার্ভিস ও রিসেলিং সেটিংস',tabs:['resellers','reslinks','vendors','recharges','services','svcorders','resellcfg']},
+    {k:'resell',label:'রিসেলিং',desc:'রিসেলার, লিংক, ভেন্ডর, রিচার্জ, সার্ভিস ও রিসেলিং সেটিংস',tabs:['resellers','dues','reslinks','vendors','recharges','services','svcorders','resellcfg']},
     {k:'intl',label:'ইন্টারন্যাশনাল',desc:'বিদেশে পণ্য ও ডেলিভারি, ইন্টারন্যাশনাল ক্যাটাগরি',tabs:['sup_intl','sup_ship']}
   ],
   can(k){return !this.staff||(this.staff.perms||{})[k]===true},
@@ -5848,6 +5960,7 @@ async applyAdjust(){
         const order=this.fbOrders.find(o=>o.fbKey===key);
         if(order)await this.creditReferralCommissions(order,key);
       }
+      if(status==='রিটার্ন'){const _ro=(this.fbOrders||[]).find(o=>o.fbKey===key);if(_ro)await this.applyReturnDue(_ro,key)}
       this.showToast('স্ট্যাটাস আপডেট! ✅','success')
     }catch{this.showToast('আপডেট ব্যর্থ!','error')}
   },
@@ -6069,6 +6182,130 @@ async applyAdjust(){
     await this._bal(phone,amount);
     await window.$db.pushWalletTx({resellerPhone:phone,amount,type,note,orderId:orderId||null,timestamp:Date.now(),...(extra||{})});
   },
+  // ══════════ ডেলিভারি চার্জ পাওনা (বকেয়া) সিস্টেম ══════════
+  // ১) রিসেলার কাস্টমারের কাছ থেকে নিজেই ডেলিভারি চার্জ অগ্রিম নিলে (রিসেলার-লিংক অর্ডার, আমাদের নম্বরে TrxID নেই) → অর্ডার ডেলিভার্ড হলে সেই অর্ডারের প্রফিট থেকে চার্জ কাটা হয়; প্রফিটে না কুলালে বাকিটা বকেয়া।
+  // ২) অর্ডার "রিটার্ন" হলে ডেলিভারি চার্জ (অর্ডারের shipping — ঢাকা ৮০ / বাইরে ১২০-১৩০) রিসেলারের ওয়ালেট থেকে কাটা হয়; ওয়ালেটে না থাকলে বাকিটা বকেয়া (ইউজার সাইটে মাইনাস + লাল সতর্কবার্তা)।
+  // বকেয়া থাকে resellers/{phone}/deliveryDue-তে। walletBalance আগের মতোই কখনো মাইনাসে নামে না — তাই বিদ্যমান ওয়ালেট/উইথড্র কোড অপরিবর্তিত।
+  _dueHeld(o){return !!(o&&o.orderType==='reseller'&&o.resellerPhone&&o.linkOrder&&o.deliveryAdvanceVerified&&!o.trxId)},
+  _dueShip(o){return Math.max(0,Number(o&&o.shipping)||0)},
+  resellerDue(phone){const r=(this.fbResellers||[]).find(x=>x.fbKey===phone);return Math.max(0,Number(r&&r.deliveryDue)||0)},
+  dueNet(r){return Math.round(((Number(r&&r.walletBalance)||0)-(Number(r&&r.deliveryDue)||0))*100)/100},
+  get offerPreviewDoc(){const c=String((this.settings&&this.settings.offerHtml)||'');return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html,body{margin:0;padding:0}</style></head><body>'+c+'</body></html>'},
+  get dueResellers(){return (this.fbResellers||[]).filter(r=>(Number(r.deliveryDue)||0)>0).sort((a,b)=>(Number(b.deliveryDue)||0)-(Number(a.deliveryDue)||0))},
+  get totalResellerDue(){return (this.fbResellers||[]).reduce((s,r)=>s+(Number(r.deliveryDue)||0),0)},
+  get dueRecoverable(){return this.dueResellers.reduce((s,r)=>s+Math.min(Number(r.walletBalance)||0,Number(r.deliveryDue)||0),0)},
+  get dueOrders(){return (this.fbOrders||[]).filter(o=>o.dueState).sort((a,b)=>(Number(b.dueAt)||0)-(Number(a.dueAt)||0)).slice(0,200)},
+  _dueLog(phone,data){return window.$db.pushWalletTx({resellerPhone:phone,timestamp:Date.now(),type:'delivery_due',...data})},
+  async _dueOrderPatch(key,patch){try{await window.$db.updateOrder(key,patch);if(this.viewOrder&&this.viewOrder.fbKey===key)Object.assign(this.viewOrder,patch)}catch(e){console.warn('due order patch',e)}},
+  // বকেয়া থেকে সর্বোচ্চ maxAmt পর্যন্ত রিসেলারের ওয়ালেট থেকে কেটে নেয় (ওয়ালেটে যতটুকু আছে ততটুকুই)। কতটা কাটা হলো ফেরত দেয়।
+  async _dueRecover(phone,maxAmt,note,orderId){
+    const due=await window.$db.readNum('resellers/'+phone+'/deliveryDue');
+    const want=Math.round(Math.min(Number(maxAmt)||0,due)*100)/100;
+    if(!(want>0))return 0;
+    await window.$db.adjustResellerDue(phone,-want);
+    let took=0;
+    try{await window.$db.adjustResellerWallet(phone,-want);took=want}
+    catch(e){
+      const w=await window.$db.readNum('resellers/'+phone+'/walletBalance');const part=Math.round(Math.min(want,w)*100)/100;
+      if(part>0){try{await window.$db.adjustResellerWallet(phone,-part);took=part}catch(e2){}}
+    }
+    const miss=Math.round((want-took)*100)/100;
+    if(miss>0)await window.$db.adjustResellerDue(phone,miss);
+    if(took>0)await this._dueLog(phone,{amount:-took,dueDelta:-took,orderId:orderId||null,note:note||'ডেলিভারি চার্জ বাবদ কর্তন'});
+    return took;
+  },
+  // বকেয়া শূন্য হলে সেই রিসেলারের পেন্ডিং পাওনা-অর্ডারগুলো "শোধ" মার্ক করা
+  async _dueSettleOrders(phone){
+    try{
+      const d=await window.$db.readNum('resellers/'+phone+'/deliveryDue');if(d>0)return;
+      for(const o of (this.fbOrders||[]).filter(x=>x.resellerPhone===phone&&x.dueState==='pending')){try{await window.$db.updateOrder(o.fbKey,{dueState:'settled',dueSettledAt:Date.now()})}catch(e){}}
+    }catch(e){}
+  },
+  async _dueCharge(o,key,reason,logNote,recNote){
+    const ph=o.resellerPhone,ship=this._dueShip(o);
+    await window.$db.adjustResellerDue(ph,ship);
+    await this._dueLog(ph,{amount:0,dueDelta:ship,orderId:o.id,note:logNote});
+    const took=await this._dueRecover(ph,ship,recNote,o.id);
+    await this._dueOrderPatch(key,{dueAmount:ship,dueReason:reason,dueState:took>=ship?'settled':'pending',dueRecovered:took,dueAt:Date.now()});
+    return{ship,took};
+  },
+  // ডেলিভার্ড হলে: রিসেলার নিজে চার্জ অগ্রিম নিয়ে থাকলে বকেয়ায় যোগ + এই অর্ডারের প্রফিট (এবং আগের বকেয়াও) থেকে কাটা
+  async applyDueOnProfit(o,key,profit){
+    const ph=o&&o.resellerPhone;if(!ph)return;
+    let pool=Math.max(0,Number(profit)||0),own=0,added=0;
+    if(this._dueHeld(o)&&!o.dueState){
+      const ship=this._dueShip(o);
+      if(ship>0){
+        await window.$db.adjustResellerDue(ph,ship);added=ship;
+        await this._dueLog(ph,{amount:0,dueDelta:ship,orderId:o.id,note:'ডেলিভারি চার্জ ৳'+ship+' আপনি অগ্রিম নিয়েছেন — অর্ডার #'+o.id+' (আমাদের পাওনা)'});
+        if(pool>0){own=await this._dueRecover(ph,Math.min(pool,ship),'ডেলিভারি চার্জ কর্তন (প্রফিট থেকে) — অর্ডার #'+o.id,o.id);pool=Math.round((pool-own)*100)/100}
+        await this._dueOrderPatch(key,{dueAmount:ship,dueReason:'advance_held',dueState:own>=ship?'settled':'pending',dueRecovered:own,dueAt:Date.now()});
+      }
+    }
+    if(pool>0&&await window.$db.readNum('resellers/'+ph+'/deliveryDue')>0)await this._dueRecover(ph,pool,'আগের ডেলিভারি চার্জ বকেয়া কর্তন (প্রফিট থেকে) — অর্ডার #'+o.id,o.id);
+    await this._dueSettleOrders(ph);
+    if(added>0)this.showToast('ডেলিভারি চার্জ রিসেলার অগ্রিম নিয়েছে — ৳'+Math.min(own,added)+' প্রফিট থেকে কাটা হয়েছে'+(own<added?(', বাকি ৳'+Math.round((added-own)*100)/100+' পাওনা'):''),'success');
+  },
+  // রিটার্ন হলে: ডেলিভারি চার্জ রিসেলারের ওয়ালেট থেকে কাটা / না থাকলে মাইনাস (বকেয়া)
+  async applyReturnDue(o,key){
+    const ph=o&&o.resellerPhone;
+    if(!ph||o.orderType!=='reseller')return;
+    if(o.dueState){this.showToast('এই অর্ডারে ডেলিভারি পাওনা আগেই ধরা আছে','success');return}
+    if(o.trxId){this.showToast('রিটার্ন — এই অর্ডারের ডেলিভারি চার্জ রিসেলার আমাদের নম্বরেই দিয়েছিল, তাই পাওনা ধরা হয়নি','success');return}
+    if(!(this._dueShip(o)>0))return;
+    try{
+      const r=await this._dueCharge(o,key,'return','অর্ডার #'+o.id+' রিটার্ন — ডেলিভারি চার্জ ৳'+this._dueShip(o)+' আমাদের পাওনা','ডেলিভারি চার্জ কর্তন (রিটার্ন) — অর্ডার #'+o.id);
+      this.showToast(r.took>=r.ship?'রিটার্ন: ডেলিভারি চার্জ ৳'+r.ship+' রিসেলারের ওয়ালেট থেকে কাটা হয়েছে ✅':'রিটার্ন: ৳'+r.took+' কাটা হয়েছে, বাকি ৳'+Math.round((r.ship-r.took)*100)/100+' রিসেলারের কাছে পাওনা (মাইনাস) থাকল ⚠️','success');
+    }catch(e){this.showToast('পাওনা ধরা যায়নি! অর্ডার খুলে "পাওনা ধরুন" চাপুন','error')}
+  },
+  // অর্ডার মডাল থেকে ম্যানুয়ালি পাওনা ধরা (যেমন বাতিল/রিটার্ন অর্ডার)
+  async dueFromOrder(o){
+    if(!o||!o.fbKey||!o.resellerPhone||o.dueState)return;
+    const ship=this._dueShip(o);if(!(ship>0))return this.showToast('এই অর্ডারে ডেলিভারি চার্জ নেই','error');
+    if(!confirm('অর্ডার #'+o.id+' — ডেলিভারি চার্জ ৳'+ship+' রিসেলারের পাওনা হিসেবে ধরবেন?\nওয়ালেটে টাকা থাকলে এখনই কাটা হবে, না থাকলে মাইনাস (বকেয়া) থাকবে।'))return;
+    try{
+      const r=await this._dueCharge(o,o.fbKey,'manual','অর্ডার #'+o.id+' — ডেলিভারি চার্জ ৳'+ship+' আমাদের পাওনা (অ্যাডমিন)','ডেলিভারি চার্জ কর্তন — অর্ডার #'+o.id);
+      this.showToast(r.took>=r.ship?'৳'+r.ship+' ওয়ালেট থেকে কাটা হয়েছে ✅':'৳'+r.took+' কাটা হয়েছে, বাকি ৳'+Math.round((r.ship-r.took)*100)/100+' পাওনা (মাইনাস) থাকল ⚠️','success');
+    }catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  // বকেয়ার বিপরীতে ওয়ালেটে যা আছে এখনই কেটে নেওয়া
+  async dueRecoverNow(phone){
+    const r=(this.fbResellers||[]).find(x=>x.fbKey===phone);if(!r)return;
+    const due=Number(r.deliveryDue)||0,w=Number(r.walletBalance)||0;
+    if(!(due>0))return;
+    if(!(w>0))return this.showToast('ওয়ালেটে টাকা নেই — পরের প্রফিট/ব্যালেন্স থেকে কাটা হবে','error');
+    const amt=Math.round(Math.min(w,due)*100)/100;
+    if(!confirm((r.name||r.shopName||phone)+' — ওয়ালেট থেকে ৳'+amt+' কেটে বকেয়া শোধ করবেন?'))return;
+    try{
+      const took=await this._dueRecover(phone,amt,'ডেলিভারি চার্জ বকেয়া কর্তন (অ্যাডমিন)',null);
+      await this._dueSettleOrders(phone);
+      this.showToast(took>0?'৳'+took+' কাটা হয়েছে ✅':'কাটা যায়নি','success');
+    }catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  // বকেয়া কমানো/মওকুফ
+  async dueWaive(phone){
+    const due=this.resellerDue(phone);if(!(due>0))return;
+    const v=prompt('কত টাকা বকেয়া কমাবেন/মওকুফ করবেন? (সর্বোচ্চ ৳'+due+')',String(due));if(v===null)return;
+    const amt=Math.round(Math.min(Number(v)||0,due)*100)/100;if(!(amt>0))return this.showToast('সঠিক পরিমাণ দিন','error');
+    const why=prompt('কারণ লিখুন (রিসেলার ওয়ালেট হিস্ট্রিতে দেখবে):','');if(why===null)return;
+    try{
+      await window.$db.adjustResellerDue(phone,-amt);
+      await this._dueLog(phone,{amount:0,dueDelta:-amt,orderId:null,note:'ডেলিভারি চার্জ বকেয়া মওকুফ/সংশোধন'+(why.trim()?(' — '+why.trim()):'')});
+      await this._dueSettleOrders(phone);
+      this.showToast('বকেয়া ৳'+amt+' কমানো হয়েছে','success');
+    }catch(e){this.showToast('ব্যর্থ!','error')}
+  },
+  // নতুন বকেয়া হাতে যোগ করা
+  async dueAddManual(phone){
+    const v=prompt('কত টাকা বকেয়া যোগ করবেন?','');if(v===null)return;
+    const amt=Math.round((Number(v)||0)*100)/100;if(!(amt>0))return this.showToast('সঠিক পরিমাণ দিন','error');
+    const why=prompt('কারণ লিখুন (যেমন: অর্ডার #12345 রিটার্ন):','');if(why===null)return;
+    try{
+      await window.$db.adjustResellerDue(phone,amt);
+      await this._dueLog(phone,{amount:0,dueDelta:amt,orderId:null,note:'ডেলিভারি চার্জ বকেয়া যোগ (অ্যাডমিন)'+(why.trim()?(' — '+why.trim()):'')});
+      this.showToast('বকেয়া ৳'+amt+' যোগ হয়েছে','success');
+    }catch(e){this.showToast('ব্যর্থ!','error')}
+  },
   async creditReferralCommissions(order,key){
     if((order.orderType!=='reseller'&&order.orderType!=='referral')||order.commissionCredited)return;
     try{
@@ -6082,6 +6319,7 @@ async applyAdjust(){
         gen3+=(it.genCommission3||0)*qty;
       });
       if(ownProfit>0)await this.creditWallet(resellerPhone,ownProfit,'profit','নিজের প্রফিট — অর্ডার #'+order.id,order.id);
+      try{await this.applyDueOnProfit(order,key,ownProfit)}catch(e){console.warn('delivery due on profit',e)}
       const chain=this.getUplineChain(resellerPhone,3);
       const _fr=this.fbResellers.find(x=>x.fbKey===resellerPhone);const fromName=(_fr&&(_fr.shopName||_fr.name))||'';
       const genAmts=[gen1,gen2,gen3],genLabels=['১ম','২য়','৩য়'];
