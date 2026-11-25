@@ -210,6 +210,7 @@ window.$db={
   listenOrders:(cb)=>onValue(ref(db,'orders'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Categories
   saveCategory:async(data,id)=>{if(id){await update(ref(db,'categories/'+id),data);return id;}const r=push(ref(db,'categories'));await set(r,data);return r.key},
+  multiUpdate:async(obj)=>update(ref(db),obj),
   deleteCategory:async(id)=>remove(ref(db,'categories/'+id)),
   listenCategories:(cb)=>onValue(ref(db,'categories'),s=>{const v=s.val();cb(v?Object.entries(v).map(([k,d])=>({fbKey:k,...d})):[])},{onlyOnce:false}),
   // Sections (NEW — from Admin Plan 2)
@@ -400,6 +401,19 @@ select.dd-input{appearance:none;-webkit-appearance:none;cursor:pointer}
 .product-drag-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:1.5px solid var(--border);cursor:grab;transition:all .2s;user-select:none}
 .product-drag-item:active{cursor:grabbing;box-shadow:0 8px 24px var(--shadow)}
 .product-drag-item.assigned{border-color:var(--accent);background:var(--accentL)}
+.bd-sec{border:1px solid var(--border);border-radius:16px;background:var(--bg2);overflow:hidden}
+.bd-sh{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--card);border-bottom:1px solid var(--border)}
+.bd-sgrip,.bd-grip{cursor:grab;touch-action:none;color:var(--fg3);padding:6px;flex-shrink:0}
+.bd-sicon{width:36px;height:36px;border-radius:12px;overflow:hidden;display:grid;place-items:center;color:#fff;font-size:16px;flex-shrink:0}
+.bd-sicon img{width:100%;height:100%;object-fit:cover}
+.bd-cats{min-height:44px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.bd-c{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:12px;background:var(--card);border:1px solid var(--border)}
+.bd-thumb{width:34px;height:34px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:var(--bg2);flex-shrink:0;border:1px solid var(--border)}
+.bd-thumb img{width:100%;height:100%;object-fit:cover}
+.bd-sel{font-size:11px;padding:5px 6px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--fg);max-width:96px}
+.bd-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--bg2);color:var(--fg2);cursor:pointer;display:grid;place-items:center;font-size:11px;flex-shrink:0}
+.bd-empty{font-size:11px;text-align:center;padding:8px;color:var(--fg3)}
+.bd-bar{position:sticky;bottom:12px;z-index:30;margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:14px;background:var(--card);border:1.5px solid var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .drop-zone{min-height:120px;border:2px dashed var(--border);border-radius:16px;padding:12px;transition:all .2s;background:var(--bg2)}
 .drop-zone.drag-over,.drop-zone.drag{border-color:var(--accent);background:var(--accentL)}
 .custom-btn-preview{border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;color:#fff;box-shadow:0 4px 16px rgba(0,0,0,.2)}
@@ -2474,6 +2488,65 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <p class="font-bold text-sm" style="color:var(--fg)"><i class="fa-solid fa-layer-group mr-2" style="color:var(--accent)"></i>সেকশন ব্যবস্থাপনা</p>
       <p class="text-xs mt-1" style="color:var(--fg2)">"সব পণ্য" পেজে সেকশন অনুযায়ী গ্রুপিং নিয়ন্ত্রণ করুন। প্রতিটি ক্যাটাগরি/পণ্যকে একটি সেকশনে যুক্ত করা যায়।</p>
     </div>
+    <!-- ══ সেকশন ও ক্যাটাগরি সাজান (ড্র্যাগ ও ড্রপ) ══ -->
+    <div class="dd-card p-4 mb-5 bd-board" x-init="boardBuild();$watch('fbCategories',()=>boardBuild());$watch('fbSections',()=>boardBuild())">
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+        <p class="font-bold text-sm" style="color:var(--fg)"><i class="fa-solid fa-arrows-up-down-left-right mr-2" style="color:var(--accent)"></i>সেকশন ও ক্যাটাগরি সাজান</p>
+        <button type="button" @click="openSecModal()" class="btn-ghost text-xs"><i class="fa-solid fa-plus"></i> নতুন সেকশন</button>
+      </div>
+      <p class="text-xs mb-4" style="color:var(--fg3);line-height:1.7">⠿ আইকন ধরে টেনে সেকশন উপরে-নিচে সাজান, ক্যাটাগরি এক সেকশন থেকে অন্য সেকশনে টেনে দিন (যেমন "শীতের পোশাক" সেকশন একদম উপরে আনা)। টানা না গেলে ▲▼ বাটন বা "সরান…" ড্রপডাউন ব্যবহার করুন। শেষে "সেভ করুন" চাপলে রিসেলিং ও ইউজার — দুই সাইটেই বদলে যাবে।</p>
+      <div id="bd-secs" class="space-y-3">
+        <template x-for="s in board.secs" :key="s.key">
+          <div class="bd-sec" :data-key="s.key">
+            <div class="bd-sh">
+              <div class="bd-sgrip" title="টেনে সেকশন সরান"><i class="fa-solid fa-grip-vertical"></i></div>
+              <div class="bd-sicon" :style="'background:linear-gradient(135deg,'+s.color+','+s.color2+')'"><img x-show="s.img" :src="s.img" alt=""/><span x-show="!s.img" x-text="s.icon"></span></div>
+              <div class="flex-1 min-w-0"><p class="font-bold text-sm truncate" style="color:var(--fg)" x-text="s.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="s.cats.length+'টি ক্যাটাগরি'+(s.active?'':' · বন্ধ')"></p></div>
+              <div class="flex gap-1.5">
+                <button type="button" class="bd-btn" title="একদম উপরে নিন" @click="boardSecTop(s.key)"><i class="fa-solid fa-angles-up"></i></button>
+                <button type="button" class="bd-btn" title="উপরে" @click="boardSecStep(s.key,-1)"><i class="fa-solid fa-chevron-up"></i></button>
+                <button type="button" class="bd-btn" title="নিচে" @click="boardSecStep(s.key,1)"><i class="fa-solid fa-chevron-down"></i></button>
+              </div>
+            </div>
+            <p class="bd-empty" x-show="s.cats.length===0">এই সেকশনে ক্যাটাগরি নেই — অন্য সেকশন থেকে টেনে আনুন</p>
+            <div class="bd-cats" :data-lane="s.key">
+              <template x-for="c in s.cats" :key="c.key">
+              <div class="bd-c" :data-key="c.key">
+                <div class="bd-grip" title="টেনে সরান"><i class="fa-solid fa-grip-vertical"></i></div>
+                <div class="bd-thumb"><img x-show="c.img" :src="c.img" alt=""/><span x-show="!c.img" x-text="c.emoji"></span></div>
+                <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate" style="color:var(--fg)" x-text="c.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="c.count+'টি পণ্য'+(c.parent?' · সাব: '+c.parent:'')"></p></div>
+                <select class="bd-sel" @change="boardMoveCat(c.key,$event.target.value);$event.target.value=''"><option value="">সরান…</option><template x-for="t in board.secs.filter(x=>x.key!==s.key)" :key="t.key"><option :value="t.key" x-text="t.name"></option></template></select>
+                <button type="button" class="bd-btn" title="উপরে" @click="boardCatStep(c.key,-1)"><i class="fa-solid fa-chevron-up"></i></button>
+                <button type="button" class="bd-btn" title="নিচে" @click="boardCatStep(c.key,1)"><i class="fa-solid fa-chevron-down"></i></button>
+              </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="bd-sec mt-3" x-show="board.other.length>0" x-cloak>
+        <div class="bd-sh"><div class="flex-1 min-w-0"><p class="font-bold text-sm" style="color:var(--fg)">অন্যান্য ক্যাটাগরি (কোনো সেকশনে নেই)</p><p class="text-xs" style="color:var(--fg3)">এখান থেকে টেনে উপরের কোনো সেকশনে দিন</p></div></div>
+        <div class="bd-cats" data-lane="__other">
+          <template x-for="c in board.other" :key="c.key">
+              <div class="bd-c" :data-key="c.key">
+                <div class="bd-grip" title="টেনে সরান"><i class="fa-solid fa-grip-vertical"></i></div>
+                <div class="bd-thumb"><img x-show="c.img" :src="c.img" alt=""/><span x-show="!c.img" x-text="c.emoji"></span></div>
+                <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate" style="color:var(--fg)" x-text="c.name"></p><p class="text-xs" style="color:var(--fg3)" x-text="c.count+'টি পণ্য'+(c.parent?' · সাব: '+c.parent:'')"></p></div>
+                <select class="bd-sel" @change="boardMoveCat(c.key,$event.target.value);$event.target.value=''"><option value="">সরান…</option><template x-for="t in board.secs.filter(x=>x.key!=='__other')" :key="t.key"><option :value="t.key" x-text="t.name"></option></template></select>
+                <button type="button" class="bd-btn" title="উপরে" @click="boardCatStep(c.key,-1)"><i class="fa-solid fa-chevron-up"></i></button>
+                <button type="button" class="bd-btn" title="নিচে" @click="boardCatStep(c.key,1)"><i class="fa-solid fa-chevron-down"></i></button>
+              </div>
+          </template>
+        </div>
+      </div>
+      <div class="bd-bar" x-show="board.dirty" x-cloak>
+        <span class="text-xs font-bold" style="color:var(--fg)">⚠️ সেভ না করা পরিবর্তন আছে</span>
+        <div class="flex gap-2">
+          <button type="button" class="btn-ghost text-xs" @click="board.dirty=false;boardBuild()">বাতিল</button>
+          <button type="button" class="btn-primary text-xs" :disabled="board.saving" @click="boardSave()"><i class="fa-solid fa-check"></i> <span x-text="board.saving?'সেভ হচ্ছে…':'সেভ করুন'"></span></button>
+        </div>
+      </div>
+    </div>
     <div class="flex items-center justify-between mb-4">
       <p class="text-sm" style="color:var(--fg3)" x-text="allSections.length+' টি সেকশন'"></p>
       <div class="flex gap-2 flex-wrap"><button x-show="!fbSections.some(x=>/বাচ্চা|শিশু|কিডস|kids/i.test(x.name||''))" @click="quickKidsSection()" class="btn-ghost text-xs"><i class="fa-solid fa-child"></i>👶 বাচ্চাদের সেকশন বানান</button><button @click="openSecModal()" class="btn-primary"><i class="fa-solid fa-plus"></i>নতুন সেকশন</button></div>
@@ -4415,7 +4488,7 @@ function Admin(){return{
   team:{form:{name:'',email:'',pw:'',perms:{}},busy:false,err:'',orphan:null,showPw:false},
   activeTab:'dashboard',activeTheme:'light',sidebarOpen:false,saving:false,bulkEnableResellOpen:false,bulkResellPct:15,
 
-  fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],fbNotifications:[],fbCustomButtons:[],fbPinned:[],fbHanger:[],hgSel:[],hgDirty:false,hgSearch:'',hgBusy:false,
+  fbProducts:[],fbOrders:[],fbCategories:[],fbSections:[],board:{secs:[],other:[],dirty:false,saving:false,orig:{}},fbNotifications:[],fbCustomButtons:[],fbPinned:[],fbHanger:[],hgSel:[],hgDirty:false,hgSearch:'',hgBusy:false,
   fbResellers:[],fbLinks:[],fbBlocks:[],rlQ:'',trkText:'',rlF:'সব',nowTs:Date.now(),blkForm:{phone:'',reason:''},fbWithdrawals:[],fbWalletTx:[],adj:{kind:'reseller',q:'',cq:'',cres:[],sel:null,mode:'add',amount:'',note:'',busy:false,cbusy:false},fbDeposits:[],fbSupportTickets:[],
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   wvUp:0,
@@ -4592,6 +4665,72 @@ vendorModal:{open:false,editKey:null,form:{name:'',wholesalePrice:0,platformFeeP
   get productsMissingId(){return this.fbProducts.filter(p=>!p.productId)},
 
   // ══════════ HELPERS ══════════
+  // ══════════ সেকশন ও ক্যাটাগরি সাজানো বোর্ড (ড্র্যাগ-ড্রপ) ══════════
+  // বোর্ডে যা বদলায় তা সেভ করলে: sections/{id}/order, categories/{id}/order+section+sectionId (+ ওই ক্যাটাগরির পণ্যের section) — রিসেলিং ও ইউজার সাইট আগে থেকেই এই ফিল্ড পড়ে।
+  _bdGender(s){const n=String(s.name||'');if(s.gender==='men'||s.gender==='women'||s.gender==='kids')return s.gender;if(/বাচ্চা|শিশু|কিডস|কিড|kids?\b|child|baby|toddler/i.test(n))return'kids';if(/ছেলে|পুরুষ|জেন্টস|men|boy|male/i.test(n)&&!/মেয়ে|women/i.test(n))return'men';if(/মেয়ে|মহিলা|লেডিস|women|girl|female|ladies/i.test(n))return'women';return''},
+  _bdEffSec(c,secs,d=0){const ids=secs.map(s=>s.fbKey),own=c.section||c.sectionId;if(own&&ids.includes(own))return own;if(c.parent&&d<3){const pr=this.fbCategories.find(x=>x.name===c.parent);if(pr){const r=this._bdEffSec(pr,secs,d+1);if(r)return r}}if(c.gender==='men'||c.gender==='women'||c.gender==='kids'){const s=secs.find(s=>this._bdGender(s)===c.gender);if(s)return s.fbKey}return''},
+  boardBuild(){
+    if(this.board&&this.board.dirty)return;
+    const secs=this.allSections.filter(s=>s&&s.name);
+    const cats=(this.fbCategories||[]).filter(c=>c&&c.name).slice().sort((a,b)=>(a.order??99)-(b.order??99));
+    const card=c=>({key:c.fbKey,name:c.name,emoji:c.emoji||'📦',img:c.img||'',parent:c.parent||'',count:(this.fbProducts||[]).filter(p=>p.cat===c.name).length});
+    const by={};secs.forEach(s=>by[s.fbKey]=[]);const other=[],orig={};
+    cats.forEach(c=>{const sk=this._bdEffSec(c,secs);if(sk&&by[sk]){by[sk].push(card(c));orig[c.fbKey]=sk}else{other.push(card(c));orig[c.fbKey]=''}});
+    this.board={secs:secs.map(s=>({key:s.fbKey,name:s.name,icon:s.icon||'🛍️',img:s.img||'',color:s.color||'#6B7280',color2:s.color2||s.color||'#9CA3AF',active:s.active!==false,cats:by[s.fbKey]})),other,dirty:false,saving:false,orig};
+    setTimeout(()=>this.boardSortables(),80);
+  },
+  _bdLane(k){return k==='__other'?this.board.other:((this.board.secs.find(s=>s.key===k)||{}).cats)},
+  _bdFind(key){for(const s of this.board.secs){const i=s.cats.findIndex(c=>c.key===key);if(i>-1)return{lane:s.key,idx:i}}const i=this.board.other.findIndex(c=>c.key===key);return i>-1?{lane:'__other',idx:i}:null},
+  boardMoveCat(key,toLane,toIdx){
+    if(!toLane||toLane==='__other')return;
+    const f=this._bdFind(key);if(!f)return;
+    const from=this._bdLane(f.lane),to=this._bdLane(toLane);if(!from||!to)return;
+    const c=from.splice(f.idx,1)[0];
+    const i=toIdx==null?to.length:Math.max(0,Math.min(toIdx,to.length));
+    to.splice(i,0,c);
+    if(f.lane!==toLane){ // একই সেকশনে থাকা সাব-ক্যাটাগরিও সাথে যাবে
+      from.filter(k=>k.parent===c.name).forEach(k=>{from.splice(from.indexOf(k),1);to.splice(to.indexOf(c)+1,0,k)});
+    }
+    this.board.dirty=true;
+  },
+  boardCatStep(key,d){const f=this._bdFind(key);if(!f)return;const l=this._bdLane(f.lane),j=f.idx+d;if(j<0||j>=l.length)return;const c=l.splice(f.idx,1)[0];l.splice(j,0,c);this.board.dirty=true},
+  boardSecStep(key,d){const a=this.board.secs,i=a.findIndex(s=>s.key===key),j=i+d;if(i<0||j<0||j>=a.length)return;const s=a.splice(i,1)[0];a.splice(j,0,s);this.board.dirty=true},
+  boardSecTop(key){const a=this.board.secs,i=a.findIndex(s=>s.key===key);if(i<=0)return;const s=a.splice(i,1)[0];a.unshift(s);this.board.dirty=true},
+  boardSortables(){
+    if(!window.Sortable)return;
+    const root=document.getElementById('bd-secs');if(!root)return;
+    // Sortable DOM সরালে Alpine গুলিয়ে ফেলে — তাই ড্রপের পর DOM আগের জায়গায় ফেরত দিয়ে শুধু ডাটা আপডেট করি
+    const revert=e=>{const it=e.item,from=e.from;if(it.parentNode)it.parentNode.removeChild(it);const kids=[...from.children].filter(x=>x.matches&&x.matches('.bd-c,.bd-sec'));from.insertBefore(it,kids[e.oldIndex]||null)};
+    if(root._sortable)root._sortable.destroy();
+    root._sortable=new Sortable(root,{handle:'.bd-sgrip',draggable:'.bd-sec',animation:180,ghostClass:'sortable-ghost',onEnd:e=>{revert(e);if(e.oldIndex===e.newIndex)return;const a=this.board.secs,s=a.splice(e.oldIndex,1)[0];a.splice(e.newIndex,0,s);this.board.dirty=true}});
+    document.querySelectorAll('.bd-board .bd-cats').forEach(el=>{
+      if(el._sortable)el._sortable.destroy();
+      const lane=el.dataset.lane;
+      el._sortable=new Sortable(el,{group:{name:'bdcats',put:lane!=='__other'},handle:'.bd-grip',draggable:'.bd-c',animation:180,ghostClass:'sortable-ghost',onEnd:e=>{
+        const key=e.item.dataset.key,fl=e.from.dataset.lane,tl=e.to.dataset.lane,oi=e.oldIndex,ni=e.newIndex;
+        revert(e);
+        if(fl===tl){if(oi===ni)return;const l=this._bdLane(fl),c=l.splice(oi,1)[0];l.splice(ni,0,c);this.board.dirty=true}
+        else this.boardMoveCat(key,tl,ni);
+      }});
+    });
+  },
+  async boardSave(){
+    const b=this.board;if(!b||!b.dirty||b.saving)return;
+    const upd={};let n=0;const moved=[];
+    b.secs.forEach((s,i)=>{upd['sections/'+s.key+'/order']=i+1});
+    [...b.secs.map(s=>[s.key,s.cats]),['__other',b.other]].forEach(([lk,cats])=>cats.forEach(c=>{
+      const sk=lk==='__other'?'':lk;
+      upd['categories/'+c.key+'/order']=++n;
+      if((b.orig[c.key]||'')!==sk){upd['categories/'+c.key+'/section']=sk;upd['categories/'+c.key+'/sectionId']=sk;moved.push({c,old:b.orig[c.key]||'',nw:sk})}
+    }));
+    // যে পণ্যে আগের সেকশন সরাসরি বসানো ছিল, ক্যাটাগরির সাথে সেটাও নতুন সেকশনে যাবে
+    const pk=new Set();
+    moved.forEach(({c,old,nw})=>{if(!nw||!old)return;(this.fbProducts||[]).forEach(p=>{if(p.cat===c.name&&(p.section||p.sectionId)===old){pk.add(p.fbKey);upd['products/'+p.fbKey+'/section']=nw;upd['products/'+p.fbKey+'/sectionId']=nw}})});
+    if(moved.length&&!confirm(moved.length+'টি ক্যাটাগরি নতুন সেকশনে সরছে'+(pk.size?(' এবং '+pk.size+'টি পণ্যের সেকশনও বদলাবে'):'')+'।\nইউজার ও রিসেলিং — দুই সাইটেই এটা দেখাবে। সেভ করবেন?'))return;
+    b.saving=true;
+    try{await window.$db.multiUpdate(upd);this.board.saving=false;this.board.dirty=false;this.showToast('সেকশন ও ক্যাটাগরির ক্রম সেভ! ✅','success');this.boardBuild()}
+    catch(e){this.board.saving=false;this.showToast('সেভ ব্যর্থ! '+(e&&e.message?e.message.slice(0,80):''),'error')}
+  },
   getSectionName(sid){if(!sid)return'';return this.allSections.find(s=>s.fbKey===sid)?.name||''},
   getSectionProdCount(s){const id=s.fbKey;return this.fbProducts.filter(p=>p.section===id||p.sectionId===id).length},
   getSectionCatCount(s){const id=s.fbKey;return this.fbCategories.filter(c=>c.section===id||c.sectionId===id).length},
