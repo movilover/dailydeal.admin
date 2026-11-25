@@ -1676,6 +1676,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
             <select class="dd-input" x-model="sup.catForm.parent"><option value="">— মূল ক্যাটাগরি —</option><template x-for="c in sup.intlCats.filter(x=>!x.parent&&x.fbKey!==sup.catForm.editKey)" :key="c.fbKey"><option :value="c.fbKey" x-text="(c.emoji||'')+' '+c.name"></option></template></select></div>
           <div><label class="dd-label">ইমোজি</label><input class="dd-input" x-model="sup.catForm.emoji" placeholder="👕"/></div>
           <div><label class="dd-label">ক্রম</label><input class="dd-input" type="number" x-model.number="sup.catForm.order"/></div>
+          <div class="col-span-2 md:col-span-3"><label class="dd-label">ডেলিভারি চার্জ (৳) — এই ক্যাটাগরির পণ্যে দেখাবে</label><input class="dd-input" type="number" min="0" x-model="sup.catForm.delivery" placeholder="ফাঁকা = দেশ অনুযায়ী চার্জ, 0 = ফ্রি"/></div>
         </div>
         <div class="flex flex-wrap items-center gap-2 mt-3">
           <div class="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0" style="background:var(--bg2)"><img x-show="sup.catForm.img" :src="sup.catForm.img" class="w-full h-full object-cover" alt=""/><i x-show="!sup.catForm.img" class="fa-solid fa-image" style="color:var(--fg3)"></i></div>
@@ -4533,7 +4534,7 @@ function Admin(){return{
   fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',
   ic:{countries:[],features:[],notice:'',contact:{later:true,waOn:true,wa:'',fbOn:true,fb:'',telOn:false,tel:'',text:''},saving:false,loaded:false},
   fbVendors:[],  sup:{url:localStorage.getItem('dd_sup_api')||'',token:sessionStorage.getItem('dd_sup_tok')||'',cur:'aliexpress',q:'',results:[],busy:false,msg:'',importCat:'',cfg:{},genericText:{},intlCats:[],queue:[],
-    catForm:{name:'',emoji:'',img:'',order:99,parent:'',editKey:null,pct:0},importIntl:'',man:{title:'',cost:'',images:'',url:'',id:''},gm:{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},
+    catForm:{name:'',emoji:'',img:'',order:99,parent:'',delivery:'',editKey:null,pct:0},importIntl:'',man:{title:'',cost:'',images:'',url:'',id:''},gm:{mode:'percent',value:30,resellerMode:'percent',resellerValue:12,mrpPct:20},
     list:[{id:'aliexpress',name:'AliExpress',icon:'🌏',type:'International Dropshipping',intl:true,base:'https://api-sg.aliexpress.com/sync'},
       {id:'cj',name:'CJdropshipping',icon:'📦',type:'International Dropshipping',intl:true,base:'https://developers.cjdropshipping.com/api2.0/v1'},
       {id:'amazon',name:'Amazon (Rainforest / RapidAPI)',icon:'🛒',type:'International — Amazon (US/UK/AE…)',intl:true,base:''},
@@ -5043,11 +5044,11 @@ async applyAdjust(){
     if(!(price>0))return this.showToast('সঠিক দাম দিন','error');
     try{await window.$db.saveProduct({price,resellerPrice:Math.min(rp,price),resellEnabled:rp>0,costPrice:cp,updatedAt:new Date().toISOString()},p.fbKey);delete this.iq.ed[p.fbKey];this.iq.ed={...this.iq.ed};this.showToast('দাম আপডেট ✅','success')}catch(err){this.showToast('আপডেট ব্যর্থ','error')}},
   supIsIntl(){return !!(this.sup.list.find(s=>s.id===this.sup.cur)||{}).intl},
-  supCatReset(){this.sup.catForm={name:'',emoji:'',img:'',order:99,parent:'',editKey:null,pct:0}},
-  supEditCat(c){this.sup.catForm={name:c.name||'',emoji:c.emoji||'',img:c.img||'',order:c.order??99,parent:c.parent||'',editKey:c.fbKey,pct:0};window.scrollTo({top:0,behavior:'smooth'})},
+  supCatReset(){this.sup.catForm={name:'',emoji:'',img:'',order:99,parent:'',delivery:'',editKey:null,pct:0}},
+  supEditCat(c){this.sup.catForm={name:c.name||'',emoji:c.emoji||'',img:c.img||'',order:c.order??99,parent:c.parent||'',delivery:(c.delivery==null?'':c.delivery),editKey:c.fbKey,pct:0};window.scrollTo({top:0,behavior:'smooth'})},
   supAddSubTo(c){this.supCatReset();this.sup.catForm.parent=c.fbKey;window.scrollTo({top:0,behavior:'smooth'})},
   async supAddCat(){const f=this.sup.catForm;if(!String(f.name).trim())return this.showToast('নাম দিন','error');
-    const d={name:f.name.trim().slice(0,60),emoji:String(f.emoji||'').slice(0,8),img:f.img||'',order:Number(f.order)||99,parent:f.parent||''};
+    const d={name:f.name.trim().slice(0,60),emoji:String(f.emoji||'').slice(0,8),img:f.img||'',order:Number(f.order)||99,parent:f.parent||'',delivery:(f.delivery===''||f.delivery==null||isNaN(Number(f.delivery)))?null:Math.max(0,Math.round(Number(f.delivery)))};
     try{if(f.editKey){await window.$db.updateIntlCat(f.editKey,d)}else{await window.$db.saveIntlCat({...d,active:true})}
       this.supCatReset();this.showToast(f.editKey?'আপডেট হয়েছে ✅':'ক্যাটাগরি যোগ হয়েছে ✅')}catch(e){this.showToast('সেভ ব্যর্থ','error')}},
   async supToggleCat(c,val){try{await window.$db.updateIntlCat(c.fbKey,{active:val})}catch{this.showToast('আপডেট ব্যর্থ','error')}},
