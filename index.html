@@ -1714,6 +1714,38 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
       <p class="text-xs" x-show="!sup.intlCats.length" style="color:var(--fg3)">এখনও কোনো ইন্টারন্যাশনাল ক্যাটাগরি নেই।</p>
     </div>
 
+    <!-- ── 3.5 গ্লোবাল প্রাইসিং ও ডেলিভারি রুল (ক্যাটাগরি অনুযায়ী) ── -->
+    <div x-show="activeTab==='sup_intl'" class="space-y-3">
+      <div class="dd-card p-4 space-y-3">
+        <p class="font-bold text-sm">💹 গ্লোবাল প্রফিট % ও ডেলিভারি চার্জ (ক্যাটাগরি অনুযায়ী)</p>
+        <p class="text-xs" style="color:var(--fg3);line-height:1.7">প্রতিটি ক্যাটাগরির জন্য আলাদা করে ঠিক করুন: গ্লোবাল সাইটে কত % প্রফিট, রিসেলিং সাইটে কত % প্রফিট, আর দুই সাইটে ডেলিভারি চার্জ কত। দাম = কস্ট দাম + প্রফিট %। উদাহরণ: কস্ট ৫৯৩, গ্লোবাল ৩৫% → ৮০০, রিসেলিং ২০% → ৭১২। কোনো পণ্যের কস্ট না থাকলে তার দাম বদলাবে না (ডেলিভারি রুল তবুও বসবে)। সেভ করে “প্রয়োগ” চাপলে ওই ক্যাটাগরির সব পণ্যে বসে যাবে। দেশ অনুযায়ী ডেলিভারি আগের মতোই “ইন্টারন্যাশনাল ডেলিভারি” ট্যাবে থাকবে; ক্যাটাগরির ডেলিভারি চার্জ দেওয়া থাকলে সেটাই প্রযোজ্য হবে।</p>
+        <p class="text-xs" x-show="!sup.intlCats.length" style="color:var(--fg3)">আগে ক্যাটাগরি যোগ করুন।</p>
+        <template x-for="c in sup.intlCats" :key="'gr'+c.fbKey">
+          <div class="rounded-xl p-3 space-y-2" style="background:var(--bg2);border:1px solid var(--border)" :style="c.parent?'margin-left:18px':''">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <p class="text-sm font-bold" x-text="(c.parent?'↳ ':'')+(c.emoji||'')+' '+c.name"></p>
+              <span class="text-xs" style="color:var(--fg3)" x-text="grCounts(c).all+'টি পণ্য · কস্ট আছে '+grCounts(c).cost+'টিতে'"></span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div><label class="dd-label">গ্লোবাল সাইট প্রফিট %</label><input type="number" class="dd-input" :value="grRule(c).gPct" @input="grSet(c,'gPct',$event.target.value)" placeholder="যেমন 35"/></div>
+              <div><label class="dd-label">রিসেলিং সাইট প্রফিট %</label><input type="number" class="dd-input" :value="grRule(c).rPct" @input="grSet(c,'rPct',$event.target.value)" placeholder="যেমন 20"/></div>
+              <div><label class="dd-label">গ্লোবাল সাইট ডেলিভারি</label>
+                <select class="dd-input" :value="grRule(c).gMode" @change="grSet(c,'gMode',$event.target.value)"><option value="default">দেশ অনুযায়ী (ডিফল্ট)</option><option value="fixed">নির্দিষ্ট চার্জ</option><option value="free">ফ্রি</option></select>
+                <input type="number" class="dd-input mt-1" x-show="grRule(c).gMode==='fixed'" :value="grRule(c).gFee" @input="grSet(c,'gFee',$event.target.value)" placeholder="চার্জ ৳"/></div>
+              <div><label class="dd-label">রিসেলিং সাইট ডেলিভারি</label>
+                <select class="dd-input" :value="grRule(c).rMode" @change="grSet(c,'rMode',$event.target.value)"><option value="default">দেশ অনুযায়ী (ডিফল্ট)</option><option value="fixed">নির্দিষ্ট চার্জ</option><option value="free">ফ্রি</option></select>
+                <input type="number" class="dd-input mt-1" x-show="grRule(c).rMode==='fixed'" :value="grRule(c).rFee" @input="grSet(c,'rFee',$event.target.value)" placeholder="চার্জ ৳"/></div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn-ghost text-xs" @click="grSave(c)"><i class="fa-solid fa-floppy-disk"></i> রুল সেভ</button>
+              <button type="button" class="btn-primary text-xs" :disabled="gr.busy" @click="grApply(c)"><i class="fa-solid fa-wand-magic-sparkles"></i> পণ্যে প্রয়োগ</button>
+              <button type="button" class="btn-ghost text-xs" :disabled="gr.busy" @click="grMigrate(c)" title="কস্ট নেই এমন পণ্যে বর্তমান দাম থেকে কস্ট হিসাব করে বসায়"><i class="fa-solid fa-right-left"></i> বর্তমান দাম থেকে কস্ট বসান</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- ── 3a. দ্রুত (বাল্ক) ইন্টারন্যাশনাল পণ্য যোগ ── -->
     <div x-show="activeTab==='sup_intl'" class="space-y-4" x-init="iqInit()">
       <div class="dd-card p-4 space-y-3">
@@ -1743,6 +1775,7 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
                 <div><label class="dd-label">পুরনো দাম ৳</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.oldPrice"/></div>
                 <div><label class="dd-label">রিসেলার দাম ৳</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.resellerPrice"/></div>
                 <div><label class="dd-label">স্টক</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.stock"/></div>
+                <div><label class="dd-label">কস্ট (কেনা) দাম ৳</label><input type="number" inputmode="numeric" class="dd-input" x-model.number="r.costPrice" placeholder="প্রফিট % রুলের জন্য"/></div>
               </div>
               <div class="flex items-center gap-2 flex-wrap">
                 <template x-for="(im,k) in r.images" :key="'im'+k+im"><div class="relative"><img :src="im" alt="" class="w-12 h-12 rounded-lg object-cover" onerror="this.style.visibility='hidden'"/><button type="button" @click="r.images.splice(k,1)" class="absolute flex items-center justify-center rounded-full text-white" style="top:-5px;right:-5px;width:18px;height:18px;font-size:10px;background:#DC2626;border:none;cursor:pointer">×</button></div></template>
@@ -1769,13 +1802,14 @@ window.DD_CONFIG=window.DD_CONFIG||{renderUrl:'',keepAlive:true,frameBust:true};
               <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate" x-text="p.name"></p><p class="text-xs truncate" style="color:var(--fg3)" x-text="(p.intlSub?p.intlCat+' › '+p.intlSub:p.intlCat)"></p></div>
               <input type="number" inputmode="numeric" class="dd-input" style="width:84px" :value="iq.ed[p.fbKey]&&iq.ed[p.fbKey].price!==undefined?iq.ed[p.fbKey].price:p.price" @input="iqEd(p,'price',$event.target.value)" title="দাম ৳"/>
               <input type="number" inputmode="numeric" class="dd-input" style="width:84px" :value="iq.ed[p.fbKey]&&iq.ed[p.fbKey].resellerPrice!==undefined?iq.ed[p.fbKey].resellerPrice:(p.resellerPrice||0)" @input="iqEd(p,'resellerPrice',$event.target.value)" title="রিসেলার দাম ৳"/>
+              <input type="number" inputmode="numeric" class="dd-input" style="width:84px" :value="iq.ed[p.fbKey]&&iq.ed[p.fbKey].costPrice!==undefined?iq.ed[p.fbKey].costPrice:(p.costPrice||0)" @input="iqEd(p,'costPrice',$event.target.value)" title="কস্ট (কেনা) দাম ৳"/>
               <button type="button" class="btn-ghost text-xs" @click="editProduct(p)" title="ক্যাটাগরিসহ এডিট"><i class="fa-solid fa-pen"></i></button>
           <button type="button" class="btn-primary text-xs" x-show="iq.ed[p.fbKey]" @click="iqSavePrice(p)"><i class="fa-solid fa-check"></i></button>
               <button type="button" class="btn-danger text-xs" @click="deleteProd(p.fbKey)"><i class="fa-solid fa-trash"></i></button>
             </div>
           </template>
         </div>
-        <p class="text-xs" style="color:var(--fg3)">বামের ঘর = বিক্রয় দাম, ডানের ঘর = রিসেলার দাম। বদলালে ✓ চাপুন। ✏️ বাটনে চাপলে গ্লোবাল ক্যাটাগরি, সাইজ, বিবরণ ও ছবিসহ বিস্তারিত এডিট খুলবে।</p>
+        <p class="text-xs" style="color:var(--fg3)">ক্রম: বিক্রয় দাম | রিসেলার দাম | কস্ট দাম। বদলালে ✓ চাপুন। ✏️ বাটনে চাপলে গ্লোবাল ক্যাটাগরি, সাইজ, বিবরণ ও ছবিসহ বিস্তারিত এডিট খুলবে।</p>
       </div>
     </div>
 
@@ -4493,6 +4527,7 @@ function Admin(){return{
   fbRecharges:[],fbServices:[],fbSvcOrders:[],rechargeF:'pending',svcOrderF:'pending',
   wvUp:0,
   iq:{cat:'',rows:[],paste:'',mrp:0,busy:false,msg:'',filter:'',ed:{}},
+  gr:{rules:{},saved:{},busy:false,open:''},
   rcfg:{youtubeLink:'',telegramGroup:'',supportTelegram:'',supportNumber:'',supportWhatsapp:'',boostKeys:'',topKeys:'',rechargeEnabled:true,rechargeCommissionPct:1,rechargeMin:10,rechargeMax:5000,rechargeNotice:'',pages:{ecom:{title:'',body:'',btnText:'',btnLink:''},print:{title:'',body:'',btnText:'',btnLink:''},guideline:{title:'',body:'',btnText:'',btnLink:''}},learning:[],faq:[],workVideo:{active:false,url:'',thumb:'',title:'',sub:''},pendingVideo:{active:false,url:'',thumb:'',title:'',sub:''},marketing:{title:'',sub:'',items:[]},...(()=>{const f=(x)=>x;return {contact:{helplines:[],hours:'',offlineMsg:'',email:'',facebookGroup:'',facebookPage:'',messenger:'',instagram:'',tiktok:'',website:'',appLink:''},buttons:[],builtinOverrides:{},announce:{marquee:'',popup:{active:false,title:'',body:'',image:'',btnText:'',btnLink:'',showOnce:true,expiresAtStr:'',expiresAt:0,updatedAt:0}},features:{freelance:true,referral:true,withdraw:true,deposit:true,print:true,ecom:true,recharge:true,maintenanceMsg:''},withdraw:{min:0,max:0,feePct:0,methodsText:'',methods:[],notice:''},deposit:{min:0,methods:[],notice:''},referral:{text:''}}})()},
   svcEditKey:'',svcUploading:false,svcForm:{title:'',cat:'',banner:'',provider:'',unitPrice:'',unitLabel:'Dollar',minQty:1,maxQty:100,details:'',active:true},
   fbCustDeposits:[],fbCustWithdrawals:[],custF:'pending',custKind:'সব',
@@ -4833,7 +4868,7 @@ async applyAdjust(){
   supInit(){
     if(this._supInit)return;this._supInit=true;
     window.$db.listenIntlCats(c=>{this.sup.intlCats=c.sort((a,b)=>(a.order??99)-(b.order??99));if(this.up&&this.up.intl&&!this.up.intlKey&&this.up._ic)this.up.intlKey=this._intlKeyOf({intlCat:this.up._ic,intlSub:this.up._is})});
-    window.$db.listenIntlConfig(c=>{if(!this.ic.loaded||!this.ic._dirty)this.icFromCfg(c)});
+    window.$db.listenIntlConfig(c=>{this.gr.saved=(c&&c.catRules&&typeof c.catRules==='object')?c.catRules:{};this.gr.rules={...this.gr.saved};if(!this.ic.loaded||!this.ic._dirty)this.icFromCfg(c)});
     window.$db.listenSupplierQueue(q=>{this.sup.queue=q.sort((a,b)=>(b.at||0)-(a.at||0))});
     this.$watch('fbOrders',()=>{if(!(this.sup.url&&this.sup.token))this.supSyncQueue().catch(()=>{})});this.supLoad();
   },
@@ -4941,7 +4976,7 @@ async applyAdjust(){
   async supReprice(id){if(!confirm('ইমপোর্টেড সব পণ্যের দাম বদলে যাবে। নিশ্চিত?'))return;
     try{const d=await this.supApi('/reprice',{method:'POST',body:JSON.stringify({supplierId:id,markup:this.sup.cfg[id].markup})});this.showToast(d.updated+'টি পণ্যের দাম আপডেট ✅')}catch(e){this.showToast(e.message,'error')}},
   // ══ ইন্টারন্যাশনাল: দ্রুত (বাল্ক) পণ্য যোগ — API/সাপ্লায়ার ছাড়াই ══
-  iqNewRow(){return{id:Math.random().toString(36).slice(2),name:'',price:'',oldPrice:'',resellerPrice:'',stock:100,images:[],img:'',up:0}},
+  iqNewRow(){return{id:Math.random().toString(36).slice(2),name:'',price:'',oldPrice:'',resellerPrice:'',costPrice:'',stock:100,images:[],img:'',up:0}},
   iqInit(){if(!this.iq.rows.length)this.iq.rows=[this.iqNewRow(),this.iqNewRow(),this.iqNewRow()]},
   iqAddRow(n){for(let i=0;i<(n||1);i++)this.iq.rows.push(this.iqNewRow())},
   iqDelRow(i){this.iq.rows.splice(i,1);if(!this.iq.rows.length)this.iqAddRow(1)},
@@ -4966,7 +5001,7 @@ async applyAdjust(){
     this.iq.busy=true;let nid=this.nextProductId,ok=0,bad=0;const now=Date.now();
     for(const r of rows){try{
       const price=Math.round(Number(r.price)),mrp=Number(this.iq.mrp)||0,old=Number(r.oldPrice)>price?Math.round(Number(r.oldPrice)):(mrp>0?Math.round(price*(1+mrp/100)):0),rp=Number(r.resellerPrice)>0?Math.min(Math.round(Number(r.resellerPrice)),price):0,imgs=r.images.slice(0,10);
-      await window.$db.saveProduct({name:String(r.name).trim().slice(0,150),price,oldPrice:old,cat:iCat,intl:true,intlCat:iCat,intlSub:iSub,images:imgs,img:imgs[0]||'',desc:'',sizes:[],colors:[],tags:[],stock:Number(r.stock)>=0?Math.floor(Number(r.stock)):100,resellEnabled:rp>0,resellerPrice:rp,marketPrice:rp>0?price:0,gender:'both',active:true,productId:nid,timestamp:now+ok,createdAt:now+ok,updatedAt:new Date().toISOString()});
+      await window.$db.saveProduct({name:String(r.name).trim().slice(0,150),price,oldPrice:old,cat:iCat,intl:true,intlCat:iCat,intlSub:iSub,images:imgs,img:imgs[0]||'',desc:'',sizes:[],colors:[],tags:[],stock:Number(r.stock)>=0?Math.floor(Number(r.stock)):100,resellEnabled:rp>0,resellerPrice:rp,marketPrice:rp>0?price:0,costPrice:Number(r.costPrice)>0?Math.round(Number(r.costPrice)):0,gender:'both',active:true,productId:nid,timestamp:now+ok,createdAt:now+ok,updatedAt:new Date().toISOString()});
       nid++;ok++;r._done=true}catch(e){bad++}}
     this.iq.rows=this.iq.rows.filter(r=>!r._done);this.iqInit();this.iq.busy=false;
     this.showToast(ok+'টি পণ্য যোগ হয়েছে ✅'+(bad?(' · '+bad+'টি ব্যর্থ'):''),bad?'error':'success');
@@ -4975,10 +5010,38 @@ async applyAdjust(){
     if(pk){const names=new Set([pk.name,...this.sup.intlCats.filter(c=>c.parent===pk.fbKey).map(c=>c.name)]);L=L.filter(p=>names.has(p.intlCat)||names.has(p.intlSub))}
     const q=String(this.iq.filter||'').trim().toLowerCase();if(q)L=L.filter(p=>String(p.name||'').toLowerCase().includes(q));
     return L.slice().sort((a,b)=>(Number(b.timestamp)||0)-(Number(a.timestamp)||0)).slice(0,100)},
+  // ══ গ্লোবাল ক্যাটাগরি রুল: প্রফিট % (গ্লোবাল সাইট / রিসেলিং সাইট) + ডেলিভারি চার্জ ══
+  grRule(c){const r=(this.gr.rules||{})[c.fbKey]||{};return{gPct:r.gPct??'',rPct:r.rPct??'',gMode:r.gMode||'default',gFee:r.gFee??'',rMode:r.rMode||'default',rFee:r.rFee??''}},
+  grSet(c,k,v){const cur=this.grRule(c);this.gr.rules={...(this.gr.rules||{}),[c.fbKey]:{...cur,[k]:v}}},
+  grNames(c){const subs=this.sup.intlCats.filter(x=>x.parent===c.fbKey).map(x=>x.name);return c.parent?{own:true,names:new Set([c.name])}:{own:false,names:new Set([c.name,...subs]),subs:new Set(subs)}},
+  grProds(c){const t=this.grNames(c);return this.fbProducts.filter(p=>p.intl&&(c.parent?(p.intlSub===c.name||(!p.intlSub&&p.intlCat===c.name)):(t.names.has(p.intlCat)||t.names.has(p.intlSub))))},
+  grCounts(c){const L=this.grProds(c);return{all:L.length,cost:L.filter(p=>Number(p.costPrice)>0).length}},
+  _grClean(r){const n=v=>(v===''||v===null||v===undefined||isNaN(Number(v)))?null:Math.max(0,Number(v));return{gPct:n(r.gPct),rPct:n(r.rPct),gMode:r.gMode||'default',gFee:n(r.gFee),rMode:r.rMode||'default',rFee:n(r.rFee)}},
+  _grDel(mode,fee){if(mode==='free')return{mode:'free'};if(mode==='fixed'&&fee!==null)return{mode:'fixed',fee:Math.round(fee)};return null},
+  async grSave(c){const r=this._grClean(this.grRule(c));const o={};Object.keys(r).forEach(k=>{if(r[k]!==null)o[k]=r[k]});
+    try{await window.$db.multiUpdate({['intlConfig/catRules/'+c.fbKey]:Object.keys(o).length?o:null});this.showToast('রুল সেভ ✅','success')}catch(e){this.showToast('সেভ ব্যর্থ — Firebase রুলসে intlConfig/catRules লেখার অনুমতি আছে কি?','error')}},
+  async grApply(c){const r=this._grClean(this.grRule(c)),L=this.grProds(c);if(!L.length)return this.showToast('এই ক্যাটাগরিতে পণ্য নেই','error');
+    const withCost=L.filter(p=>Number(p.costPrice)>0);
+    const priceOn=(r.gPct!==null||r.rPct!==null)&&withCost.length;
+    if(!confirm(L.length+'টি পণ্যে ডেলিভারি রুল বসবে'+(priceOn?(' এবং '+withCost.length+'টি পণ্যের (কস্ট দেওয়া আছে) দাম আপডেট হবে'):'')+'।\nউপ-ক্যাটাগরির আলাদা রুল থাকলে সেটা আলাদা প্রয়োগ করুন। নিশ্চিত?'))return;
+    const upd={};const gd=this._grDel(r.gMode,r.gFee),rd=this._grDel(r.rMode,r.rFee);
+    L.forEach(p=>{const b='products/'+p.fbKey+'/';
+      upd[b+'delivery']=gd;upd[b+'resellerDelivery']=rd;
+      const cost=Number(p.costPrice)||0;
+      if(cost>0){let price=Number(p.price)||0;
+        if(r.gPct!==null){price=Math.max(1,Math.round(cost*(1+r.gPct/100)));upd[b+'price']=price}
+        if(r.rPct!==null){const rp=Math.min(Math.max(1,Math.round(cost*(1+r.rPct/100))),price||Infinity);upd[b+'resellerPrice']=rp;upd[b+'resellEnabled']=true;upd[b+'marketPrice']=price}}
+      upd[b+'updatedAt']=new Date().toISOString()});
+    this.gr.busy=true;try{await window.$db.multiUpdate(upd);this.showToast(L.length+'টি পণ্যে প্রয়োগ হয়েছে ✅','success')}catch(e){this.showToast('প্রয়োগ ব্যর্থ','error')}this.gr.busy=false},
+  async grMigrate(c){const r=this._grClean(this.grRule(c)),g=r.gPct===null?0:r.gPct,L=this.grProds(c).filter(p=>!(Number(p.costPrice)>0)&&Number(p.price)>0);
+    if(!L.length)return this.showToast('সব পণ্যে কস্ট আগে থেকেই আছে','success');
+    if(!confirm(L.length+'টি পণ্যের কস্ট বর্তমান দাম থেকে হিসাব হবে (বর্তমান দাম = কস্ট + '+g+'% ধরে)। দাম এখনই বদলাবে না। নিশ্চিত?'))return;
+    const upd={};L.forEach(p=>{upd['products/'+p.fbKey+'/costPrice']=Math.round(Number(p.price)/(1+g/100))});
+    this.gr.busy=true;try{await window.$db.multiUpdate(upd);this.showToast(L.length+'টি পণ্যের কস্ট বসেছে ✅','success')}catch(e){this.showToast('ব্যর্থ','error')}this.gr.busy=false},
   iqEd(p,k,v){this.iq.ed[p.fbKey]={...(this.iq.ed[p.fbKey]||{}),[k]:v}},
-  async iqSavePrice(p){const e=this.iq.ed[p.fbKey]||{},price=e.price!==undefined?Math.round(Number(e.price)):Number(p.price),rp=e.resellerPrice!==undefined?Math.round(Number(e.resellerPrice)||0):(Number(p.resellerPrice)||0);
+  async iqSavePrice(p){const e=this.iq.ed[p.fbKey]||{},price=e.price!==undefined?Math.round(Number(e.price)):Number(p.price),rp=e.resellerPrice!==undefined?Math.round(Number(e.resellerPrice)||0):(Number(p.resellerPrice)||0),cp=e.costPrice!==undefined?Math.max(0,Math.round(Number(e.costPrice)||0)):(Number(p.costPrice)||0);
     if(!(price>0))return this.showToast('সঠিক দাম দিন','error');
-    try{await window.$db.saveProduct({price,resellerPrice:Math.min(rp,price),resellEnabled:rp>0,updatedAt:new Date().toISOString()},p.fbKey);delete this.iq.ed[p.fbKey];this.iq.ed={...this.iq.ed};this.showToast('দাম আপডেট ✅','success')}catch(err){this.showToast('আপডেট ব্যর্থ','error')}},
+    try{await window.$db.saveProduct({price,resellerPrice:Math.min(rp,price),resellEnabled:rp>0,costPrice:cp,updatedAt:new Date().toISOString()},p.fbKey);delete this.iq.ed[p.fbKey];this.iq.ed={...this.iq.ed};this.showToast('দাম আপডেট ✅','success')}catch(err){this.showToast('আপডেট ব্যর্থ','error')}},
   supIsIntl(){return !!(this.sup.list.find(s=>s.id===this.sup.cur)||{}).intl},
   supCatReset(){this.sup.catForm={name:'',emoji:'',img:'',order:99,parent:'',editKey:null,pct:0}},
   supEditCat(c){this.sup.catForm={name:c.name||'',emoji:c.emoji||'',img:c.img||'',order:c.order??99,parent:c.parent||'',editKey:c.fbKey,pct:0};window.scrollTo({top:0,behavior:'smooth'})},
@@ -5020,7 +5083,7 @@ async applyAdjust(){
     const features=this.ic.features.filter(x=>String(x.title).trim()).slice(0,12).map(x=>({icon:String(x.icon||'fa-box').replace(/[^a-z0-9 -]/gi,'').slice(0,40),title:String(x.title).trim().slice(0,40),text:String(x.text||'').slice(0,120)}));
     this.ic.saving=true;
     const _c=this.ic.contact||{},contact={later:_c.later!==false,waOn:_c.waOn!==false,wa:String(_c.wa||'').replace(/[^0-9]/g,'').slice(0,15),fbOn:_c.fbOn!==false,fb:/^https:\/\//i.test(String(_c.fb||'').trim())?String(_c.fb).trim().slice(0,300):'',telOn:!!_c.telOn,tel:String(_c.tel||'').replace(/[^0-9+]/g,'').slice(0,16),text:String(_c.text||'').slice(0,300)};
-  const _base={countries,fees,features,notice:String(this.ic.notice||'').slice(0,400),updatedAt:Date.now()};
+  const _base={countries,fees,features,notice:String(this.ic.notice||'').slice(0,400),updatedAt:Date.now(),catRules:(this.gr&&this.gr.saved)||{}};
   try{await window.$db.saveIntlConfig({..._base,contact});this.showToast('ডেলিভারি সেটিংস সেভ ✅','success')}
   catch(e){try{await window.$db.saveIntlConfig(_base);this.showToast('ডেলিভারি সেভ হয়েছে, কিন্তু “যোগাযোগ” সেটিংস সেভ হয়নি — Firebase রুলসে intlConfig/contact যোগ করুন','error')}catch(e2){this.showToast('সেভ ব্যর্থ — রুলস আপডেট করা আছে কি?','error')}}
     this.ic.saving=false;
@@ -5165,7 +5228,7 @@ async applyAdjust(){
       window.$db.listenProducts(prods=>this.fbProducts=prods);
       window.$db.listenOrders(orders=>{this.fbOrders=orders.sort((a,b)=>new Date(b.timestamp||0)-new Date(a.timestamp||0));this._ordersLoaded=true;this._csSchedule();this._arSchedule();this._tmSchedule()});
       window.$db.listenUsers(count=>this.totalUsers=count);
-      window.$db.listenCategories(cats=>{this.fbCategories=cats;this.sortableCats=[...cats];this.$nextTick(()=>this.initSortable())});
+      window.$db.listenCategories(cats=>{this.fbCategories=cats;this.sortableCats=[...cats].sort((a,b)=>(a.order??99)-(b.order??99));this.$nextTick(()=>this.initSortable())});
       window.$db.listenSections(secs=>{this.fbSections=secs});
       window.$db.listenNotifications(notifs=>this.fbNotifications=notifs.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)));
       window.$db.listenCustomButtons(btns=>{this.fbCustomButtons=btns});
@@ -5217,7 +5280,10 @@ async applyAdjust(){
 
   async saveCatOrder(){
     const order=this.sortableCats.map(c=>c.name);
-    try{const curr=await this.getCurrentSettings();await window.$db.saveSettings({...curr,catBlockOrder:order});this.showToast('ক্যাটাগরি ক্রম সেভ! ✅','success')}
+    try{
+      const upd={};this.sortableCats.forEach((c,i)=>{if(c.fbKey)upd['categories/'+c.fbKey+'/order']=i+1});
+      if(Object.keys(upd).length)await window.$db.multiUpdate(upd); /* ইউজার ও রিসেলিং সাইট এই order ফিল্ড পড়ে */
+      const curr=await this.getCurrentSettings();await window.$db.saveSettings({...curr,catBlockOrder:order});this.showToast('ক্যাটাগরি ক্রম সেভ! ✅','success')}
     catch{this.showToast('সেভ ব্যর্থ!','error')}
   },
 
